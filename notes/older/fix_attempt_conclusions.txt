@@ -1,0 +1,270 @@
+Age of Wonders 1 — Conclusions from Fix Attempts
+==================================================
+
+This document summarizes the key findings and conclusions drawn from
+approximately 20 diagnostic tests and fix iterations attempting to
+correct the per-unit movement prediction display in mixed-ability stacks.
+
+
+
+PART 1 — THE FIX APPROACH AND WHY IT SHOULD WORK
+=================================================
+
+The goal: after TXYLList.Assign copies the shared (MAX-cost) path to
+each unit's per-unit TMovepath, rewrite byte +3 of each entry with
+that specific unit's actual terrain cost, looked up via GetField and
+MovePointTables.
+
+In theory this should work because:
+  - TXYLList.Assign is a confirmed deep copy (separate data arrays)
+  - Both display (ShowMovePaths) and execution (MoveArmyEx,
+    CalculateMovePositions) read per-unit path costs via MovePointsToPos
+  - PosToMovePoints recomputes the total at [edi+0Ch] after our hook
+  - Each unit gets its own independent path data and total cost
+
+The execution system does NOT re-pathfind. It relies entirely on the
+per-unit path entries. Writing correct per-unit costs should therefore
+give both correct display AND correct execution.
+
+
+
+PART 2 — CHRONOLOGICAL SUMMARY OF ALL TESTS
+============================================
+
+TEST B — Pure passthrough (6 bytes):
+  Just reproduces the replaced instructions: mov eax,[edi+08h]; xor edx,edx; ret
+  RESULT: Works perfectly. Confirms hook wiring is correct.
+
+TEST C — Copy shared MAX costs back to per-unit (51 bytes):
+  Reads cost bytes from the shared path (TMoveControlSettings+68h) and
+  writes them to the per-unit path. This is an identity operation since
+  Assign already copied the same values.
+  RESULT: Works perfectly. Confirms the loop structure, register usage,
+  and the act of reading+writing path entries is fine.
+
+TEST A — Flat cost=4 to entries 1+, entry 0=0 (37 bytes):
+  Writes 0x04 to every entry 1+ cost byte. Bypasses all lookup logic.
+  RESULT: BROKEN. Same "single hex, no MP deducted" symptom as the full
+  GetField caves. This was the first indication that the VALUES matter,
+  not just the act of writing.
+
+TEST D — Shallow copy detector (44 bytes):
+  Compares per-unit data pointer vs shared path data pointer.
+  RESULT: Deep copy confirmed (cost=2 marker written). But also showed
+  buggy movement at low MP, consistent with writing a different value.
+
+DIAGNOSTIC ZERO0 — Zero entry 0 cost only (30 bytes):
+  Sets entry 0's cost byte to 0x00. Does NOT touch entries 1+.
+  RESULT: WORKS — multi-hex movement, correct MP deduction, EXCEPT
+  off-by-one (N hexes costs N-1 hexes worth of MP). This was the
+  breakthrough test.
+
+DIAGNOSTIC H — Flat cost=6 to entries 1+, skip entry 0 (40 bytes):
+  Same loop structure as ZERO0 but also writes flat 6 to entries 1+.
+  RESULT: BROKEN. Off-by-one persists AND multi-hex movement broken.
+
+DIAGNOSTIC FLAT+ZERO — Zero entry 0, flat cost=4 to entries 1+ (49 bytes):
+  Combines ZERO0's entry-0 zeroing with flat writes to entries 1+.
+  RESULT: BROKEN. Same symptom as the full GetField caves.
+
+DIAGNOSTIC IDENTITY — Zero entry 0, read-write-back entries 1+ (51 bytes):
+  Zeros entry 0. For entries 1+, reads cost byte and writes it back
+  (identity operation). Same loop structure as FLAT+ZERO.
+  RESULT: WORKS like ZERO0 (off-by-one from zeroed entry 0, but
+  otherwise correct multi-hex movement and MP deduction).
+
+FIX v3c — Full GetField cave, skip entry 0 (leave 0xFF) (136 bytes):
+  RESULT: BROKEN. Single hex, no MP deducted.
+
+FIX v3d — Full GetField cave, write terrain cost to entry 0 (140 bytes):
+  RESULT: BROKEN. Identical symptom.
+
+FIX v3e — Full GetField cave, zero entry 0, write per-unit to 1+ (140 bytes):
+  RESULT: BROKEN. Identical symptom.
+
+DIAGNOSTIC E — Same as v3e but WITHOUT zeroing entry 0 (136 bytes):
+  Leaves entry 0 as 0xFF, writes per-unit costs to entries 1+.
+  RESULT: DIFFERENT from v3c-v3e. MP IS deducted now. But multi-hex
+  movement still not possible, weird edge cases at low MP.
+
+DIAGNOSTIC F v1 — Per-unit costs + own total, skip PosToMovePoints (158 bytes):
+  Computes total ourselves, writes to [edi+0Ch], returns to 55792A20
+  via absolute address.
+  RESULT: Access Violation at 55792A20 (DLL relocated, absolute addr invalid).
+
+DIAGNOSTIC F v2 — Same but PIC-safe return via add [esp], 8 (155 bytes):
+  Fixed the absolute address bug.
+  RESULT: Predictor shows wildly wrong turn counts (×256 multiplier).
+  Only 1-hex movement. MP correctly deducted.
+
+DIAGNOSTIC G — Identical to E after byte comparison (136 bytes):
+  Confirmed byte-for-byte same as Diagnostic E.
+  RESULT: Same as E — off-by-one in MP deduction.
+
+FIX v4 — Per-unit costs to ALL entries 0 through count-1 (132 bytes):
+  RESULT: BROKEN. Single hex, no MP deducted.
+
+
+
+PART 3 — KEY CONCLUSIONS
+=========================
+
+CONCLUSION 1: THE LOOP AND HOOK INFRASTRUCTURE ARE CORRECT
+
+Tests B, C, ZERO0, and IDENTITY all work. These prove:
+  - The 5-byte hook (E8 E8 AC 07 00) at file offset 0x91E13 is correct
+  - The code cave location at 5580D700 (file 0x10CB00) is valid
+  - Register preservation (save/restore eax, ecx, esi) works
+  - The epilogue (mov eax,[edi+08h]; xor edx,edx; ret) is correct
+  - Iterating over path entries with add esi,4 / dec ecx is fine
+  - Writing to byte [esi+03h] of path entries is fine
+  - TXYLList.Assign is a deep copy — per-unit arrays are independent
+
+CONCLUSION 2: THE PROBLEM IS SPECIFICALLY ABOUT WRITING DIFFERENT VALUES
+
+The critical comparison:
+  IDENTITY:  zeros entry 0, reads each entry 1+ cost and writes it back  → WORKS
+  FLAT+ZERO: zeros entry 0, writes flat 4 to entries 1+                  → BROKEN
+  Test C:    copies shared MAX costs to per-unit (identity)               → WORKS
+  Test A:    writes flat 4 to all entries                                 → BROKEN
+
+The ONLY difference between working and broken tests is whether the
+values written to entries 1+ are the SAME as the original MAX costs or
+DIFFERENT. Same values → works. Different values → breaks.
+
+CONCLUSION 3: THE EXECUTION SYSTEM READS PER-UNIT PATH COSTS
+
+Confirmed by analysis of CalculateMovePositions (55763A5C) and
+MoveArmyEx (5574A318). Both call MovePointsToPos on per-unit paths.
+The shared path is cleared before execution. There is no re-pathfinding.
+
+The ZERO0 test further confirms this: with entry 0 zeroed, execution
+correctly moved N hexes but only charged for N-1 (the zeroed entry).
+
+CONCLUSION 4: ENTRY 0'S 0xFF COST IS A QUIRK, NOT THE ROOT CAUSE
+
+Much time was spent on entry 0's cost byte:
+  - Vanilla: 0xFF, read as -1 by movsx in PosToMovePoints
+  - PosToMovePoints sums ALL entries including entry 0
+  - MovePointsToPos SKIPS entry 0 (stops at index ≤ 0)
+
+The -1 from entry 0 effectively subtracts 1 from the total stored at
+[edi+0Ch]. This is how the vanilla game works and the display/execution
+systems compensate. Modifying entry 0 (zeroing it, writing terrain cost,
+leaving it as 0xFF) produced identical symptoms across v3c/d/e, proving
+entry 0 handling is NOT the primary issue.
+
+CONCLUSION 5: THE TOTAL AT [EDI+0CH] MUST BE CONSISTENT WITH ENTRY COSTS
+
+ShowMovePaths starts its running subtraction from [esi+0Ch] (the total).
+If the total doesn't match the sum of entry costs, the green/red hex
+display breaks. PosToMovePoints naturally recomputes the total after our
+hook, so it should stay consistent — but the entry 0 -1 convention
+complicates this.
+
+Diagnostic F attempted to bypass this by computing the total ourselves
+and skipping PosToMovePoints. The ×256 error in F v2 suggests something
+else went wrong (possibly the table lookup is returning garbage costs).
+
+CONCLUSION 6: WE DON'T YET UNDERSTAND WHY DIFFERENT VALUES BREAK THINGS
+
+This is the central unsolved mystery. Given that:
+  - Deep copy confirmed (separate arrays)
+  - IDENTITY (same loop, read-write-back) works
+  - FLAT+ZERO (same loop, write 4) breaks
+  - The total is recomputed to match the new costs
+  - Both display and execution read the same per-unit data
+
+...there should be no reason why writing different but valid cost values
+breaks the system. The total is consistent (PosToMovePoints recomputes
+it). The display reads the same costs. The execution reads the same costs.
+
+Possible explanations that haven't been fully investigated:
+  a) GetField has side effects that corrupt game state when called
+     during CalculateMovePath
+  b) The MovePointTables lookup is returning wrong costs (table pointer
+     calculation may be wrong despite matching the canonical formula)
+  c) There is additional code reading per-unit path data that we haven't
+     found, which depends on MAX costs specifically
+  d) The MP check at 55792A66 behaves unexpectedly with lower per-unit
+     totals vs higher MAX totals (path gets cleared when it shouldn't,
+     or kept when it should be cleared)
+
+
+
+PART 4 — BUGS IN THE CODE CAVES THEMSELVES (FOUND AND FIXED)
+==============================================================
+
+Bug 1 — Wrong AoWHSMap address (v1):
+  Used 55908F40 instead of 558FA040. Crash.
+
+Bug 2 — Absolute addresses broken by DLL relocation (v1, v2):
+  Three hardcoded absolute addresses not adjusted when AoWEPack.dpl
+  loads at a different base. Crash: "Access violation at 0271D72B."
+
+Bug 3 — Cross-DLL relative call (v3):
+  Direct relative call to GetField (in HSEPack.dpl) from code cave
+  (in AoWEPack.dpl) used wrong offset. Fixed by calling via import
+  thunk at 557020FC.
+
+Bug 4 — Stack offset error (v3b):
+  After pushing table pointer, the Z value's stack offset shifted but
+  the push instruction wasn't updated. Pushed wrong Z to GetField.
+
+Bug 5 — Stack leak in return mechanism (Diagnostic F v1):
+  Used "push 55792A20; ret" which left the original return address
+  (from the hook's CALL) on the stack. Fixed to "mov dword [esp], addr; ret",
+  then further fixed to "add dword [esp], 8; ret" for PIC safety.
+
+Bug 6 — Absolute return address (Diagnostic F v1):
+  Hardcoded 55792A20 as return target. Breaks when DLL relocates.
+  Fixed with relative adjustment: add dword [esp], 8.
+
+Bug 7 — Non-PIC MovePointTables/AoWHSMap references (early v3):
+  One disassembled version showed absolute ADD eax, 558EA040 and
+  MOV eax, [558FA040] instead of PIC-relative references. The
+  correct PIC caves (v3e, Diagnostic E) use call/pop delta and
+  lea/mov relative to the delta register. These work when the DLL
+  doesn't relocate but would break if it did.
+
+
+
+PART 5 — APPROACHES NOT YET TRIED
+===================================
+
+APPROACH A — Hook ShowMovePaths instead of CalculateMovePath:
+  Temporarily rewrite per-unit costs before ShowMovePaths renders each
+  unit, then restore afterward. This affects ONLY display, not execution.
+  Requires two hook points (start and end of the per-unit loop) or a
+  wrapper approach.
+  PRO: Clean separation of display vs execution.
+  CON: Complex (two hooks), and execution would still use MAX costs,
+  meaning units move the MAX-cost distance rather than their per-unit
+  distance. This may not be desirable.
+
+APPROACH B — Allocate new data arrays:
+  Instead of modifying the deep-copied array in place, allocate entirely
+  new memory (via @GetMem at 55701008) for each per-unit path and write
+  per-unit costs there. Point the TMovepath's +04h to the new array.
+  PRO: Zero risk of corrupting anything.
+  CON: Memory management complexity, need to free the old array.
+
+APPROACH C — Debug the FLAT+ZERO failure more carefully:
+  The IDENTITY test proves the loop is correct. FLAT+ZERO is the minimal
+  failing case (same loop, different values). A focused investigation
+  of exactly what goes wrong with flat cost=4 — tracing the MP check,
+  ShowMovePaths running total, and MovePointsToPos results step by step
+  — might reveal the hidden dependency on MAX costs.
+
+APPROACH D — Trace the actual cost values being looked up:
+  The ×256 error in Diagnostic F v2 suggests the MovePointTables lookup
+  might be returning garbage. A diagnostic that writes the looked-up
+  cost to a known memory location (or to entry 0's X/Y bytes as markers)
+  could verify whether the table lookup is correct.
+
+APPROACH E — Test with a single-unit stack on flat terrain:
+  If the per-unit costs on flat terrain are identical to the MAX costs
+  (which they should be for a single unit), the GetField cave should
+  produce the same values as vanilla. If this still breaks, the lookup
+  itself is wrong. If it works, the lookup is correct but the values
+  themselves (being different from MAX in mixed stacks) cause the issue.

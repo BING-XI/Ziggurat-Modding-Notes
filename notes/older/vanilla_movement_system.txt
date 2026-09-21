@@ -1,0 +1,436 @@
+Age of Wonders 1 (1999) — Vanilla Movement Prediction System Reference
+=======================================================================
+
+This document describes the unmodified movement prediction and execution
+system as reverse-engineered from AoWEPack.dpl and HSEPack.dpl using
+Ghidra and PE Explorer. All virtual addresses given are at the default
+DLL base; AoWEPack.dpl may relocate at runtime.
+
+AoWEPack.dpl VA-to-file-offset conversion:
+  Code section: virtual 55701000, raw offset 00000400
+  Delta = 55700C00
+  file_offset = virtual_address - 0x55700C00
+
+
+
+PART 1 — OVERVIEW OF THE MOVEMENT PREDICTION PIPELINE
+======================================================
+
+The system works in five stages:
+
+1. PER-UNIT COST TABLES — Each unit gets a 256-byte movement cost table
+   based on its movement ability flags (Forestry, Mountaineering, etc.). Units can have multiple movement abilities, and use the lowest available value from these tables. FF represents impassability. 
+   Created by TArmy.CreateMovePointTable.
+
+2. TABLE COMBINATION — All unit tables are combined with a MAX operation
+   so that for each terrain type, the highest (worst) cost is used.
+   Result stored at TMoveControlSettings+ACh.
+
+3. SHARED PATH CALCULATION — A single A* path is computed using the
+   combined MAX costs. Each path entry stores the MAX movement cost at
+   byte +3. Path stored at TMoveControlSettings+68h.
+
+4. PATH DISTRIBUTION — TXYLList.Assign deep-copies the shared path to
+   each unit's TMoveSettings+08h. After all copies, the shared path at
+   TMoveControlSettings+68h is cleared (55792A57). This means each unit
+   gets its own separate data array containing the MAX costs.
+
+5. DISPLAY AND EXECUTION — ShowMovePaths renders per-unit predictions.
+   The execution system (MoveArmyEx, CalculateMovePositions) also reads
+   per-unit path costs via MovePointsToPos. Both systems use the same
+   per-unit path data — there is no re-pathfinding at execution time.
+
+The bug we're fixing: In step 4, all units get copies of the same MAX
+costs. The display in step 5 then shows the wrong reachable range for
+units with terrain bonuses, because their per-unit costs differ from the
+MAX costs that were baked into the path.
+
+
+
+PART 2 — KEY DATA STRUCTURES
+=============================
+
+TMoveSettings (per-unit, pointed to by EDI at the hook point):
+  +08h  TMovepath pointer (TXYLList — the path)
+  +0Ch  Total path cost (written by PosToMovePoints after path copy)
+  +10h  TAbstractUnit pointer (the unit)
+  +14h  Available movement points (MP)
+  +18h  Moves per turn (used in multi-turn calculation)
+  +20h  Selection flags
+  +24h  Move position index (written by CalculateMovePositions)
+
+TMoveControlSettings (accessed via [TSelectedArmy+04h]):
+  +08h  Constant 1 (set in Create)
+  +10h  TSubMoveList (NOT TMapContainer)
+  +18h  TList
+  +68h  TMovepath — the shared calculated path
+  +A8h  TUnitUserList
+  +ACh  Combined movement cost table (256 bytes, MAX of all units)
+
+TMovepath / TXYLList:
+  +04h  Pointer to data array (array of 4-byte entries)
+  +08h  Entry count
+  +0Ch  Capacity
+  +10h  Default value (initialized to FF FF FF 00 in Create)
+
+  TXYLList.Get returns [+10h] for out-of-bounds indices.
+  TXYLList.AddXYL always initializes the cost byte (+3) to 0x00.
+  The pathfinder fills in the actual cost afterward.
+
+Path Entry (4 bytes, packed):
+  +0  X coordinate (signed byte)
+  +1  Y coordinate (signed byte)
+  +2  Z level (signed byte)
+  +3  Movement cost (unsigned byte, but read via movsx in many places)
+
+  Entry 0: the first destination hex. Its cost byte is 0xFF in vanilla.
+    PosToMovePoints reads it as -1 via movsx, subtracting 1 from total.
+    MovePointsToPos never reads entry 0's cost (stops when index ≤ 0).
+  Entries 1+: subsequent hops. Cost = terrain movement cost for that hex.
+
+  The path is stored in "reverse" order from the perspective of iteration:
+    Entry (count-1) is closest to the unit's current position.
+    Entry 0 is the final destination.
+  MovePointsToPos iterates backward (count-1 down to 1).
+  ShowMovePaths iterates forward (low to high index).
+
+TMapField:
+  +14h  Terrain column index (signed byte)
+  +15h  Terrain row index (signed byte)
+
+Movement Cost Tables:
+  Base tables:     8 tables at 558E84FC–558E8BFC (256 bytes each)
+  Combined tables: 256 tables at MovePointTables (558EA040), 256 bytes each
+  Lookup formula:  cost = MovePointTables[moveType * 256 + column * 16 + row]
+
+  The canonical indexing (from CreateMovePointTable):
+    call GetMoveTypes        → al = flags byte
+    call MoveTypesToInt      → eax = table index (zero-extended byte)
+    shl  eax, 5              ; * 32
+    lea  esi, [MovePointTables + eax*8]  ; base + index * 256
+
+
+
+PART 3 — KEY FUNCTION REFERENCE
+================================
+
+All addresses are virtual addresses at the default DLL base.
+File offsets for AoWEPack.dpl = virtual_address - 0x55700C00.
+
+# ── Core Path Calculation ──────────────────────────────────────────────
+
+TSelectedArmy.CalculateMovePath   55792900  (file 0x91D00)
+  The main orchestrator. Called when the player designates a move
+  target. Sets up the army, creates cost tables, calculates the shared
+  path, then loops over units: for each unit, copies the shared path
+  via TXYLList.Assign, calls PosToMovePoints to compute the total,
+  performs an MP check, and processes entry 0 for destination info.
+  Hook point is at 55792A13, right after TXYLList.Assign returns.
+
+TMoveControlSettings.SetupArmy    557450E4  (file 0x844E4)
+  Sets up the TMoveControlSettings for a given army. Called early in
+  CalculateMovePath.
+
+TArmy.CreateMovePointTable        5578DC40  (file 0x8D040)
+  Creates a per-unit 256-byte cost table based on movement ability
+  flags. Each entry represents the cost for one terrain type.
+
+MaximizeMovePointTable            55744D34  (file 0x84134)
+  Combines per-unit tables using element-wise MAX. The output table
+  has the worst-case cost for each terrain type across all stack units.
+
+TMoveControl.CalculatePathEx      557461AC  (file 0x855AC)
+  Core A* pathfinder. Computes the single shared path using the
+  combined MAX cost table. Writes cost bytes to each path entry.
+
+TMoveControl.FindSubMoveOrigin    55745504  (file 0x84904)
+  Contains a verified GetField usage pattern — used as reference for
+  how to call GetField correctly.
+
+
+# ── Movement Cost Table Generation ─────────────────────────────────────
+
+SUB_L55744B2C                     55744B2C  (file 0x83F2C)
+  Startup function that generates all 256 combined MovePointTables
+  from the 8 base ability tables.
+
+MoveTypesToInt                    5575AEC0  (file 0x8A2C0)
+  Converts a movement type byte to a table index. In practice this
+  is just a zero-extension (movzx).
+
+TMoveControl.DefaultMoveOnMovePointProc  557454D8  (file 0x848D8)
+  Reference implementation for terrain cost lookup. Uses TMapField
+  +14h/+15h for column/row. Note: this function uses a +31h offset
+  in its table lookup because it receives a structure pointer where
+  cost data starts at +31h. When indexing MovePointTables directly,
+  no +31h offset is needed.
+
+
+# ── Path Cost Computation ──────────────────────────────────────────────
+
+TMovepath.PosToMovePoints         55763904  (file 0x82D04)
+  "Total cost of path from position to end."
+  When called with edx=0: sums cost bytes of ALL entries including
+  entry 0. Uses movsx (sign-extends 0xFF as -1). Returns total in eax.
+  Called at 55792A18 immediately after the hook point.
+
+  Disassembly:
+    push ebx / push esi
+    xor  ebx, ebx
+    mov  ecx, [eax+08h]         ; count
+    dec  ecx                    ; last index
+    sub  edx, ecx               ; edx = start - last
+    jg   .end
+    dec  edx
+    .loop:
+      mov  esi, [eax+04h]
+      movsx esi, byte [esi+ecx*4+03h]  ; sign-extend cost byte
+      add  ebx, esi
+      dec  ecx
+      inc  edx
+      jnz  .loop
+    .end:
+    mov  eax, ebx               ; return total
+    pop  esi / pop ebx / ret
+
+TMovepath.MovePointsToPos         557638D8  (file 0x82CD8)
+  "Given MP, how far can I go?"
+  Iterates BACKWARD from entry (count-1) toward entry 1.
+  Subtracts each entry's cost byte (movsx, sign-extended) from the
+  provided MP value. Stops when MP goes negative or index reaches 0.
+  NEVER reads entry 0's cost byte.
+  Returns the index of the last affordable entry.
+
+  Disassembly:
+    push ebx
+    test edx, edx / jl .neg_mp
+    mov  ecx, [eax+08h]         ; count
+    .check:
+      test ecx, ecx / jle .done
+      test edx, edx / jge .sub
+    .sub:
+      dec  ecx
+      mov  ebx, [eax+04h]
+      movsx ebx, byte [ebx+ecx*4+03h]
+      sub  edx, ebx
+      jmp  .check
+    .done:
+      test edx, edx / jge .ret
+      inc  ecx                  ; back up one
+    .ret:
+      mov eax, ecx / pop ebx / ret
+    .neg_mp:
+      mov ecx, [eax+08h] / dec ecx
+      mov eax, ecx / pop ebx / ret
+
+TMovepath.GetMovePoints           55763924  (file 0x82D24)
+  Wrapper: calls PosToMovePoints with edx=0.
+
+
+# ── Path Display ───────────────────────────────────────────────────────
+
+TSelectedArmy.ShowMovePaths       55792524  (file 0x91924)
+  Guard check, then calls TMoveSelector.ShowMovePaths.
+
+TMoveSelector.ShowMovePaths       55763F80  (file 0x83380)
+  Main display function. Iterates over units (loop at 55764007).
+  For each unit (ESI = TMoveSettings):
+
+  1. Loads [esi+0Ch] as starting "remaining cost" → [ebp-30h]
+  2. Loops through path entries (5576403D). At each entry:
+     - Reads cost via TXYLList.Get → shr eax, 18h → movsx
+     - Subtracts from [ebp-30h]
+     - Compares [ebp-30h] vs [esi+14h] (MP) at 55764145
+       If remaining > MP → unreachable sprite (0x30)
+       If remaining ≤ MP → reachable sprite (0x29 + offset)
+  3. After the loop, at 5576462C:
+     - Compares MP vs total cost: if MP ≥ total, all hexes reachable
+     - If MP < total, calls MovePointsToPos for the "limit" marker
+  4. Multi-turn display calculation at 557645E8:
+     total - MP → divide by [esi+18h] (Moves per turn) → extra turns
+
+
+# ── Movement Execution ─────────────────────────────────────────────────
+
+TMoveSettingsList.CalculateMovePositions  55763A5C  (file 0x82E5C)
+  Determines where each unit actually stops this turn:
+    mov  edx, [edi+14h]         ; available MP
+    mov  eax, [edi+08h]         ; TMovepath
+    call MovePointsToPos        ; → how far can this unit go
+    mov  [edi+24h], eax         ; store as move position index
+  Then does conflict resolution (priority-based) if two units want
+  the same hex.
+
+TMoveSettings.GetMoveLoc          5576399C  (file 0x82D9C)
+  Reads the path entry at index [eax+24h] (the stop position).
+  Zeros out byte +3 (cost) before returning the XYL coordinate.
+
+MoveArmyEx                        5574A318  (file 0x89718)
+  Execution function. Also calls MovePointsToPos:
+    call MovePointsToPos        ; how far can unit go this turn
+    mov  ebx, eax               ; stop index
+    test ebx, ebx
+    jnz  proceed                ; if > 0, create movement animation
+  If MovePointsToPos returns 0, checks entry 0 for combat/negotiate.
+
+SUB_L55771138 (road cost display)  55771138  (file 0x80538)
+  Walks the path backward summing costs. For each reachable hex,
+  checks if it's a road-building candidate and adds 5 per road hex.
+  Purely cosmetic — not a cause of any bugs.
+
+
+# ── TXYLList Internals ─────────────────────────────────────────────────
+
+TXYLList.Assign                   55605418  (in HSEPack.dpl)
+  DEEP COPY. Confirmed by disassembly:
+    1. Calls SetCapacity (5560597C) which calls System.@ReallocMem
+       on [dest+04h], allocating a new buffer
+    2. Calls System.Move to copy bytes from source to destination
+    3. Copies [source+10h] → [dest+10h] (default value)
+  Preserves EBX, ESI, EDI.
+
+TXYLList.Create                   556053D3  (in HSEPack.dpl)
+  Initializes +10h to FF FF FF 00 (default value for out-of-bounds).
+
+TXYLList.Get                      55605681  (in HSEPack.dpl)
+  Returns data[index] if 0 ≤ index < count.
+  Returns [+10h] (default value FF FF FF 00) for out-of-bounds.
+
+TXYLList.SetCapacity              5560597C  (in HSEPack.dpl)
+  Calls System.@ReallocMem on [self+04h] with new_capacity * 4 bytes.
+  Stores new capacity at [self+0Ch].
+
+
+# ── Map Access ─────────────────────────────────────────────────────────
+
+TMapContainer.GetField            55608D84  (in HSEPack.dpl)
+  Calling convention:
+    eax = TMapContainer pointer
+    edx = X coordinate
+    ecx = Y coordinate
+    push Z level on stack (dword)
+    Uses: retn 0004h (callee cleans Z from stack)
+  Returns: eax = TMapField pointer
+  Clobbers: eax (return value), edx
+  Preserves: ecx, ebx
+
+  Accessed from AoWEPack.dpl via import thunk at 557020FC.
+
+AoWHSMap global pointer           558FA040  (data section)
+  TMapContainer is at [AoWHSMap + 10h].
+
+
+# ── Unit Information ───────────────────────────────────────────────────
+
+TAbstractUnit.GetMoveTypes        (vtable + E8h, virtual call)
+  Calling convention:
+    eax = unit pointer (self)
+  Returns: al = movement type flags (byte bitmask)
+  Clobbers: eax, edx, ecx
+  Preserves: ebx, esi
+
+TAbstractUnit.CreateMovePointTable  5577FDC4  (file 0x8F1C4)
+  Demonstrates the canonical MovePointTables indexing.
+
+
+# ── Other Army/Unit Functions ──────────────────────────────────────────
+
+TArmyHS.MapFieldMsgProc           55791C30  (file 0x91030)
+TArmyHS.PlaceEx                   55791F58  (file 0x91358)
+TArmyHS.MoveFirst                 55792084  (file 0x91484)
+  Stores path index in [edi+14h], clears step counter, calls vtable
+  method to kick off movement animation.
+TArmyHS.GetMoveSteps              5579227C  (file 0x9167C)
+TSelectedArmy.Create              557922A8  (file 0x916A8)
+TSelectedArmy.SetCurrentMove      5579231C  (file 0x9171C)
+TSelectedArmy.AddMoveArmy         55792380  (file 0x91780)
+TSelectedArmy.GetArmyHS           557923E8  (file 0x917E8)
+TSelectedArmy.SetSelection        55792430  (file 0x91830)
+TSelectedArmy.GetMoveTypes        557924DC  (file 0x918DC)
+
+
+
+PART 4 — THE HOOK POINT IN DETAIL
+==================================
+
+Inside TSelectedArmy.CalculateMovePath, at 55792A10:
+
+  55792A07  mov  edx, [ebp-04h]       ; unit index
+  55792A0A  call GetMoveSettings      ; → edi = TMoveSettings for this unit
+  ...
+  55792A10  call TXYLList.Assign      ; deep-copy shared path → per-unit
+  55792A13  mov  eax, [edi+08h]       ; ← HOOK POINT (5 bytes replaced)
+  55792A16  xor  edx, edx
+  55792A18  call PosToMovePoints      ; sum all entry costs → eax
+  55792A1D  mov  [edi+0Ch], eax       ; store total in TMoveSettings+0Ch
+  55792A20  mov  eax, [edi+08h]       ; reload TMovepath
+  55792A23  xor  edx, edx
+  55792A25  call TXYLList.Get         ; get entry 0 → destination coords
+  ...
+  55792A57  call TXYLList.Clear       ; clear the SHARED path (after all units done)
+  ...
+  55792A66  mov  eax, [edi+14h]       ; available MP
+  55792A69  cmp  eax, [edi+0Ch]       ; vs total cost
+  55792A6C  jge  L55792AA3            ; if MP ≥ total → path fully affordable
+  55792A6E  mov  eax, [edi+08h]       ; else: clear path ("not enough MP")
+  55792A71  call TXYLList.Clear
+
+Register state at 55792A13 (the hook point):
+  EDI = TMoveSettings (per-unit)
+  ESI = TAbstractUnit (the current unit)
+  EBX = TSelectedArmy
+
+The hook replaces:
+  Original 5 bytes: 8B 47 08 33 D2  (mov eax,[edi+08h]; xor edx,edx)
+  Patched 5 bytes:  E8 E8 AC 07 00  (call 5580D700 — the code cave)
+
+The code cave at 5580D700 (file offset 0x10CB00) is in free space
+within AoWEPack.dpl's code section.
+
+
+
+PART 5 — HOW THE DISPLAY SYSTEM DETERMINES REACHABILITY
+========================================================
+
+ShowMovePaths uses TWO mechanisms to decide green vs red hexes:
+
+MECHANISM 1 — Running subtraction (per-hex coloring):
+  Starts with [ebp-30h] = [esi+0Ch] (total cost from PosToMovePoints).
+  For each path entry, subtracts the entry's cost byte.
+  At 55764145: if remaining_cost > available_MP → unreachable.
+  This gives a smooth transition from green to red along the path.
+
+MECHANISM 2 — MovePointsToPos call (limit marker):
+  At 5576462C: if MP < total_cost, calls MovePointsToPos to find the
+  exact index where the unit runs out of MP. This determines where to
+  draw the "you stop here" marker. Only called when the unit can't
+  afford the full path.
+
+Both mechanisms read byte +3 from per-unit path entries.
+Both depend on [esi+0Ch] being consistent with the sum of entry costs.
+
+Multi-turn display at 557645E8:
+  (total_cost - MP - 1) / Moves_per_turn + 1 = additional turns needed.
+
+
+
+PART 6 — CONFIRMED FACTS AND OPEN QUESTIONS
+=============================================
+
+CONFIRMED:
+  - TXYLList.Assign is a deep copy (separate data arrays per unit)
+  - Entry 0 has cost 0xFF in vanilla (read as -1 by movsx)
+  - MovePointsToPos never reads entry 0's cost
+  - PosToMovePoints reads ALL entries including entry 0
+  - Execution uses MovePointsToPos on per-unit paths (no re-pathfinding)
+  - The shared path is cleared after all per-unit copies are made
+  - Passthrough code cave (just reproducing the replaced instructions) works
+  - Writing different cost values to per-unit entries consistently breaks
+    movement in ways that are not yet fully understood
+
+OPEN:
+  - Why does writing different (but internally consistent) cost values
+    to per-unit path entries cause the "single hex, no MP deducted" symptom?
+  - Does GetField have side effects when called during CalculateMovePath?
+  - Is there additional downstream code that reads per-unit path data in
+    ways we haven't traced?

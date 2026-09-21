@@ -1,0 +1,46 @@
+HSEngine.TMapContainer.GetMapLevel:
+mov	eax,[eax+08h]
+mov	eax,[eax+04h]
+mov	eax,[eax+edx*4]
+retn
+
+HSEngine.TMapContainer.GetFieldXYL:
+push	ebp
+mov	ebp,esp
+push	ecx
+mov	[ebp-04h],edx
+movsx	edx,[ebp-02h]
+mov	eax,[eax+08h]
+mov	eax,[eax+04h]
+mov	eax,[eax+edx*4]
+movsx	edx,[ebp-04h]
+mov	ecx,[eax+74h]
+mov	edx,[ecx+edx*4]
+movsx	ecx,[ebp-03h]
+mov	eax,[eax+78h]
+mov	eax,[eax+ecx*4]
+pop	ecx
+pop	ebp
+retn
+
+HSEngine.TMapContainer.GetField:
+push	ebp
+mov	ebp,esp
+push	ebx
+mov	eax,[eax+08h]
+mov	eax,[eax+04h]
+mov	ebx,[ebp+08h]
+mov	eax,[eax+ebx*4]
+mov	ebx,[eax+74h]
+mov	edx,[ebx+edx*4]
+mov	eax,[eax+78h]
+mov	eax,[eax+ecx*4]
+pop	ebx
+pop	ebp
+retn	0004h
+
+HSEngine.TMapContainer.RemoveHS:
+(push/field calculation logic...)
+call	HSEngine.TMapField.RemoveHS
+call	HSEngine.THSMap.InvalidateStaticScene
+retn	0008h

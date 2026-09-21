@@ -1,0 +1,474 @@
+# Age of Wonders (1) — binary modding project
+
+This directory is the installed AoW1 game. Mods are applied as **binary patches** to the game's
+Delphi 3 modules (`AoWEPACK.dpl`, `AoWTCPCK.dpl`, `aowInt.dpl`) and executables (`AoW.exe`,
+`AoWCompat.exe`) — no source, no new DLLs. All reverse-engineering notes, patch scripts, and the RE
+toolkit live in **`Modding Resources/`**.
+
+## Recording convention — IMPORTANT
+
+**Record at APPLY time, not at confirmation time.** The moment a patch is written to a live binary,
+write its doc and its index row with the status `🔨 APPLIED, UNTESTED (date)`. Do not wait for the
+user's in-game test to start documenting — waiting is how a session ends with six applied features
+and nothing on disk explaining them, forcing the next session to re-derive everything from the
+build scripts.
+
+### The status ladder — every feature doc and index row carries exactly one
+
+| status | means | who sets it |
+|---|---|---|
+| `SPECULATIVE` | analysed / designed, **not** applied to any binary | anyone |
+| `🔨 BUILT, NOT APPLIED (date)` | a build script exists and dry-runs clean; nothing written | anyone |
+| `🔨 APPLIED, UNTESTED (date)` | written to a live binary; static checks pass; **nobody has played it** | anyone |
+| `✅ CONFIRMED WORKING (date)` | the user tested it in-game and it works | **only the user's test** |
+| `🛑 REVERTED (date, why)` | applied then backed out — keep the RE, say why | anyone |
+
+**Never label something confirmed on your own say-so.** Static verification, byte-checks, QA passes
+and clean round-trips justify `APPLIED, UNTESTED` and nothing more — a cave can verify perfectly and
+still be wrong, and this project has repeatedly proved it (a cave that ran at package init passed
+every static check and broke startup; a PIC anchor `0x4C` short assembled, verified, and read the
+wrong memory forever).
+
+### What an `APPLIED, UNTESTED` record must contain
+
+Enough for a future session to pick the work up cold, **and** to undo it:
+
+- addresses, cave VAs + byte counts, struct/field offsets, the *why*;
+- the **exact revert command** (the script's surgical `--undo`), and the revert **order** where
+  patches share a cave or a hook;
+- **cross-feature couplings** — "undoing X silently re-breaks Y" is the single most expensive thing
+  to rediscover, and it will not be obvious from either script alone;
+- failed approaches with the reason they failed, so they aren't retried;
+- the **in-game checklist the user still needs to run** — this is what turns the row green later.
+
+- **Update the relevant master index** (currently `Modding Resources/Zig notes/Unit_Spellcasting_INDEX.md`) —
+  status, which build script, which binary + backup name.
+
+**On the user's confirmation**, upgrade the status to `✅ CONFIRMED WORKING (date)` and drop the
+in-game checklist. That is usually the whole edit.
+
+The point: a future session must be able to pick up the work from the docs without re-deriving.
+Unconfirmed or speculative findings are recorded too — clearly flagged, never silently omitted.
+
+### Superseded analysis — delete it unless it might be useful
+
+When a finding turns out to be wrong, the **default is to delete the wrong text** and put the correct
+finding in its place (or a one-line pointer to the doc that now holds it). Don't leave `SUPERSEDED` /
+`RETRACTED` banners, strikethrough, or "the verdict below is wrong, here's why" preambles sitting next
+to the old reasoning — a wrong analysis left in the record costs every future session the time to read
+it *and* re-adjudicate it, and risks it being acted on.
+
+**Retain a corrected or superseded explanation only if it might actually be useful later.** That's a
+judgement call. Things that usually earn their place:
+
+- a **failed approach** — something tried that didn't work, with *why* (so it isn't retried);
+- a wrong theory **tempting enough that it would plausibly be re-derived** — flag it "don't re-try
+  as-is" and give the reason it fails;
+- **reusable machinery** found along the way (addresses, call paths, struct offsets) that is still
+  valid even though the conclusion built on it was wrong.
+
+When it stays, compress it to the useful part — a bullet or a short section, not the original
+write-up — and say plainly that it's superseded and by what. When it doesn't, delete it outright.
+
+Either way, fix invalidated claims in the master indexes and other docs **at the source** rather than
+appending a contradiction.
+
+## How patches are built
+
+- **One Python build script per feature** in `Modding Resources/build_scripts/` (`build_*.py`;
+  runnable from anywhere: `python build_scripts/build_X.py`).
+  Model:
+  keystone-assembled caves, capstone-disassembled for review, **dry-run by default / `--apply` to
+  write, idempotent, verify-before-write (aborts on byte mismatch), auto-backup** to
+  `<file>.pre-<feature>`. Re-running with no args verifies current state.
+- **Revert** = the build script's surgical `--undo`. Restoring a `.pre-*` backup is the fallback, and
+  usually the wrong move — see below. Note the revert order in a feature's doc when patches share a
+  code cave / PE section.
+
+### ⚠ A `.pre-*` snapshot is not a revert path — assume you cannot revert by copying
+
+**On 2026-08-08 roughly 100 `.pre-*` snapshots were deleted deliberately** (each is a full 2.7 MB
+copy; ~270 MB of bloat), and `Modding Resources/backups/` **no longer exists** — do not go looking
+for it, and disregard any doc that says features live in two backup directories.
+
+⚠ **The root-level snapshots have since re-accumulated, and will keep doing so** — every `--apply`
+mints one by convention. Measured 2026-09-02: **81 files, 178 MB** (55 AoWEPACK.dpl, 9 AoWTCPCK.dpl,
+5 each AoW.exe/AoWCompat.exe, 3 aowInt.dpl, 2 each AoWEd.exe/vcl30.dpl), mtimes 2025-08-26 →
+2026-09-02, 67 of them from the 2026-08 feature run. **Never quote a count from this file — derive
+it:**
+
+```bash
+ls -la --time-style=+"%Y-%m-%d %H:%M" *.pre-*     # the real inventory, root only
+```
+
+A long list is *not* a safety net: **every feature's revert path is its script's `--undo`, not a
+file.** Surgical undo is what the convention already preferred, it survives both layering and
+pruning, and a `.pre-*` restore still wipes every layer applied to that file afterwards.
+`re_tools/bisect_dll.py` binary-searches this stack to find which feature broke something — it has
+material to work with again, but only for files whose snapshots were taken from a *proven* baseline
+(see the byte-check warning below).
+
+**Two pristine references are load-bearing. Do not delete these in the next cleanup:**
+
+| file | why it must survive |
+|---|---|
+| `Modding Resources/AoWEPACK_original_backup.dpl` | the pristine pre-modding DLL — the "is this vanilla behaviour?" byte-diff reference |
+| `Ziggurat upload/AoW.exe` (2025-03-21) | the **only** unpatched exe left; `build_herodlg_columns.py --apply` copies the vanilla fill loop out of it and cannot rebuild without it |
+
+⚠ **A `.pre-<feature>` file is not proof of anything — byte-check it.** `AoW.exe.pre-herodlgcolumns`
+was written by a rebuild that ran *after* the feature was installed, so it is a snapshot of the
+previous **patched** build, not a pristine one. Verify a reference against known-vanilla bytes
+before trusting it; never go by the filename.
+
+⚠ **A `.pre-<feature>` restore still wipes every layer applied to that file afterwards** — that part
+has not changed, it just matters less now that so few exist. `shutil.copy2` preserves mtimes, so
+sorting gives the true layer order. Only the newest backup for a file is a safe one-layer revert,
+and "newest" expires silently the moment anyone patches that file again — derive it, never quote a
+count from a doc.
+
+**So: never write "revert and re-apply" as a re-tune procedure.** Instead make the build script
+**rewrite its caves in place** — verify-before-write against *either* the currently-installed bytes *or*
+the new ones, overwrite, and assert that any zone the cave grows into is still zero. Take a fresh
+feature-named backup so the revert path stays one layer deep.
+`build_scripts/build_invis_penalty.py` is the worked example (it rewrites caves owned by
+`build_trueseeing.py` without reverting `.pre-trueseeing`, which by then had five features stacked on
+it — and `.pre-trueseeing` has since been deleted outright, which is the stronger argument: the
+in-place rewrite still works, a revert-based procedure would now be impossible).
+
+**Better still: give the script a surgical `--undo`** that restores the hook/VMT slot and zeroes its own
+cave, verify-before-write, touching no backup. That undo path survives both layering and pruning.
+Worked examples: `build_sitedefender_vary.py`, `build_magebane.py`, `build_mastery_cost.py`,
+`build_stormeffectroll.py`, `build_crusade_spawns.py` (`--undo`); `build_ai_itemtarget.py`,
+`build_debuffcache.py`, `build_effectroll.py`, `build_hpbar_clamp.py` (`--revert`). ⚠ Not every
+`--revert` flag is surgical — `build_mapcursor_fix.py --revert` just restores `.pre-mapcursor`, so it is
+exactly as destructive as the manual copy. Read the flag's implementation before trusting it.
+- **Caves must be position-independent** (rel32 / register-only, no absolute mem refs): the `.dpl`
+  packages rebase at runtime. Reuse a VMT slot that already has a `.reloc` entry, or jump *into*
+  existing code to borrow its already-relocated globals. Exe caves (fixed base 0x400000) may use
+  absolute addresses.
+- **Game files are locked while any AoW binary is running** (`AoW.exe`, `AoWCompat.exe`,
+  `AoWDevEd.exe`, `AoWEd.exe`). A lock shows as "Device or resource busy" / PermissionError. The
+  editor `AoWDevEd.exe` loads `AoWEPACK.dpl`, so it locks the DLL too.
+
+  **⚠ Just kill them — standing authorization, don't ask.** If a lock is blocking an `--apply`,
+  `--undo`, or a file write, terminate the process yourself and retry; do NOT stop and ask the user
+  to close the game. There is nothing to lose: the game autosaves per turn and the editor prompts on
+  its own next launch. Asking instead of killing has stalled real work mid-session.
+
+  ```powershell
+  Get-Process | Where-Object { $_.ProcessName -match '^(AoW|AoWCompat|AoWDevEd|AoWEd)$' } | Stop-Process -Force
+  ```
+
+  (`AowEmailWrapper` and `Launcher` do **not** lock the binaries — leave them alone. Match the
+  process names exactly with `^...$`, or the `-match` will also hit `AowEmailWrapper`.)
+- **Per-executable patches only affect that binary.** `AoW.exe` (the game) and `AoWDevEd.exe`
+  (the editor) are different builds and often call *different* functions for the same feature —
+  verify the actual call path per binary; don't assume they share code.
+- **`AoWCompat.exe` is NOT a separate binary to analyze** (verified by byte-diff 2026-07-24): it is
+  `AoW.exe` with **exactly one byte changed** — file offset `0x3BB7C` (VA `0x43C77C`), the reported
+  build number in the MP version check, `0x0F` (v1.36.0015) → `0x05` (v1.36.0005). It exists only
+  for multiplayer against 1.36.0005 peers. Every AoW.exe address, finding, and patch applies to it
+  verbatim; keep patching both in lockstep, never reverse-engineer it separately. If it is ever
+  lost: copy `AoW.exe` and flip that one byte.
+
+## A cave that rolls must draw from the RIGHT generator — IMPORTANT
+
+AoW1 has **two** random generators, and picking the wrong one is silent: it assembles, it
+verifies, it plays perfectly in single player, and the peers paint different maps.
+
+| | address | draws from |
+|---|---|---|
+| **SYNCED** | `AoWE.TAoWHSMap.Random @0x5577827C` (EAX=map, EDX=n → 0..n-1) | `map[+0x230]`, replicated, written back — also the value the out-of-sync comparator reads |
+| **RAW** | `System.@RandInt` via AoWEPACK thunk `0x55701080` (EAX=n) | `System.RandSeed`, a **per-process** global |
+
+**The rule: a cave draws from the generator the function it is injected into already uses.**
+Where that function makes no draw of its own, the roll's *subject* decides — replicated game
+state (terrain, spawns, rosters, items, damage) ⇒ SYNCED; pixels ⇒ RAW.
+
+Never guess it, and never reason it out from first principles — vanilla already answered, and
+one command prints the answer for every function in the pristine DLL:
+
+```bash
+python "Modding Resources/re_tools/rng_audit.py" --functions
+```
+
+⚠ **Inside tactical combat the correct answer is RAW and SYNCED is wrong.** `TCombat.Execute
+@0x557282C8` is a one-liner that does `System.RandSeed := TAoWHSMap.Random(map,$FFFFFF)`, so a
+battle re-anchors the raw seed from one synchronised draw and then runs deterministically off
+raw draws. A synced draw mid-combat trips the `GetSynchronised` guard *and* perturbs the sync
+value. That same one-line re-anchor is the sanctioned bridge when a cave in a synchronised
+context must call an engine routine that draws internally (`build_arena.py` before `GenerateItem`).
+
+⚠ **Setting bit 3 of `[*0x558FA040 + 0x3C]` does not make a synced call safe — it makes it
+raw.** That flag makes `TAoWHSMap.Random` skip its seed bookkeeping entirely. It is the known
+way to silence the "Invalid AoWHSMap.Random use" modal, and silencing that diagnostic is all it
+does. If the popup fires, the context is not synchronised: the hook site is wrong, or the roll
+belongs further up in the TE body.
+
+**After `--apply`, re-run `rng_audit.py --owners` and confirm the new site prints `ok`.** The
+tool diffs every module against its pristine reference and catches call/jmp rel32, indirect
+calls, *and* bare address constants in every EXECUTE section (a cave can reach the RNG through
+the rebase-delta idiom with no call target to match, and can live outside `CODE`/`.text`).
+
+Full derivation, the vanilla SYNC/RAW function split, the canonical call preamble, and the audit
+of all 25 modded sites: **`Modding Resources/Zig notes/RNG_Lockstep_Rule.md`**.
+
+## No machine-specific paths — IMPORTANT
+
+**Never hard-code an absolute path containing the user's profile directory** (`C:\Users\<name>\...`)
+in anything under `Modding Resources/` — scripts *or* docs. These files get shared with other modders,
+and a user-profile path leaks the real name. Resolve the game directory **relative to the script's own
+location** instead; `build_scripts/` and `re_tools/` both sit exactly two levels below it:
+
+```python
+GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+```
+
+(`import os` must precede it. In `re_tools/`, also use
+`TOOLS = os.path.dirname(os.path.abspath(__file__))`.) This keeps "runs from any working directory"
+while working unchanged on someone else's install; `AOW_GAME_DIR` overrides for a different install
+or if the script is moved out of the folder.
+
+In **docs**, write `<game dir>\Save\foo.hsm`, not a real absolute path. Same for any other personal
+data — no emails, logins, or machine names. Applied retroactively 2026-07-20: 46 scripts + 3 docs were
+de-personalised; verify with `grep -rlI "<profile name>" "Modding Resources/"` before sharing.
+
+### ⚠ A resolved path must never be BAKED INTO A PATCHED BINARY — derive it at runtime
+
+The rule above governs **source text**. On its own it is not enough, because a build script can follow
+it perfectly and still leak: resolve `GAME` relative to the script (clean source), then write that
+*resolved* absolute string into the cave blob it patches into a binary. The name moves from the place
+the convention watches to the place it cannot see.
+
+**This has happened.** `build_dlgdirs.py` did exactly that — `INI_PATH = GAME + r"\AoWEd_LastDirs.ini"`
+encoded into the blob — putting the profile path inside `HSEPack.dpl` and `AoWDevEd.exe`, undetected
+because both live *outside* `Modding Resources/` and are binaries a folder grep skips. A third-party
+modder hit the identical defect in his own copy and diagnosed it before we did
+(`Modding Resources/Inioch/Inioch_Share4_Share5_Catalogue.md`, trap #17).
+
+**So: if a cave needs a path, derive it at runtime.** `GetModuleFileNameA(NULL, buf, MAX_PATH)`, scan
+back to the last `\`, append the leaf filename. Never embed an absolute path built at *build* time.
+⭐ Check the module's **own import table first** — both editor binaries already import
+`GetModuleFileNameA` from kernel32 with a ready-made Delphi thunk, so it is one `call rel32` to an
+existing thunk, with no VCL30-delta hop and no import-table surgery.
+
+This is a **correctness** rule as much as a privacy one: a baked path makes the binary work on exactly
+one install, and it fails *silently* — Win32 profile APIs resolve a bare filename against `%WINDIR%`,
+so reads come back empty and writes vanish with no error.
+
+### The check — two scans, because one folder grep sees neither problem
+
+```bash
+U="$USERNAME"                                # never write the name into the command itself
+grep -laF  "$U" *.exe *.dpl                  # binaries in the game root
+grep -rlaF "$U" "Modding Resources/"         # the shared folder -- NOTE -a, NEVER -I
+```
+
+Stronger still for a cave, and name-independent: assert that **no drive-letter absolute path of any
+kind** (`[A-Za-z]:\`) appears anywhere within the section extent, and that a bare leaf filename occurs
+exactly once, preceded by a NUL. A leaf filename in a cave is correct and is not a leak.
+
+⚠ **Use `-F`, or ripgrep.** The escaped-regex forms — `grep -rn "C:\\Users"` and `grep -rn 'C:\Users'`
+— **silently return zero matches here** while `-F` finds 17 files. A check that reports clean because
+of a quoting bug is worse than no check.
+
+⚠ A `.pre-*` snapshot taken *after* the leaking patch carries the leak too. Scan those as well, or
+delete them.
+
+⚠⚠ **`-I` is the trap. Use `-a`.** `-I` skips "binary" files and hid **59 of 66** hits when this was
+first checked — the folder looked like 7 text files and was actually 66. Three sources, none of them
+hand-written:
+
+| source | count | why it leaks |
+|---|---|---|
+| `re_tools/__pycache__/*.pyc` | 49 | Python embeds the **absolute source path** in every `.pyc`. ⚠ Deleting these is **not durable — they come back the moment anyone runs a script.** Either export `PYTHONDONTWRITEBYTECODE=1`, or treat `find "Modding Resources" -name '*.pyc' -delete` as a mandatory **pre-share step**, run after the last script run and immediately before packaging. |
+| `AoW1 Modding/*.rep`, `.lock`, `.gbf`, `.prp` | 16 | the Ghidra project records the owner username and absolute paths in its internal DB. |
+| `Ziggurat Manual.log`, one catalogue doc | 2 | ordinary text. |
+
+The lesson generalises: **the leak is usually in something a tool generated, not in something anyone
+typed** — bytecode caches, project databases, logs, and patched binaries. Those are exactly the files
+a "source is clean" review never opens.
+
+⚠ **`Modding Resources/AoW1 Modding/` must never be included when the folder is shared.** That is the
+Ghidra project, and its internal DB (`.rep/`, `.lock`, `.gbf`, `.prp`) records the owner's username and
+absolute paths in a form that cannot be scrubbed without risking the project. It is working state, not
+a deliverable — exclude the directory rather than trying to clean it. Ruled 2026-08-31; the other three
+leak sources were cleaned that day (49 `.pyc` deleted, 4 `.pre-*` snapshots deleted, 2 text files
+de-personalised), leaving this directory as the only remaining source in the tree.
+
+## No inline explanations in generated GUIs — IMPORTANT
+
+Anything user-facing this project generates (the Ziggurat Manual, contact sheets, editor UIs)
+carries **controls and data only**. No explanatory prose, no legends, no "how to use this"
+sentences, no "this table shows..." intros, no capability advertisements. If an interaction
+isn't discoverable, fix the control — label it, resize it, move it to the top — rather than
+captioning it. The user will ask for a label when one is wanted.
+
+## The live game is on a 5% / doubled-stat scale — Ghidra shows the 10% vanilla one — IMPORTANT
+
+**Vanilla AoW1 runs on 10-percentage-point increments per point of ATK/DEF/RES. Ziggurat halved every
+to-hit slope to 5pp and doubled every ATK/DEF/RES source**, so hit chances and damage land where they
+did in vanilla and only half-steps are new. `build_scripts/build_hitslope5.py` owns the conversion
+(**7** slope sites — not 8); see `Zig notes/HitChance_Increment_Audit.md` and
+`FivePct_Conversion_Manifest.md`, plus `DamHP_Double_Decisions.md` for the separate DAM/HP doubling.
+
+⚠ **This is the easiest thing in the project to get wrong, because Ghidra's image is the PRISTINE
+VANILLA DLL** (see the RE toolkit section). Every decompile shows the *vanilla* slope. Quoting one
+yields numbers wrong by a factor of two that look entirely reasonable, and nothing flags it.
+
+Worked example, found 2026-09-01: `AoWE.ExecuteDamageRole @0x55725EAC` decompiles as
+`t = 10 - 2*diff`. The live DLL is `t = 10 - diff` — vanilla `8b c6 03 c0`
+(`mov eax,esi; add eax,eax`) is live `8b c6 90 90`, the doubling **nop-ed out**. So a point of stat
+difference is worth 5pp, not 10, and that roll's usable band is ±8 stat points, not ±4. An analysis
+built on the decompiled form had to be redone.
+
+**The rule: never quote a slope, increment, or clamp from a decompile — byte-diff it first.**
+
+```bash
+python "Modding Resources/re_tools/dasm.py" AoWEPACK.dpl <VA> <len>
+# then compare against Modding Resources/AoWEPACK_original_backup.dpl for the vanilla bytes
+```
+
+⚠ **Do not assume a given number WAS converted.** The doubling was applied source-by-source and has
+known gaps — e.g. Turn Undead's `GetTouchAttack` still returns the vanilla 9/10/11/12, so against
+doubled RES it is floored against any undead with RES ≥ 20. Wherever a **stat** is compared against a
+**constant**, verify that both moved; a half-converted comparison is silent.
+
+⚠ **A roll designed for 1–10 stats saturates fast on doubled ones.** Ranges that were comfortable in
+vanilla (±4, ±8) are now crossed by a single strong stat, pinning results at their 10 %/90 % clamps
+and quietly flattening whatever else was meant to matter there (ability level, difficulty). Check
+where a formula saturates before concluding it scales.
+
+## Numbers the user proposes are ALREADY in the current scale — IMPORTANT
+
+When the user specifies a game value — heal amount, damage, HP, cost, stat bonus, duration — **it is
+already expressed in the current Ziggurat scale.** Take it at face value and build it verbatim.
+
+**Never ask which scale was meant.** Not "did you mean +5, or +5 in vanilla terms (= +10 after the
+DAM/HP doubling)?", and never silently rescale it to be helpful. The user designed the rebalance; the
+doubling is not news to them, and reflecting it back at them is noise. Ruled 2026-08-31 — their words:
+*"I am always going to propose numbers appropriate to the new scale and don't need to be reminded."*
+
+If a value still looks wrong for the scale, that is a **finding to state in one line while building it
+as specified** — not a question that blocks the work. This forbids only the "which scale did you mean"
+class; genuine design questions (does it apply in auto-resolve, can heroes take it, does it stack)
+remain worth asking.
+
+**Applies to `aow-pm`, `aow-coder` and `aow-qa` too** — a spec must not carry a rescale question back
+to the user, and QA must not flag a literal value as a scale defect.
+
+## ⚠ The .xlsx workbooks are HISTORICAL — outdated, not a source of truth
+
+`Modding Resources/modding spreadsheets/*.xlsx` (`Ziggurat Engine Notes.xlsx`,
+`AoW1 Hex Editing Notes.xlsx`) record the design as it stood **before** the 2026-08 rebalance
+passes. They have **not** been maintained since and now disagree with the shipped game in places.
+Confirmed stale examples on the `misc` sheet (2026-08-27): row 41 `To-hit increment per ATK/DEF/RES`
+still reads 0.1 for both columns although Ziggurat halved it to 0.05; row 35 `Max Hero stats with
+buffs` reads 20 although the hero clamps are 40; row 40 `Max hero HP` reads 80 although the cap is
+120. Assume there are more.
+
+**Rules:**
+
+- **Never cite the workbook as evidence** of what the game currently does, and never "verify" a
+  finding against it. The live binaries and `Release/*.pfs` are the truth; the feature docs in
+  `Modding Resources/Zig notes/` are the record of intent.
+- **Do not edit the workbooks to bring them up to date** (user ruling 2026-08-27). They are kept as
+  a historical snapshot of the original design pass. Editing them would destroy that.
+- `build_ziggurat_manual.py` still **reads** the workbook for the vanilla-vs-Ziggurat comparison
+  columns and the General Rules rows, so some manual tables carry the stale numbers. That is known
+  and accepted. **New manual content is hand-written in the builder or derived live from `.pfs` /
+  the DLL — never added to the workbook.** Where a hand-written section and a workbook-derived table
+  disagree, the hand-written one is right; say so when it comes up rather than silently reconciling.
+
+## RE toolkit & scope
+
+- `Modding Resources/re_tools/` — PE/VMT/DFM parsers, IAT-ref finder (`pescan.py`), annotated exe
+  disassembler (`dump_exe.py`). Needs `pip install capstone keystone-engine`.
+- **Ghidra (MCP) has `AoWEPACK.dpl` only.** For `AoW.exe` / `AoWTCPCK.dpl` / `aowInt.dpl` /
+  `AoWDevEd.exe`, use `re_tools/` (capstone). Verify which module actually calls a function before
+  hooking — a symbol being *exported* by the DLL is not proof the exe *calls* it (check `iatrefs`).
+  **Setup + startup + rollback: `Modding Resources/Zig notes/Ghidra_Toolchain.md`.**
+  ⭐ **The DLL exports its own symbol table — 10,036 names in `.edata`** (it is a Delphi 3 *package*),
+  so a VMT slot can be named straight from the file with no Ghidra at all. 18 classes / 1394 slots
+  already derived in `Modding Resources/Zig notes/Ghidra_VMT_Layouts.md`; ⚠ `Destroy` lives at **`VMT-0x04`**.
+  **Field offsets: `Modding Resources/Zig notes/Ghidra_Field_Catalogue.md` is canonical** — class-keyed,
+  bounds-checked against measured instance sizes, generated by `re_tools/ghidra_fields.py`.
+  ⚠ **An offset means nothing without its class** (five aliasing traps found 2026-08-03). The Ghidra
+  image carries structs, enums and a `[LIVE-PATCH]` comment at every site where the live DLL differs;
+  `Modding Resources/Zig notes/Ghidra_Annotations.md` explains all of it and rebuilds it in three commands. Since 2026-08-03 this is
+  Ghidra **12.1.2** + GhidraMCP **6.0.0** (267 tools, **port 8089**), project
+  `Modding Resources\AoW1 Modding\AoW1-vanilla.gpr`, program `AoWEPACK_vanilla.dpl`. The old
+  Ghidra 11.3.2 + GhidraMCP 1.4 (27 tools, port 8080) is still installed as the rollback path.
+
+  **⚠ If the Ghidra MCP is down, NAG THE USER TO RESTART IT — don't just fall back and carry on.**
+  The symptom is `Max retries exceeded` / `WinError 10061 target machine actively refused it` on
+  `127.0.0.1:8089` from any `mcp__ghidra__*` call. Say so **immediately and explicitly**, and ask
+  them to restart Ghidra + the MCP bridge; then keep working with `re_tools/` in the meantime and
+  ask again at the next natural pause if it is still down. Diagnose from outside Claude first —
+  `curl -s http://127.0.0.1:8089/check_connection` says whether it is Ghidra or the bridge that is
+  down.
+
+  Why this is a rule and not a nicety: capstone gives you *bytes*, Ghidra gives you *xrefs,
+  decompiles and types*. Silently degrading to capstone turns a five-minute "who calls this / what
+  is this field" into an hour of hand-disassembly, and it biases the work toward whatever is easy
+  to read linearly. A whole session was spent this way on 2026-07-30/31 before anyone noticed the
+  MCP had simply not been started.
+
+  (Ghidra's image is the **pristine vanilla** `AoWEPACK.dpl`, re-verified 2026-08-03 — a good vanilla
+  reference, but it carries **none** of this project's ~518 patched byte-runs. Byte-check the live
+  file before concluding anything is unpatched. **Keeping it vanilla is deliberate — don't propose
+  importing the live DLL:** caves are PIC via `call $+5; pop; sub`, which wrecks Ghidra's stack
+  analysis, and `E9` hooks truncate the host function, so patched code decompiles *worse* live than
+  vanilla. Read patched regions with `re_tools/dasm.py AoWEPACK.dpl <VA> <len>` instead.
+  See the Investigation-traps memory.)
+
+  ⚠⚠ **The `[LIVE-PATCH]` comment layer GOES STALE, and its absence is silent.** It is what makes the
+  vanilla image safe to read, so it must be re-pushed after every applied feature:
+
+  ```bash
+  python "Modding Resources/re_tools/ghidra_annots.py"            # dry run: inventory
+  python "Modding Resources/re_tools/ghidra_annots.py" --apply    # push the comments
+  ```
+
+  Measured 2026-09-01: sites owned by `build_combatlog_dll.py`, `build_invis_penalty.py`,
+  `build_turnundead_res.py` and `build_touchlog_gate.py` carried comments, while **all four
+  `build_hitslope5.py` sites had none** (`0x55725D9D` — inside `HitRole` itself — plus `0x55725DCF`,
+  `0x55725E3B`, `0x55725ED7`). The comments predate that feature, so **the whole 5 % conversion was
+  invisible in Ghidra** — which is exactly how a session came to quote vanilla's 10 % slope as live.
+  **A function with no `[LIVE-PATCH]` comment is NOT evidence it is unpatched** — check with
+  `ghidra_annots.py` (dry run) or `grep -rl "<VA>" build_scripts/` before believing it.
+
+## PM / coder / QA loop
+
+Three subagents in `.claude/agents/` cover both tracks (binary/data modding **and** the Ziggurat
+Manual). They are invoked by name — there is no slash command; the main session orchestrates and
+decides when to loop.
+
+| agent | does | may edit? |
+|---|---|---|
+| `aow-pm` | picks the track, finds prior art **and already-recorded failed approaches**, names the hook site / tag / target binary, writes acceptance criteria split into *checkable without the game* vs *in-game only* | no |
+| `aow-coder` | writes/edits the `build_*.py` (or `build_ziggurat_manual.py`), **applies** it, reports "applied, untested" | yes |
+| `aow-qa` | byte-checks the live binary, reads the cave disassembly, round-trips `--undo`, runs the standing safety checks, reports findings | **no** — reports only |
+
+**The loop:** `aow-pm` → `aow-coder` → `aow-qa` → if FAIL, hand the findings back to `aow-coder`
+and re-run QA → on PASS, give the user the in-game checklist. Docs and the master index are
+updated **after** the user confirms in-game, per the recording convention above.
+
+Standing decisions baked into these agents:
+
+- **The coder applies patches itself**, killing any running AoW binary to do so (the standing
+  authorization above). It does not wait for permission to write to the install.
+- **QA never edits.** Findings go back to the coder. This keeps the check independent — QA that
+  fixes its own findings stops being a check.
+- **Neither can test the game.** Both are told never to write "confirmed working"; every run ends
+  with an explicit *needs the user's in-game test* list.
+
+Add a trap to the relevant agent file whenever one costs real time — that is what makes the loop
+worth more than three generic roles.
+
+## Entry point
+
+Start at **`Modding Resources/Zig notes/Unit_Spellcasting_INDEX.md`** — the map of the current work (unit
+spellcasting) with at-a-glance addresses and links to every detailed doc. Other features (movement
+predictor, transport-boarding analysis) have their own docs in the same folder.

@@ -1,0 +1,121 @@
+# The 102 abilities offered at hero level-up.
+# Selected = Ability.pfs tag 9 has BOTH b8 "Hero upgrade" (0x100) and b9 THero (0x200).
+# JOIN: Ability.pfs record id = ability id + 10.
+# Verified 2026-09-09 against AoWDevEd: Webbed aid 97/rid 107 = 0x03E cost 0;
+#                                      Black Breath aid 88/rid 98 = 0x3FF cost 20.
+# cost = tag 6, the skill-point price at level-up.
+
+## Wayfaring  (25)
+     0  Walking                  cost 4
+     1  Flying                   cost 60
+     2  Swimming                 cost 20
+     3  Forestry                 cost 4
+     4  Cave Crawling            cost 4
+     5  Mountaineering           cost 12
+    36  Wall Climbing            cost 16
+    39  Night Vision             cost 12
+    41  True Seeing              cost 12
+    42  Tunneling                cost 12
+    54  Invisibility             cost 20
+    59  Floating                 cost 20
+    64  Vision                   cost 4
+    66  Wall Passage             cost 16
+    68  Path Of Decay            cost 6
+    69  Path Of Life             cost 12
+   109  Path Of Frost            cost 18
+   138  Steppe Concealment       cost 4
+   139  Cave Concealment         cost 6
+   140  Grass Concealment        cost 12
+   141  Snow Concealment         cost 4
+   142  Desert Concealment       cost 4
+   143  Wasteland Concealment    cost 4
+   144  Water Concealment        cost 8
+   145  Concealment              cost 6
+
+## Resistances  (16)
+     6  Magic Immunity           cost 28
+     7  Fire Immunity            cost 16
+     8  Cold Immunity            cost 12
+     9  Lightning Immunity       cost 12
+    10  Poison Immunity          cost 12
+    11  Death Immunity           cost 12
+    12  Holy Immunity            cost 12
+    67  Fearless                 cost 2
+    70  Death Protection         cost 4
+    71  Fire Protection          cost 4
+    72  Holy Protection          cost 4
+    73  Poison Protection        cost 4
+    74  Lightning Protection     cost 4
+    75  Magic Protection         cost 12
+    76  Cold Protection          cost 4
+    77  Physical Protection      cost 24
+
+## Melee  (21)
+    14  Fire Strike              cost 2
+    15  Cold Strike              cost 16
+    16  Lightning Strike         cost 16
+    17  Poison Strike            cost 12
+    18  Death Strike             cost 4
+    19  Holy Strike              cost 8
+    20  Magic Strike             cost 2
+    21  Strike                   cost 4
+    51  Cause Fear               cost 2
+   111  Charge                   cost 4
+   112  Monster Slaying          cost 4
+   113  Parry                    cost 8
+   114  Round Attack             cost 2
+   115  Extra Strike             cost 8
+   116  First Strike             cost 20
+   117  Wall Crushing            cost 8
+   118  Lifestealing             cost 20
+   119  Entangle Strike          cost 28
+   146  Holy Champion            cost 12
+   147  Unholy Champion          cost 12
+   176  Shield                   cost 8
+
+## Ranged  (20)
+    22  Archery                  cost 2
+    24  Hurl Boulder             cost 20
+    25  Hurl Stones              cost 8
+    32  Marksmanship             cost 6
+    44  Fire Cannon              cost 28
+    45  Fire Musket              cost 16
+    57  Shoot Bolt               cost 4
+    58  Throw Javelin            cost 2
+    61  Poison Darts             cost 4
+    62  Poison Spit              cost 4
+    86  Fire Breath              cost 16
+    87  Cold Breath              cost 20
+    88  Black Breath             cost 20
+    89  Divine Breath            cost 24
+    90  Poison Breath            cost 20
+   120  Black Bolts              cost 6
+   121  Magic Bolts              cost 4
+   122  Frost Bolts              cost 6
+   123  Lightning Bolts          cost 8
+   124  Holy Bolts               cost 8
+
+## Magic  (15)
+    27  Web                      cost 4
+    28  Dominate                 cost 32
+    29  Seduce                   cost 8
+    30  Flame Throwing           cost 20
+    31  Call Flames              cost 8
+    35  Invoke Death             cost 32
+    37  Bard's Skills            cost 4
+    38  Turn Undead              cost 5
+    40  Entangle                 cost 2
+    46  Leadership               cost 20
+    47  Healing                  cost 12
+    49  Regeneration             cost 8
+    52  Spell Casting            cost 15
+    55  Doom Gaze                cost 32
+   148  Charm                    cost 16
+
+## Magic (uncategorised)  (5)
+   171  Drillmaster              cost 10
+   172  Evoker                   cost 20
+   173  Conjurer                 cost 40
+   174  Enchanter                cost 30
+   175  Ritualist                cost 30
+

@@ -1,0 +1,5271 @@
+{
+ "meta": {
+  "generated": "2026-08-18",
+  "note": "Consolidated 5%% conversion manifest. immVA/immFile are TRUE IMMEDIATE BYTE addresses, re-anchored with capstone operand decoding: the source agent manifests gave INSTRUCTION addresses and 43%% (144 of 332) were off by 1-4 bytes, which would have written into opcode/ModRM bytes. Every entry is self-validated - the decoded immediate value equals a value the source manifest claimed. DO NOT write any entry with needsAdjudication=true or decision=CONFLICT. See Zig notes/FivePct_Conversion_Manifest.md for the decisions.",
+  "counts": {
+   "total": 303,
+   "double_writable": 171,
+   "halve": 6,
+   "unchanged": 126,
+   "held": 0,
+   "conflict": 0,
+   "ownedByOtherScript": 1
+  },
+  "stages": {
+   "0": "slope - build_hitslope5.py (7 sites, separate script)",
+   "1": "stat clamps + hero skill economy (16 entries) - VERIFIED"
+  }
+ },
+ "entries": [
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578a027",
+   "immFile": "0x89427",
+   "width": 1,
+   "live": 6,
+   "insn": "cmp byte ptr [ebx + 0x22], 6",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M1/pfs-units"
+   ],
+   "what": "HERORES.PFS tags 0x0C (block type) and 0x0D (alignment/race group)",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580c133",
+   "immFile": "0x10b533",
+   "width": 1,
+   "live": 20,
+   "insn": "cmp dx, 0x14",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 40,
+   "sources": [
+    "M1/clamps-hero",
+    "M1/donottouch",
+    "M2/derived"
+   ],
+   "what": "TUnit.GetAttack upper clamp (LIVE copy, inside Ziggurat cave 0x5580C0F7)",
+   "nsrc": 3,
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580c128",
+   "immFile": "0x10b528",
+   "width": 1,
+   "live": 0,
+   "insn": "cmp dx, 0",
+   "kind": "ATK",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/clamps-hero",
+    "M1/donottouch"
+   ],
+   "what": "TUnit.GetAttack lower clamp (floor), inside cave 0x5580C0F7",
+   "nsrc": 2
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55782a1b",
+   "immFile": "0x81e1b",
+   "width": 1,
+   "live": 20,
+   "insn": "cmp dx, 0x14",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 40,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "TUnit.GetAttack ORIGINAL tail clamp — currently DEAD CODE, must be mirrored",
+   "nsrc": 1,
+   "dead": true,
+   "ruling": "DEAD CODE - the live TUnit.GetAttack clamp is in cave 0x5580C133; the hook at 0x55782A05 jumps over this tail. Mirrored to 40 as INSURANCE: if that undocumented cave is ever removed, the resurrected tail would silently cap doubled data at 20. Has no live effect - a behaviour test will not show it.",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55782a83",
+   "immFile": "0x81e83",
+   "width": 1,
+   "live": 30,
+   "insn": "cmp dx, 0x1e",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 60,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "TUnit.GetDefense upper clamp",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55782b2b",
+   "immFile": "0x81f2b",
+   "width": 1,
+   "live": 30,
+   "insn": "cmp dx, 0x1e",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 60,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "TUnit.GetResistance upper clamp — NOT in the original audit",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: resistance accessor",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55782ad7",
+   "immFile": "0x81ed7",
+   "width": 1,
+   "live": 60,
+   "insn": "cmp dx, 0x1e",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 60,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "TUnit.GetDamage upper clamp — DAMAGE, must NOT move",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 30 -> 60. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557883cb",
+   "immFile": "0x877cb",
+   "width": 1,
+   "live": 30,
+   "insn": "cmp ax, 0x1e",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 30,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.GetAttack upper clamp",
+   "nsrc": 1,
+   "ruling": "The conversion left this at 30, contradicting decision D4 (\"THero.Get* clamps 30->60\"). RESOLVED 2026-08-20: the user set it to 40, applied by build_hero_clamps.py, which now OWNS this byte -- do not write it from build_statdouble.py. WARNING: this clamp is a PAIR of immediates and this entry lists only the `cmp` half; its twin `mov byte [esp], N` immediate is at 0x557883d1. Patching one without the other makes values above the ceiling snap back to 30. See Zig notes/Hero_Stat_Clamps_40.md."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55788465",
+   "immFile": "0x87865",
+   "width": 1,
+   "live": 30,
+   "insn": "cmp ax, 0x1e",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 30,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.GetDefense upper clamp",
+   "nsrc": 1,
+   "ruling": "The conversion left this at 30, contradicting decision D4 (\"THero.Get* clamps 30->60\"). RESOLVED 2026-08-20: the user set it to 40, applied by build_hero_clamps.py, which now OWNS this byte -- do not write it from build_statdouble.py. WARNING: this clamp is a PAIR of immediates and this entry lists only the `cmp` half; its twin `mov byte [esp], N` immediate is at 0x5578846b. Patching one without the other makes values above the ceiling snap back to 30. See Zig notes/Hero_Stat_Clamps_40.md."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55788589",
+   "immFile": "0x87989",
+   "width": 1,
+   "live": 30,
+   "insn": "cmp ax, 0x1e",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 30,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.GetResistance upper clamp — NOT in the original audit; DECISION REQUIRED",
+   "nsrc": 1,
+   "ruling": "The conversion left this at 30, contradicting decision D4 (\"THero.Get* clamps 30->60\"). RESOLVED 2026-08-20: the user set it to 40, applied by build_hero_clamps.py, which now OWNS this byte -- do not write it from build_statdouble.py. WARNING: this clamp is a PAIR of immediates and this entry lists only the `cmp` half; its twin `mov byte [esp], N` immediate is at 0x5578858f. Patching one without the other makes values above the ceiling snap back to 30. See Zig notes/Hero_Stat_Clamps_40.md."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557884ef",
+   "immFile": "0x878ef",
+   "width": 1,
+   "live": 30,
+   "insn": "cmp ax, 0x1e",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 30,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.GetDamage upper clamp — DAMAGE, must NOT move",
+   "nsrc": 1,
+   "ruling": "Correctly UNCHANGED by the 5% conversion -- damage is not a doubled stat. But RAISED TO 40 on 2026-08-20 by a separate explicit user decision, to give the doubled hero chassis damage room and match the three stat clamps. build_hero_clamps.py now OWNS this byte -- do not write it from build_statdouble.py. WARNING: this clamp is a PAIR of immediates and this entry lists only the `cmp` half; its twin `mov byte [esp], N` immediate is at 0x557884f5. See Zig notes/Hero_Stat_Clamps_40.md."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557885b8",
+   "immFile": "0x879b8",
+   "width": 1,
+   "live": 80,
+   "insn": "cmp dx, 0x50",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 80,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.GetHits / THero.GetMoves clamps — non-stat, must NOT move",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557877f2",
+   "immFile": "0x86bf2",
+   "width": 1,
+   "live": 6,
+   "insn": "sub eax, 6",
+   "kind": "ATK",
+   "decision": "HALVE",
+   "newValue": 3,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitAttack — skill-point cost per +1 ATK",
+   "nsrc": 2,
+   "ruling": "D3 SetUnitAttack cost 6->3",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557877d8",
+   "immFile": "0x86bd8",
+   "width": 1,
+   "live": 60,
+   "insn": "cmp edx, 0x1e",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 40,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitAttack — cap on (base ATK + bought ATK) | 2026-08-26 re-tuned 60 -> 40 to restore vanilla's Set == Get invariant (vanilla was 10/10; the conversion doubled the SET half to 60 while the GET half was hand-set to 40, so points bought above 40 were silently discarded). PAIRED IMMEDIATE: the twin lives in the OTHER manifest -- retune both or the clamp half-applies.",
+   "nsrc": 2,
+   "ruling": "D4 SetUnitAttack cap 30->60",
+   "stage": 1,
+   "priorLive": 30
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578783e",
+   "immFile": "0x86c3e",
+   "width": 1,
+   "live": 12,
+   "insn": "sub eax, 0xc",
+   "kind": "DEF",
+   "decision": "HALVE",
+   "newValue": 6,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitDefense — skill-point cost per +1 DEF",
+   "nsrc": 2,
+   "ruling": "D3 SetUnitDefense cost 12->6",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787824",
+   "immFile": "0x86c24",
+   "width": 1,
+   "live": 20,
+   "insn": "cmp edx, 0x14",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 40,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitDefense — cap on (base DEF + bought DEF). ⚠ THE BRIEF IS WRONG: live is 20, n",
+   "nsrc": 2,
+   "ruling": "D4 SetUnitDefense cap 20->40",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578788a",
+   "immFile": "0x86c8a",
+   "width": 1,
+   "live": 4,
+   "insn": "sub eax, 8",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitDamage — cost and cap. DAMAGE does not double; confirmed no change needed",
+   "nsrc": 2,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 8 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578796e",
+   "immFile": "0x86d6e",
+   "width": 1,
+   "live": 4,
+   "insn": "sub eax, 4",
+   "kind": "RES",
+   "decision": "HALVE",
+   "newValue": 2,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitResistance — skill-point cost per +1 RES. DECISION REQUIRED (RES doubles)",
+   "nsrc": 2,
+   "ruling": "D3 SetUnitResistance cost 4->2",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787954",
+   "immFile": "0x86d54",
+   "width": 1,
+   "live": 20,
+   "insn": "cmp edx, 0x14",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 40,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitResistance — cap on (base RES + bought RES). DECISION REQUIRED",
+   "nsrc": 2,
+   "ruling": "D4 SetUnitResistance cap 20->40",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557878bc",
+   "immFile": "0x86cbc",
+   "width": 1,
+   "live": 120,
+   "insn": "cmp edx, 0x50",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 120,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.SetUnitHits / THero.SetUnitMoves — cost and cap. Neither doubles",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 80 -> 120. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557875ef",
+   "immFile": "0x869ef",
+   "width": 1,
+   "live": 10,
+   "insn": "add eax, 0xa",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.GetSkillPoints — total points formula, level*10 + 10 (TWO copies in one function)",
+   "nsrc": 2
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787620",
+   "immFile": "0x86a20",
+   "width": 1,
+   "live": 10,
+   "insn": "add edx, 0xa",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.GetSkillPointsMax — level*10 + 10",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787629",
+   "immFile": "0x86a29",
+   "width": 4,
+   "live": 50,
+   "insn": "mov eax, 0x32",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 50,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.GetLevelMax — hero level ceiling",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787a64",
+   "immFile": "0x86e64",
+   "width": 1,
+   "live": 10,
+   "insn": "cmp eax, 0xa",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 20,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.ExecuteUpgradeHeroAI — ATK stat threshold ('upgrade ATK only while total ATK < N')",
+   "nsrc": 2,
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787a89",
+   "immFile": "0x86e89",
+   "width": 1,
+   "live": 10,
+   "insn": "cmp eax, 0xa",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 20,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.ExecuteUpgradeHeroAI — DEF stat threshold",
+   "nsrc": 2,
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787ab1",
+   "immFile": "0x86eb1",
+   "width": 1,
+   "live": 10,
+   "insn": "cmp eax, 0xa",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 20,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.ExecuteUpgradeHeroAI — RES stat threshold",
+   "nsrc": 2,
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787ad9",
+   "immFile": "0x86ed9",
+   "width": 1,
+   "live": 20,
+   "insn": "cmp eax, 0xa",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 20,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.ExecuteUpgradeHeroAI — DAMAGE stat threshold (does not double)",
+   "nsrc": 2,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 10 -> 20. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787b01",
+   "immFile": "0x86f01",
+   "width": 1,
+   "live": 60,
+   "insn": "cmp eax, 0x1e",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 60,
+   "sources": [
+    "M1/clamps-hero"
+   ],
+   "what": "THero.ExecuteUpgradeHeroAI — HITS stat threshold (does not double)",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 30 -> 60. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787a52",
+   "immFile": "0x86e52",
+   "width": 1,
+   "live": 4,
+   "insn": "cmp esi, 4",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/skillpoints"
+   ],
+   "what": "THero.ExecuteUpgradeHeroAI — five per-stat TARGET LEVELS the AI levels toward (ATK/DEF/DAM/RES and HP-or-MV), NOT skill-point affordability gates. RESOLVED 2026-09-08 by the owner; the old 'affordability gates / DECISION REQUIRED' reading was wrong. Live 4/16/8/8/3 vs vanilla 5/5/5/10/5. See Zig notes/01-combat-maths.md §5.",
+   "nsrc": 2
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55726102",
+   "immFile": "0x25502",
+   "width": 1,
+   "live": 60,
+   "insn": "cmp edx, 0x1e",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 60,
+   "sources": [
+    "M1/clamps-hero",
+    "M2/combatinfo"
+   ],
+   "what": "Unnamed AI helper at 0x55726100 — clamps DAMAGE, not attack. Do NOT double",
+   "nsrc": 2,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 30 -> 60. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580c115",
+   "immFile": "0x10b515",
+   "width": 1,
+   "live": 2,
+   "insn": "add al, 2",
+   "kind": "ATK",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M1/clamps-hero",
+    "M1/donottouch",
+    "M2/derived"
+   ],
+   "what": "Morale→ATK modifier ladder inside cave 0x5580C0F7 (the TUnit.GetAttack hook). NOT in the a",
+   "nsrc": 3,
+   "ruling": "D2 MORALE is an explicit exception - leave unchanged (becomes half as influential)"
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781c31",
+   "immFile": "0x81031",
+   "width": 4,
+   "live": 5,
+   "insn": "mov eax, 5",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Effect-roll power #1 (mask bit si&1, ability-immunity id 7)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781c91",
+   "immFile": "0x81091",
+   "width": 4,
+   "live": 5,
+   "insn": "mov eax, 5",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Effect-roll power #2 (mask bit si&4, ability-immunity id 9; extra alignment gate vmt+0x114",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781ce3",
+   "immFile": "0x810e3",
+   "width": 4,
+   "live": 5,
+   "insn": "mov eax, 5",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Effect-roll power #3 (mask bit si&0x10, ability-immunity id 0xA)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781d35",
+   "immFile": "0x81135",
+   "width": 4,
+   "live": 5,
+   "insn": "mov eax, 5",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Effect-roll power #4 (mask bit si&0x20, ability-immunity id 0xB)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781d87",
+   "immFile": "0x81187",
+   "width": 4,
+   "live": 5,
+   "insn": "mov eax, 5",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Effect-roll power #5 (mask bit si&0x40, ability-immunity id 0xC; extra alignment gate vmt+",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781de7",
+   "immFile": "0x811e7",
+   "width": 4,
+   "live": 5,
+   "insn": "mov eax, 5",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Effect-roll power #6 (mask bit si&2, ability-immunity id 8)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781c20",
+   "immFile": "0x81020",
+   "width": 1,
+   "live": 2,
+   "insn": "add edi, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Protection bonus #1 — `add edi,2` on the saved RES when the unit carries the matching prot",
+   "nsrc": 1,
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781c80",
+   "immFile": "0x81080",
+   "width": 1,
+   "live": 2,
+   "insn": "add edi, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Protection bonus #2 — `add edi,2` (pairs with power #2)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: protection adjustment in RES points",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781cd2",
+   "immFile": "0x810d2",
+   "width": 1,
+   "live": 2,
+   "insn": "add edi, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Protection bonus #3 — `add edi,2` (pairs with power #3)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: protection adjustment in RES points",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781d24",
+   "immFile": "0x81124",
+   "width": 1,
+   "live": 2,
+   "insn": "add edi, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Protection bonus #4 — `add edi,2` (pairs with power #4)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: protection adjustment in RES points",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781d76",
+   "immFile": "0x81176",
+   "width": 1,
+   "live": 2,
+   "insn": "add edi, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Protection bonus #5 — `add edi,2` (pairs with power #5)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: protection adjustment in RES points",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781dd6",
+   "immFile": "0x811d6",
+   "width": 1,
+   "live": 2,
+   "insn": "add edi, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Protection bonus #6 — `add edi,2` (pairs with power #6)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: protection adjustment in RES points",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55781b83",
+   "immFile": "0x80f83",
+   "width": 1,
+   "live": 2,
+   "insn": "sub edi, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TAbstractUnit.ExecuteResistanceRole `sub edi,2` — protection reduces the caller-supplied p",
+   "nsrc": 1,
+   "dead": true,
+   "ruling": "DEAD CODE. TAbstractUnit.ExecuteResistanceRole @0x55781B48 has zero rel32 callers, appears in no VMT (no absolute dword reference anywhere in the file) and is imported by no module. The write is a harmless no-op -- but it must NOT be counted as covering the resistance-roll path.",
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557680cd",
+   "immFile": "0x674cd",
+   "width": 1,
+   "live": 246,
+   "insn": "mov al, 0xf6",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 246,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TTouchAbility.GetTouchAttack base return −10 — the fail sentinel, NOT a stat",
+   "nsrc": 1,
+   "liveSigned": -10,
+   "ruling": "FAIL SENTINEL, never written. NOTE the recorded live value 246 is the UNSIGNED byte; signed it is -10. A verifier comparing signed values will false-alarm unless it accepts both readings."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557681fe",
+   "immFile": "0x675fe",
+   "width": 1,
+   "live": -10,
+   "insn": "cmp esi, -0xa",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": -10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Sentinel guard 1 of 3 — `cmp esi,-0xA` in TTouchAbility.CombatTouchRole (the live combat p",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576817e",
+   "immFile": "0x6757e",
+   "width": 1,
+   "live": -10,
+   "insn": "cmp ebx, -0xa",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": -10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Sentinel guard 2 of 3 — `cmp ebx,-0xA` in TTouchAbility.TouchRoleProbability (strategic/AI",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576827d",
+   "immFile": "0x6767d",
+   "width": 1,
+   "live": -10,
+   "insn": "cmp ebx, -0xa",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": -10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Sentinel guard 3 of 3 — `cmp ebx,-0xA` in TTouchAbility.CombatTouchRoleProbability",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55769be9",
+   "immFile": "0x68fe9",
+   "width": 1,
+   "live": 7,
+   "insn": "mov al, 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TPossessAbility.GetTouchAttack (VMT slot +0x10C; TPossessedAbility shares this override)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576a20d",
+   "immFile": "0x6960d",
+   "width": 1,
+   "live": 7,
+   "insn": "mov al, 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TWebAbility.GetTouchAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576a811",
+   "immFile": "0x69c11",
+   "width": 1,
+   "live": 7,
+   "insn": "mov al, 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TEntangleAbility.GetTouchAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576b84d",
+   "immFile": "0x6ac4d",
+   "width": 1,
+   "live": 9,
+   "insn": "mov al, 9",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 18,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TInvokeDeathAbility.GetTouchAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55770665",
+   "immFile": "0x6fa65",
+   "width": 1,
+   "live": 5,
+   "insn": "mov al, 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TDominateAbility.GetTouchAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55770799",
+   "immFile": "0x6fb99",
+   "width": 1,
+   "live": 5,
+   "insn": "mov al, 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TCharmAbility.GetTouchAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55770979",
+   "immFile": "0x6fd79",
+   "width": 1,
+   "live": 5,
+   "insn": "mov al, 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TSeduceAbility.GetTouchAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576b203",
+   "immFile": "0x6a603",
+   "width": 1,
+   "live": 9,
+   "insn": "mov al, 9",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 18,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TTurnUndeadAbility.GetTouchAttack — level I arm",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576b206",
+   "immFile": "0x6a606",
+   "width": 1,
+   "live": 10,
+   "insn": "mov al, 0xa",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 20,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TTurnUndeadAbility.GetTouchAttack — level II arm",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576b209",
+   "immFile": "0x6a609",
+   "width": 1,
+   "live": 11,
+   "insn": "mov al, 0xb",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 22,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TTurnUndeadAbility.GetTouchAttack — level III arm",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576b20c",
+   "immFile": "0x6a60c",
+   "width": 1,
+   "live": 12,
+   "insn": "mov al, 0xc",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 24,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TTurnUndeadAbility.GetTouchAttack — level IV arm",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576b20f",
+   "immFile": "0x6a60f",
+   "width": 1,
+   "live": 4,
+   "insn": "mov al, 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TTurnUndeadAbility.GetTouchAttack — DEFAULT arm (level 0 or >4)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: touch attack = attack side of roll 2 vs RES",
+   "stage": 5
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55766914",
+   "immFile": "0x65d14",
+   "width": 4,
+   "live": 5,
+   "insn": "mov eax, 5",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Strike side-effect roll 1 power (attacker must have ability id 0x33, target must NOT have ",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576694e",
+   "immFile": "0x65d4e",
+   "width": 4,
+   "live": 7,
+   "insn": "mov eax, 7",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "Strike side-effect roll 2 power (gated on attacker ability id 0x77; roll is power − TComba",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: fixed power rolled vs RES",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55780beb",
+   "immFile": "0x7ffeb",
+   "width": 4,
+   "live": 4,
+   "insn": "add al, 0",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TAbstractUnit.ExecuteLifeMasteryFearRole power (vs vmt+0xCC GetResistance)",
+   "nsrc": 1,
+   "ruling": "CORRECTED 2026-08-18: re-anchoring landed on 0x55780BEC, the 2nd byte of the imm32 of `mov eax,4` @0x55780BEA, and self-validated only because 0 appeared in the claim set. 0 is too low-information to validate against. True immediate is 0x55780BEB = 4 -> 8.",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55780cb3",
+   "immFile": "0x800b3",
+   "width": 4,
+   "live": 6,
+   "insn": "mov eax, 6",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "TAbstractUnit.ExecuteDeathMasteryCurseRole power (vs vmt+0xCC GetResistance)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: resistance accessor",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557ba464",
+   "immFile": "0xb9864",
+   "width": 4,
+   "live": 10,
+   "insn": "mov eax, 0xa",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 20,
+   "sources": [
+    "M1/fixed-powers"
+   ],
+   "what": "PassiveAb.TBurningAbility.NewCombatTurn power (vs vmt+0xCC GetResistance of the burning un",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: resistance accessor",
+   "stage": 4
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8581",
+   "immFile": "0xf7981",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax], 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M1/fixed-powers",
+    "M2/spells"
+   ],
+   "what": "CombatSpells.TMindDecay.Create — spell attack stat at object field +0x34; read by TMindDec",
+   "nsrc": 2,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f88f1",
+   "immFile": "0xf7cf1",
+   "width": 1,
+   "live": 9,
+   "insn": "mov byte ptr [eax], 9",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 18,
+   "sources": [
+    "M1/fixed-powers",
+    "M2/spells"
+   ],
+   "what": "CombatSpells.TSlow.Create — spell attack stat +0x34; read by TSlow.CreateCA @0x557F89D1 ag",
+   "nsrc": 2,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8ac9",
+   "immFile": "0xf7ec9",
+   "width": 1,
+   "live": 7,
+   "insn": "mov byte ptr [eax], 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/fixed-powers",
+    "M2/spells"
+   ],
+   "what": "CombatSpells.TEntangle.Create — spell attack stat +0x34; read by TEntangle.CreateCA @0x557",
+   "nsrc": 2,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9a81",
+   "immFile": "0xf8e81",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [eax], 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/fixed-powers",
+    "M2/spells"
+   ],
+   "what": "CombatSpells.TTerror.Create — spell attack stat +0x34 (copy 1 of 3; must move with the two",
+   "nsrc": 2,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f95f1",
+   "immFile": "0xf89f1",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax], 0",
+   "kind": "ATK",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/fixed-powers",
+    "M2/spells"
+   ],
+   "what": "CombatSpells.TOoze.Create — spell attack stat +0x34",
+   "nsrc": 2
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9887",
+   "immFile": "0xf8c87",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/fixed-powers",
+    "M2/spells"
+   ],
+   "what": "CombatSpells.TFastCombatTerrorCA.Generate — Terror's HARD-CODED power (copy 2 of 3), auto-",
+   "nsrc": 2,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9a0b",
+   "immFile": "0xf8e0b",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/fixed-powers",
+    "M2/spells"
+   ],
+   "what": "CombatSpells.TTacticalCombatTerrorCA.Generate — Terror's HARD-CODED power (copy 3 of 3), t",
+   "nsrc": 2,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5579021d",
+   "immFile": "0x8f61d",
+   "width": 4,
+   "live": 6,
+   "insn": "mov edx, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Map fire — ATTACK (TArmy.TriggerFireDamage @0x55790110)",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557a1645",
+   "immFile": "0xa0a45",
+   "width": 4,
+   "live": 8,
+   "insn": "mov edx, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Vortex — ATTACK (TVortexTE.Process @0x557A13CC)",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b1ce8",
+   "immFile": "0xb10e8",
+   "width": 4,
+   "live": 7,
+   "insn": "mov edx, 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Town quake — ATTACK (TTownQuake.TriggerArmyDamage)",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557c4172",
+   "immFile": "0xc3572",
+   "width": 4,
+   "live": 6,
+   "insn": "mov edx, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Poison plant — ATTACK (TPoisonPlant.TriggerArmyDamage)",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557c7f5b",
+   "immFile": "0xc735b",
+   "width": 4,
+   "live": 6,
+   "insn": "mov edx, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Holy ground — ATTACK (THolyGround.TriggerArmyDamage @0x557C7E18)",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557c90c8",
+   "immFile": "0xc84c8",
+   "width": 4,
+   "live": 6,
+   "insn": "mov edx, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Unholy ground — ATTACK (TUnHolyGround.TriggerArmyDamage @0x557C8FA4)",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55790218",
+   "immFile": "0x8f618",
+   "width": 4,
+   "live": 6,
+   "insn": "mov ecx, 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "All six strategic-hazard DAMAGE immediates (ECX / EBX) — assert-only, must not move",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578077b",
+   "immFile": "0x7fb7b",
+   "width": 4,
+   "live": 8,
+   "insn": "mov ebp, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Fire Storm — ATTACK (EBP), storm index 1",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55780763",
+   "immFile": "0x7fb63",
+   "width": 4,
+   "live": 8,
+   "insn": "mov ebp, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Death Storm — ATTACK (EBP), storm index 2",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578076f",
+   "immFile": "0x7fb6f",
+   "width": 4,
+   "live": 8,
+   "insn": "mov ebp, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Divine Storm — ATTACK (EBP), storm index 3",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578074b",
+   "immFile": "0x7fb4b",
+   "width": 4,
+   "live": 8,
+   "insn": "mov ebp, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Ice Storm — ATTACK (EBP), storm index 4",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55780757",
+   "immFile": "0x7fb57",
+   "width": 4,
+   "live": 8,
+   "insn": "mov ebp, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Lightning Storm — ATTACK (EBP), storm index 5",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55780787",
+   "immFile": "0x7fb87",
+   "width": 4,
+   "live": 7,
+   "insn": "mov ebp, 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Pestilence — ATTACK (EBP), storm index 6",
+   "nsrc": 1,
+   "stage": 6
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55780750",
+   "immFile": "0x7fb50",
+   "width": 4,
+   "live": 10,
+   "insn": "mov esi, 5",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Storm ×4 terrain-bonus multiplier and all six ESI damage immediates — assert-only",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 5 -> 10. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f55d",
+   "immFile": "0x6e95d",
+   "width": 1,
+   "live": 7,
+   "insn": "mov cl, 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Shoot Javelin — ranged attack constant (ability id 0x39)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f6d7",
+   "immFile": "0x6ead7",
+   "width": 1,
+   "live": 6,
+   "insn": "mov cl, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Venomous Spit — ranged attack constant (ability id 0x3E)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f61a",
+   "immFile": "0x6ea1a",
+   "width": 1,
+   "live": 5,
+   "insn": "mov cl, 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Fire Musket — ranged attack constant (ability id 0x2D)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f716",
+   "immFile": "0x6eb16",
+   "width": 1,
+   "live": 5,
+   "insn": "mov cl, 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Call Flames — ranged attack constant (ability id 0x1F)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f59c",
+   "immFile": "0x6e99c",
+   "width": 1,
+   "live": 4,
+   "insn": "mov cl, 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Shoot Black Javelin — ranged attack constant (ability id 0x3A)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f659",
+   "immFile": "0x6ea59",
+   "width": 1,
+   "live": 4,
+   "insn": "mov cl, 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Fire Cannon — ranged attack constant (ability id 0x2C)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f698",
+   "immFile": "0x6ea98",
+   "width": 1,
+   "live": 4,
+   "insn": "mov cl, 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Hurl Boulder — ranged attack constant (ability id 0x18)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f755",
+   "immFile": "0x6eb55",
+   "width": 1,
+   "live": 3,
+   "insn": "mov cl, 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Archery — ranged attack constant (ability id 0x16)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f794",
+   "immFile": "0x6eb94",
+   "width": 1,
+   "live": 3,
+   "insn": "mov cl, 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Poison Darts — ranged attack constant (ability id 0x3D)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f7d3",
+   "immFile": "0x6ebd3",
+   "width": 1,
+   "live": 3,
+   "insn": "mov cl, 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Doom Gaze — ranged attack constant (ability id 0x37)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576f5db",
+   "immFile": "0x6e9db",
+   "width": 1,
+   "live": 2,
+   "insn": "mov cl, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/hazards-ranged"
+   ],
+   "what": "Hurl Stones — ranged attack constant (ability id 0x19)",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580c285",
+   "immFile": "0x10b685",
+   "width": 1,
+   "live": 2,
+   "insn": "sub bl, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/hazards-ranged",
+    "M1/ability-mods",
+    "M2/derived"
+   ],
+   "what": "Underground/Cave ranged ATK malus (−2, waived by Night Vision 0x27)",
+   "nsrc": 3,
+   "stage": 12,
+   "ruling": "Underground/Cave ranged ATK malus (-2 -> -4), inside the cave at 0x5580C240. That cave is UNOWNED -- build_marksmanship8.py only HOOKS it and verifies the call target plus the `add bl,al` form; it never emits or checks these malus bytes. So this is a plain immediate poke and belongs to build_statdouble.py, not to a script that does not own the cave. Given its own stage so it can be written without touching the 13 owner-applied stage-11 entries."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e42c",
+   "immFile": "0x10d82c",
+   "width": 1,
+   "live": 3,
+   "insn": "sub byte ptr [esp + 4], 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/hazards-ranged",
+    "M1/ability-mods"
+   ],
+   "what": "Invisible-target ranged ATK penalty (−3), attacker lacking True Vision",
+   "nsrc": 2,
+   "stage": 11,
+   "owner": "build_invis_penalty.py",
+   "ruling": "Inside a cave owned by build_invis_penalty.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e1c7",
+   "immFile": "0x10d5c7",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp + 8], 1",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/hazards-ranged",
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying (0x70 vs target marker 0x3F) — ranged ATK +1",
+   "nsrc": 2,
+   "stage": 11,
+   "owner": "build_ranged_slayers.py",
+   "ruling": "Inside a cave owned by build_ranged_slayers.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e207",
+   "immFile": "0x10d607",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp + 8], 1",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/hazards-ranged",
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion (0x92 or enchantment 0xA0, vs EVIL target) — ranged ATK +1",
+   "nsrc": 2,
+   "stage": 11,
+   "owner": "build_ranged_slayers.py",
+   "ruling": "Inside a cave owned by build_ranged_slayers.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e245",
+   "immFile": "0x10d645",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp + 8], 1",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/hazards-ranged",
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion (0x93 or enchantment 0xA1, vs GOOD target) — ranged ATK +1",
+   "nsrc": 2,
+   "stage": 11,
+   "owner": "build_ranged_slayers.py",
+   "ruling": "Inside a cave owned by build_ranged_slayers.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e290",
+   "immFile": "0x10d690",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp + 8], 1",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/hazards-ranged",
+    "M1/ability-mods"
+   ],
+   "what": "Assassin (0x38, vs hero target) — ranged ATK +1",
+   "nsrc": 2,
+   "stage": 11,
+   "owner": "build_ranged_slayers.py",
+   "ruling": "Inside a cave owned by build_ranged_slayers.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9cc1",
+   "immFile": "0xb90c1",
+   "width": 1,
+   "live": 0,
+   "insn": "mov al, 0",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TNaturesBlessingAbility.GetAttack",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9cc5",
+   "immFile": "0xb90c5",
+   "width": 1,
+   "live": 1,
+   "insn": "mov al, 1",
+   "kind": "DEF",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TNaturesBlessingAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor | REGRADE: build_buff_regrade.py re-graded this to +1, which equals the pre-doubling value -- the conversion's doubling is a no-op here while that script is applied.",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9cc9",
+   "immFile": "0xb90c9",
+   "width": 1,
+   "live": 2,
+   "insn": "mov al, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TNaturesBlessingAbility.GetResistance",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: resistance accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9db5",
+   "immFile": "0xb91b5",
+   "width": 1,
+   "live": 2,
+   "insn": "mov al, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TBloodlustAbility.GetAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: attack accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9db9",
+   "immFile": "0xb91b9",
+   "width": 1,
+   "live": -1,
+   "insn": "mov al, 0xff",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -2,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TBloodlustAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9dbd",
+   "immFile": "0xb91bd",
+   "width": 1,
+   "live": 4,
+   "insn": "mov al, 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TBloodlustAbility.GetDamage — DAMAGE, MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9e6a",
+   "immFile": "0xb926a",
+   "width": 1,
+   "live": -2,
+   "insn": "or eax, 0xfffffffe",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": -3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TPoisonedAbility.GetAttack — OR-FORM, needs re-encoding",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: attack accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9e6d",
+   "immFile": "0xb926d",
+   "width": 1,
+   "live": 0,
+   "insn": "mov al, 0",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TPoisonedAbility.GetDefense",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9e71",
+   "immFile": "0xb9271",
+   "width": 1,
+   "live": 0,
+   "insn": "mov al, 0",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TPoisonedAbility.GetResistance",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9e76",
+   "immFile": "0xb9276",
+   "width": 1,
+   "live": -2,
+   "insn": "or eax, 0xfffffffe",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": -2,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TPoisonedAbility.GetDamage — DAMAGE, MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557b9fed",
+   "immFile": "0xb93ed",
+   "width": 1,
+   "live": -2,
+   "insn": "mov al, 0xfe",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TEntangledAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557ba0b5",
+   "immFile": "0xb94b5",
+   "width": 1,
+   "live": 2,
+   "insn": "mov al, 2",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TFrozenAbility.GetDefense (Ziggurat flipped the sign vs vanilla)",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557ba321",
+   "immFile": "0xb9721",
+   "width": 1,
+   "live": -2,
+   "insn": "mov al, 0xfe",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TWebbedAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557ba551",
+   "immFile": "0xb9951",
+   "width": 1,
+   "live": -2,
+   "insn": "mov al, 0xfe",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TStunnedAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bac5d",
+   "immFile": "0xba05d",
+   "width": 1,
+   "live": -2,
+   "insn": "mov al, 0xfe",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": -3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TVertigoAbility.GetAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: attack accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bac61",
+   "immFile": "0xba061",
+   "width": 1,
+   "live": -2,
+   "insn": "mov al, 0xfe",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TVertigoAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bad91",
+   "immFile": "0xba191",
+   "width": 1,
+   "live": -2,
+   "insn": "mov al, 0xfe",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TCursedAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bad95",
+   "immFile": "0xba195",
+   "width": 1,
+   "live": -2,
+   "insn": "mov al, 0xfe",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": -4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TCursedAbility.GetResistance",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: resistance accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557baf41",
+   "immFile": "0xba341",
+   "width": 1,
+   "live": 2,
+   "insn": "mov al, 2",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TStoneSkinAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb0ed",
+   "immFile": "0xba4ed",
+   "width": 1,
+   "live": 2,
+   "insn": "mov al, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TEnchantedWeaponAbility.GetAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: attack accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb0f1",
+   "immFile": "0xba4f1",
+   "width": 1,
+   "live": 4,
+   "insn": "mov al, 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TEnchantedWeaponAbility.GetDamage — DAMAGE, MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb35d",
+   "immFile": "0xba75d",
+   "width": 1,
+   "live": 3,
+   "insn": "mov al, 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TFuryAbility.GetAttack",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: attack accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb362",
+   "immFile": "0xba762",
+   "width": 1,
+   "live": -1,
+   "insn": "or eax, 0xffffffff",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -2,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TFuryAbility.GetDefense — OR-FORM, needs re-encoding",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb5e5",
+   "immFile": "0xba9e5",
+   "width": 1,
+   "live": 1,
+   "insn": "mov al, 1",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TBlessedEnchantment.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb5e9",
+   "immFile": "0xba9e9",
+   "width": 1,
+   "live": 2,
+   "insn": "mov al, 2",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TBlessedEnchantment.GetResistance",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: resistance accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb731",
+   "immFile": "0xbab31",
+   "width": 1,
+   "live": 4,
+   "insn": "mov al, 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.TDarkGiftEnchantment.GetDamage — DAMAGE, MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb80d",
+   "immFile": "0xbac0d",
+   "width": 1,
+   "live": 1,
+   "insn": "mov al, 1",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.THighPrayerBlessingAbility.GetDefense",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: defence accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557bb811",
+   "immFile": "0xbac11",
+   "width": 1,
+   "live": 1,
+   "insn": "mov al, 1",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "PassiveAb.THighPrayerBlessingAbility.GetResistance",
+   "nsrc": 1,
+   "ruling": "auto-classified from method name: resistance accessor",
+   "stage": 3
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55766524",
+   "immFile": "0x65924",
+   "width": 1,
+   "live": 2,
+   "insn": "add bl, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion (ability 0x92 / enchantment 0xA0) ATK bonus vs evil alignment",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55766528",
+   "immFile": "0x65928",
+   "width": 1,
+   "live": 4,
+   "insn": "add byte ptr [esp], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576655f",
+   "immFile": "0x6595f",
+   "width": 1,
+   "live": 2,
+   "insn": "add bl, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion (ability 0x93 / enchantment 0xA1) ATK bonus vs good alignment",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55766563",
+   "immFile": "0x65963",
+   "width": 1,
+   "live": 4,
+   "insn": "add byte ptr [esp], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576658c",
+   "immFile": "0x6598c",
+   "width": 1,
+   "live": 3,
+   "insn": "add bl, 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying (attacker 0x70) vs Dragon (target 0x3F) ATK bonus",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55766590",
+   "immFile": "0x65990",
+   "width": 1,
+   "live": 6,
+   "insn": "add byte ptr [esp], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576665f",
+   "immFile": "0x65a5f",
+   "width": 1,
+   "live": 2,
+   "insn": "add bl, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion ATK bonus",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55766664",
+   "immFile": "0x65a64",
+   "width": 1,
+   "live": 4,
+   "insn": "add byte ptr [esp + 3], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576669b",
+   "immFile": "0x65a9b",
+   "width": 1,
+   "live": 2,
+   "insn": "add bl, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion ATK bonus",
+   "nsrc": 1,
+   "stage": 8
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557666a0",
+   "immFile": "0x65aa0",
+   "width": 1,
+   "live": 4,
+   "insn": "add byte ptr [esp + 3], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767875",
+   "immFile": "0x66c75",
+   "width": 1,
+   "live": 6,
+   "insn": "add dword ptr [ebx + 4], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Charge (ability 0x6F) bonus — this is DAMAGE, not attack. MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576788b",
+   "immFile": "0x66c8b",
+   "width": 1,
+   "live": 4,
+   "insn": "sub dword ptr [ebx], 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Parry (defender ability 0x71) — reduces the ATTACKER's attack",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557678c5",
+   "immFile": "0x66cc5",
+   "width": 1,
+   "live": 4,
+   "insn": "add dword ptr [ebx + 4], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557678c8",
+   "immFile": "0x66cc8",
+   "width": 1,
+   "live": 2,
+   "insn": "add dword ptr [ebx], 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion ATK bonus",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767900",
+   "immFile": "0x66d00",
+   "width": 1,
+   "live": 4,
+   "insn": "add dword ptr [ebx + 4], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767903",
+   "immFile": "0x66d03",
+   "width": 1,
+   "live": 2,
+   "insn": "add dword ptr [ebx], 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion ATK bonus",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576792c",
+   "immFile": "0x66d2c",
+   "width": 1,
+   "live": 3,
+   "insn": "add dword ptr [ebx], 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying ATK bonus (LIVE here — this copy was never cave-hooked)",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767930",
+   "immFile": "0x66d30",
+   "width": 1,
+   "live": 6,
+   "insn": "add dword ptr [ebx + 4], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767bcd",
+   "immFile": "0x66fcd",
+   "width": 1,
+   "live": 6,
+   "insn": "add dword ptr [ebx + 4], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Charge (ability 0x6F) bonus — this is DAMAGE, not attack. MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767be3",
+   "immFile": "0x66fe3",
+   "width": 1,
+   "live": 4,
+   "insn": "sub dword ptr [ebx], 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Parry (defender ability 0x71) — reduces the ATTACKER's attack",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767c1c",
+   "immFile": "0x6701c",
+   "width": 1,
+   "live": 2,
+   "insn": "add dword ptr [ebx], 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion ATK bonus",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767c20",
+   "immFile": "0x67020",
+   "width": 1,
+   "live": 4,
+   "insn": "add dword ptr [ebx + 4], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767c57",
+   "immFile": "0x67057",
+   "width": 1,
+   "live": 2,
+   "insn": "add dword ptr [ebx], 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 5,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion ATK bonus",
+   "nsrc": 1,
+   "stage": 8,
+   "ruling": ""
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55767c5b",
+   "immFile": "0x6705b",
+   "width": 1,
+   "live": 4,
+   "insn": "add dword ptr [ebx + 4], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e09e",
+   "immFile": "0x10d49e",
+   "width": 1,
+   "live": 3,
+   "insn": "add bl, 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying ATK bonus (the LIVE replacement for the dead block at 0x557666C7)",
+   "nsrc": 1,
+   "stage": 11,
+   "owner": "build_assassin.py",
+   "ruling": "Inside a cave owned by build_assassin.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e0a3",
+   "immFile": "0x10d4a3",
+   "width": 1,
+   "live": 3,
+   "insn": "add byte ptr [esp + 3], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e0cf",
+   "immFile": "0x10d4cf",
+   "width": 1,
+   "live": 3,
+   "insn": "add bl, 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Assassin (attacker ability 0x38) vs hero-class target ATK bonus",
+   "nsrc": 1,
+   "stage": 11,
+   "owner": "build_assassin.py",
+   "ruling": "Inside a cave owned by build_assassin.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e0d4",
+   "immFile": "0x10d4d4",
+   "width": 1,
+   "live": 3,
+   "insn": "add byte ptr [esp + 3], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Assassin DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e148",
+   "immFile": "0x10d548",
+   "width": 1,
+   "live": 3,
+   "insn": "add dword ptr [ebx], 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying ATK bonus (the LIVE replacement for the dead block at 0x55767C82)",
+   "nsrc": 1,
+   "stage": 11,
+   "owner": "build_assassin.py",
+   "ruling": "Inside a cave owned by build_assassin.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e14c",
+   "immFile": "0x10d54c",
+   "width": 1,
+   "live": 3,
+   "insn": "add dword ptr [ebx + 4], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e17e",
+   "immFile": "0x10d57e",
+   "width": 1,
+   "live": 3,
+   "insn": "add dword ptr [ebx], 3",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Assassin ATK bonus",
+   "nsrc": 1,
+   "stage": 11,
+   "owner": "build_assassin.py",
+   "ruling": "Inside a cave owned by build_assassin.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e182",
+   "immFile": "0x10d582",
+   "width": 1,
+   "live": 3,
+   "insn": "add dword ptr [ebx + 4], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 3,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Assassin DAMAGE bonus — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e398",
+   "immFile": "0x10d798",
+   "width": 1,
+   "live": 1,
+   "insn": "sub bl, 1",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Invisible target + attacker lacking True Seeing (0x29) -> melee ATK penalty; reached from ",
+   "nsrc": 1,
+   "stage": 11,
+   "owner": "build_invis_penalty.py",
+   "ruling": "Inside a cave owned by build_invis_penalty.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e3d8",
+   "immFile": "0x10d7d8",
+   "width": 1,
+   "live": 1,
+   "insn": "sub dword ptr [ebx], 1",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Same rule, 32-bit accumulator; reached from cave B, resumes into CalculateStrikes' chain",
+   "nsrc": 1,
+   "owner": "build_invis_penalty.py",
+   "ruling": "Inside a cave owned by build_invis_penalty.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner.",
+   "stage": 11
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e1c2",
+   "immFile": "0x10d5c2",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp], 1",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Monster Slaying DAMAGE bonus (ranged) — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e202",
+   "immFile": "0x10d602",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp], 1",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Holy Champion DAMAGE bonus (ranged) — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e240",
+   "immFile": "0x10d640",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp], 1",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Unholy Champion DAMAGE bonus (ranged) — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e28b",
+   "immFile": "0x10d68b",
+   "width": 1,
+   "live": 1,
+   "insn": "add byte ptr [esp], 1",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M1/ability-mods"
+   ],
+   "what": "Assassin DAMAGE bonus (ranged) — MUST NOT DOUBLE",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55725c09",
+   "immFile": "0x25009",
+   "width": 1,
+   "live": 3,
+   "insn": "mov al, 3",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M1/ability-mods",
+    "M2/tcpck",
+    "M2/walls",
+    "M2/combatinfo"
+   ],
+   "what": "AoWE.TCombatWall.GetResistance — walls have a hard-coded RESISTANCE of 3",
+   "nsrc": 4,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55786355",
+   "immFile": "0x85755",
+   "width": 4,
+   "live": 584999,
+   "insn": "jmp 0x55815080",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 584999,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "Item-bonus CONSUMER code — the four THeroItems accumulators must stay unscaled too",
+   "nsrc": 1,
+   "badAnchor": true,
+   "ruling": "BAD ANCHOR -- this entry is PROSE about a hook, not an immediate. Its recorded live value was garbage from the re-anchoring pass. Corrected to the byte actually there and marked badAnchor. decision=UNCHANGED so it is never written; do NOT promote it to a write without re-deriving the site from scratch."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83c8",
+   "immFile": "0x1e71c8",
+   "width": 1,
+   "live": 0,
+   "insn": "",
+   "kind": "ATK",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.AttackRankProgression — ATK bonus by medal rank",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83c4",
+   "immFile": "0x1e71c4",
+   "width": 1,
+   "live": 0,
+   "insn": "",
+   "kind": "DEF",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.DefenseRankProgression — DEF bonus by medal rank",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83d0",
+   "immFile": "0x1e71d0",
+   "width": 1,
+   "live": 0,
+   "insn": "",
+   "kind": "RES",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.ResistanceRankProgression — RES bonus by medal rank",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83cc",
+   "immFile": "0x1e71cc",
+   "width": 1,
+   "live": 0,
+   "insn": "",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.DamageRankProgression — damage bonus by medal rank (also untouched because damage is ",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83d4",
+   "immFile": "0x1e71d4",
+   "width": 1,
+   "live": 0,
+   "insn": "",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.HitsRankProgression — DEAD in the live build",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83d8",
+   "immFile": "0x1e71d8",
+   "width": 1,
+   "live": -3,
+   "insn": "",
+   "kind": "RES",
+   "decision": "UNCHANGED",
+   "newValue": -3,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.MoraleResistanceModifier — RES by morale band",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83e0",
+   "immFile": "0x1e71e0",
+   "width": 1,
+   "live": -2,
+   "insn": "",
+   "kind": "DEF",
+   "decision": "UNCHANGED",
+   "newValue": -2,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.MoraleDefenseModifier — DEF by morale band. LIVE for heroes, DEAD for units",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580c119",
+   "immFile": "0x10b519",
+   "width": 1,
+   "live": 2,
+   "insn": "sub al, 2",
+   "kind": "ATK",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "Morale-ATK band 0 (morale value <= 20): `sub al,2`",
+   "nsrc": 1,
+   "ruling": "D2 MORALE is an explicit exception - leave unchanged (becomes half as influential)"
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580c102",
+   "immFile": "0x10b502",
+   "width": 1,
+   "live": 21,
+   "insn": "cmp edx, 0x15",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 21,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "Morale BAND THRESHOLDS — four imm8 compares against the raw morale value",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83e8",
+   "immFile": "0x1e71e8",
+   "width": 1,
+   "live": 2,
+   "insn": "",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.LeadershipAttackProgression — CONFIRMED DEAD",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x558e83ec",
+   "immFile": "0x1e71ec",
+   "width": 1,
+   "live": 1,
+   "insn": "",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M1/donottouch"
+   ],
+   "what": "AoWE.LeadershipDefenseProgression — CONFIRMED DEAD",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x4671a4",
+   "immFile": "0x661a4",
+   "width": 4,
+   "live": 6,
+   "insn": "",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/tcpck",
+    "M2/combres"
+   ],
+   "what": "AoWTC.TCAttack[0] — attack of tactical Wall Crushing (ability 0x75) against a TCityWall",
+   "nsrc": 2,
+   "ruling": "DATA int32 in AoWTCPCK. Width corrected 1 -> 4 (recorded as 1; harmless for 12/20 since the upper bytes are zero, but wrong). Patch the ARRAY VALUE here, never the relocated pointer slots at 0x004693C4 / 0x004693FC.",
+   "stage": 9
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x4671a8",
+   "immFile": "0x661a8",
+   "width": 4,
+   "live": 10,
+   "insn": "",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 20,
+   "sources": [
+    "M2/tcpck",
+    "M2/combres"
+   ],
+   "what": "AoWTC.TCAttack[1] — attack of a burning fire hex (per combat turn) against walls, terrain ",
+   "nsrc": 2,
+   "ruling": "DATA int32 in AoWTCPCK. Width corrected 1 -> 4 (recorded as 1; harmless for 12/20 since the upper bytes are zero, but wrong). Patch the ARRAY VALUE here, never the relocated pointer slots at 0x004693C4 / 0x004693FC.",
+   "stage": 9
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x4671ac",
+   "immFile": "0x661ac",
+   "width": 1,
+   "live": 6,
+   "insn": "",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/tcpck",
+    "M2/combres"
+   ],
+   "what": "AoWTC.TCDamage[0] — damage of tactical Wall Crushing",
+   "nsrc": 2
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x4671b0",
+   "immFile": "0x661b0",
+   "width": 1,
+   "live": 1,
+   "insn": "",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M2/tcpck"
+   ],
+   "what": "AoWTC.TCDamage[1] — damage of a burning fire hex against walls/terrain/structures",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x405ad8",
+   "immFile": "0x4ed8",
+   "width": 4,
+   "live": -2,
+   "insn": "mov dword ptr [ebp - 8], 0xfffffffe",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -4,
+   "sources": [
+    "M2/tcpck",
+    "M2/walls",
+    "M2/combres"
+   ],
+   "what": "CityWall.TCityWall.GetDefense — wall DEFENCE in MANUAL TACTICAL combat",
+   "nsrc": 3,
+   "stage": 9
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x41093f",
+   "immFile": "0xfd3f",
+   "width": 4,
+   "live": -2,
+   "insn": "mov dword ptr [eax + 0x20], 0xfffffffe",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": -4,
+   "sources": [
+    "M2/tcpck",
+    "M2/combres"
+   ],
+   "what": "CombatTerrain.TCombatTerrain — object DEFENCE field [this+0x20], initialised in Activate",
+   "nsrc": 2,
+   "stage": 9
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x41092b",
+   "immFile": "0xfd2b",
+   "width": 4,
+   "live": 3,
+   "insn": "mov dword ptr [eax + 0x18], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 3,
+   "sources": [
+    "M2/tcpck",
+    "M2/combres"
+   ],
+   "what": "CombatTerrain.TCombatTerrain hit points [this+0x18] = 3 (or 0), set in Activate",
+   "nsrc": 2
+  },
+  {
+   "module": "AoWTCPCK.dpl",
+   "immVA": "0x4675f8",
+   "immFile": "0x665f8",
+   "width": 1,
+   "live": 7,
+   "insn": "",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 7,
+   "sources": [
+    "M2/tcpck"
+   ],
+   "what": "AoWTC.WallMaxHP[0..1] — maximum hit points of a city wall / wall door",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557688ae",
+   "immFile": "0x67cae",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [ebx + 1], 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/tcpck",
+    "M2/combatinfo"
+   ],
+   "what": "AoWE.TWallCrushingAbility.GetCombatInfo — ATTACK 6, the auto-resolve twin of AoWTC.TCAttac",
+   "nsrc": 2,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557688b2",
+   "immFile": "0x67cb2",
+   "width": 1,
+   "live": 12,
+   "insn": "mov byte ptr [ebx + 2], 6",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 12,
+   "sources": [
+    "M2/tcpck",
+    "M2/combatinfo"
+   ],
+   "what": "AoWE.TWallCrushingAbility.GetCombatInfo — DAMAGE 6 (the trap immediate, 4 bytes after the ",
+   "nsrc": 2,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 6 -> 12. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5574e892",
+   "immFile": "0x4dc92",
+   "width": 1,
+   "live": -1,
+   "insn": "mov byte ptr [ebx + 1], 0xff",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": -1,
+   "sources": [
+    "M2/tcpck"
+   ],
+   "what": "AoWE.TAbility.GetCombatInfo base defaults — rec[1] = -1, rec[2] = -1 (sentinels, not stats",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f7abd",
+   "immFile": "0xf6ebd",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [eax], 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSolarFlare combat-spell power — TCombatSpell+0x34, spell id 0x64. Opposed to target DEFEN",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f7ac1",
+   "immFile": "0xf6ec1",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [eax + 1], 4",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 8,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSolarFlare damage — TCombatSpell+0x35. NOT a stat.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 4 -> 8. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f7bf9",
+   "immFile": "0xf6ff9",
+   "width": 1,
+   "live": 12,
+   "insn": "mov byte ptr [eax], 0xc",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 24,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TTurnUndead combat-spell power — +0x34, spell id 0x65. Opposed to RESISTANCE (TTurnUndead.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f7bfd",
+   "immFile": "0xf6ffd",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax + 1], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TTurnUndead damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f7f5d",
+   "immFile": "0xf735d",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax], 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "THighPrayer combat-spell power — +0x34, spell id 0x66. +0x3c=0 → DEFENCE. Inert for the ca",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f7f61",
+   "immFile": "0xf7361",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "THighPrayer damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8311",
+   "immFile": "0xf7711",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [eax], 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TDeathRay combat-spell power — +0x34, spell id 0x67. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8315",
+   "immFile": "0xf7715",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [eax + 1], 4",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 8,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TDeathRay damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 4 -> 8. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f83c9",
+   "immFile": "0xf77c9",
+   "width": 1,
+   "live": 7,
+   "insn": "mov byte ptr [eax], 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TDiseaseCloud combat-spell power — +0x34, spell id 0x68. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f83cd",
+   "immFile": "0xf77cd",
+   "width": 1,
+   "live": 14,
+   "insn": "mov byte ptr [eax + 1], 7",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TDiseaseCloud damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 7 -> 14. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9a85",
+   "immFile": "0xf8e85",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TTerror damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9ca6",
+   "immFile": "0xf90a6",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "⭐⭐ TTerror power copy 4/5 — NEW, NOT in the audit. Hard-coded 8 inside TTerror.fcGetDamage",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9d8f",
+   "immFile": "0xf918f",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "⭐⭐ TTerror power copy 5/5 — NEW, NOT in the audit. Hard-coded 8 inside TTerror.tcGetDamage",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8585",
+   "immFile": "0xf7985",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TMindDecay damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f86fd",
+   "immFile": "0xf7afd",
+   "width": 1,
+   "live": 7,
+   "insn": "mov byte ptr [eax], 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TChainLightning combat-spell power — +0x34, spell id 0x6B. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8701",
+   "immFile": "0xf7b01",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax + 1], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TChainLightning damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f87b9",
+   "immFile": "0xf7bb9",
+   "width": 1,
+   "live": 12,
+   "insn": "mov byte ptr [eax], 0xc",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 24,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TColdBreath combat-spell power — +0x34, spell id 0x6C. +0x3c=0 → DEFENCE. (The worked exam",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f87bd",
+   "immFile": "0xf7bbd",
+   "width": 1,
+   "live": 18,
+   "insn": "mov byte ptr [eax + 1], 9",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 18,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TColdBreath damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 9 -> 18. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f88f5",
+   "immFile": "0xf7cf5",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSlow damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8acd",
+   "immFile": "0xf7ecd",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TEntangle damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8cac",
+   "immFile": "0xf80ac",
+   "width": 1,
+   "live": 7,
+   "insn": "mov byte ptr [eax], 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TTremors combat-spell power — +0x34, spell id 0x70. +0x3c=0 → DEFENCE. (Note: TTremors.Cre",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8cb0",
+   "immFile": "0xf80b0",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [eax + 1], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TTremors damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8d45",
+   "immFile": "0xf8145",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax], 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TCallFlames combat-spell power — +0x34, spell id 0x71. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8d49",
+   "immFile": "0xf8149",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax + 1], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TCallFlames damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8e01",
+   "immFile": "0xf8201",
+   "width": 1,
+   "live": 12,
+   "insn": "mov byte ptr [eax], 0xc",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 24,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFireBreath combat-spell power — +0x34, spell id 0x72. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8e05",
+   "immFile": "0xf8205",
+   "width": 1,
+   "live": 24,
+   "insn": "mov byte ptr [eax + 1], 0xc",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 24,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFireBreath damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 12 -> 24. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8ebd",
+   "immFile": "0xf82bd",
+   "width": 1,
+   "live": 5,
+   "insn": "mov byte ptr [eax], 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSwarm combat-spell power — +0x34, spell id 0x73. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8ec1",
+   "immFile": "0xf82c1",
+   "width": 1,
+   "live": 2,
+   "insn": "mov byte ptr [eax + 1], 1",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSwarm damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 1 -> 2. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8f79",
+   "immFile": "0xf8379",
+   "width": 1,
+   "live": 5,
+   "insn": "mov byte ptr [eax], 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TGreatHail combat-spell power — +0x34, spell id 0x74. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8f7d",
+   "immFile": "0xf837d",
+   "width": 1,
+   "live": 10,
+   "insn": "mov byte ptr [eax + 1], 5",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TGreatHail damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 5 -> 10. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9035",
+   "immFile": "0xf8435",
+   "width": 1,
+   "live": 10,
+   "insn": "mov byte ptr [eax], 0xa",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 20,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFireBall combat-spell power — +0x34, spell id 0x75. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9039",
+   "immFile": "0xf8439",
+   "width": 1,
+   "live": 14,
+   "insn": "mov byte ptr [eax + 1], 7",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFireBall damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 7 -> 14. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f90ed",
+   "immFile": "0xf84ed",
+   "width": 1,
+   "live": 9,
+   "insn": "mov byte ptr [eax], 9",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 18,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TGeyser combat-spell power — +0x34, spell id 0x76. Opposed to DEFENCE (TGeyser.CreateCA ca",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f90f1",
+   "immFile": "0xf84f1",
+   "width": 1,
+   "live": 24,
+   "insn": "mov byte ptr [eax + 1], 0xc",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 24,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TGeyser damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 12 -> 24. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9251",
+   "immFile": "0xf8651",
+   "width": 1,
+   "live": 5,
+   "insn": "mov byte ptr [eax], 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TIceShards combat-spell power — +0x34, spell id 0x77. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9255",
+   "immFile": "0xf8655",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [eax + 1], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TIceShards damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9309",
+   "immFile": "0xf8709",
+   "width": 1,
+   "live": 7,
+   "insn": "mov byte ptr [eax], 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFrostBeams combat-spell power — +0x34, spell id 0x78. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f930d",
+   "immFile": "0xf870d",
+   "width": 1,
+   "live": 2,
+   "insn": "mov byte ptr [eax + 1], 1",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFrostBeams damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 1 -> 2. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f93c9",
+   "immFile": "0xf87c9",
+   "width": 1,
+   "live": 12,
+   "insn": "mov byte ptr [eax], 0xc",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 24,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TVaporize combat-spell power — +0x34, spell id 0x79. Opposed to RESISTANCE (TVaporize.Crea",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f93cd",
+   "immFile": "0xf87cd",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax + 1], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TVaporize damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9481",
+   "immFile": "0xf8881",
+   "width": 1,
+   "live": 2,
+   "insn": "mov byte ptr [eax], 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TStoning combat-spell power — +0x34, spell id 0x7A. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9485",
+   "immFile": "0xf8885",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [eax + 1], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TStoning damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9539",
+   "immFile": "0xf8939",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [eax], 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFlamingArrow combat-spell power — +0x34, spell id 0x7B. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f953d",
+   "immFile": "0xf893d",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [eax + 1], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TFlamingArrow damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f95f5",
+   "immFile": "0xf89f5",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TOoze damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9719",
+   "immFile": "0xf8b19",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax], 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSacredWrath combat-spell power — +0x34, spell id 0x7D. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f971d",
+   "immFile": "0xf8b1d",
+   "width": 1,
+   "live": 10,
+   "insn": "mov byte ptr [eax + 1], 5",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSacredWrath damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 5 -> 10. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9e61",
+   "immFile": "0xf9261",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [eax], 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TWindsOfFury combat-spell power — +0x34, spell id 0x7E. Opposed to DEFENCE (CreateCA calls",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9e65",
+   "immFile": "0xf9265",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [eax + 1], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TWindsOfFury damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9f06",
+   "immFile": "0xf9306",
+   "width": 1,
+   "live": 2,
+   "insn": "add al, 2",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "⭐⭐ TWindsOfFury conditional ATTACK bonus +2 — NEW, NOT in the audit and not part of the +0",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9fb9",
+   "immFile": "0xf93b9",
+   "width": 1,
+   "live": 7,
+   "insn": "mov byte ptr [eax], 7",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TShockwave combat-spell power — +0x34, spell id 0x7F. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f9fbd",
+   "immFile": "0xf93bd",
+   "width": 1,
+   "live": 14,
+   "insn": "mov byte ptr [eax + 1], 7",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 14,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TShockwave damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 7 -> 14. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557fa071",
+   "immFile": "0xf9471",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [eax], 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSacrificialFlame combat-spell power — +0x34, spell id 0x80. +0x3c=0 → DEFENCE.",
+   "nsrc": 1,
+   "stage": 7
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557fa075",
+   "immFile": "0xf9475",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [eax + 1], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TSacrificialFlame damage — +0x35.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 2 -> 4. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557fa1fd",
+   "immFile": "0xf95fd",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax], 0",
+   "kind": "ATK",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TRecallSpirit combat-spell power — +0x34, spell id 0x81. Power 0; TRecallSpiritCA does no ",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557fa201",
+   "immFile": "0xf9601",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TRecallSpirit damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557fa41d",
+   "immFile": "0xf981d",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax], 0",
+   "kind": "ATK",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TAnimateDead combat-spell power — +0x34, spell id 0x82. Power 0; TAnimateDeadCA does no st",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557fa421",
+   "immFile": "0xf9821",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [eax + 1], 0",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "TAnimateDead damage — +0x35.",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8197",
+   "immFile": "0xf7597",
+   "width": 4,
+   "live": 10,
+   "insn": "mov eax, 5",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "THighPrayer heal-value cap (fast-combat estimator) — NOT a stat. `min(GetHitPoints − GetHi",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 5 -> 10. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557f8253",
+   "immFile": "0xf7653",
+   "width": 4,
+   "live": 10,
+   "insn": "mov eax, 5",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M2/spells"
+   ],
+   "what": "THighPrayer heal-value cap (tactical estimator) — same clamp, second copy. NOT a stat.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 5 -> 10. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578362d",
+   "immFile": "0x82a2d",
+   "width": 1,
+   "live": 20,
+   "insn": "mov byte ptr [eax + 0x3e], 0xa",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 40,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "TWallUnit.SetWallType, stone-wall branch. REPORTED AS RESISTANCE — IT IS NOT. Field +0x3E  | 2026-08-26 user ruling: wall HP unified at 40 stone / 10 wood across ALL THREE representations (auto-resolve TCombatWall.GetHits, predictor TWallUnit.SetWallType, manual-tactical AoWTC.WallMaxHP). Vanilla was 10/5. This is a BALANCE decision, not a doubling -- do not 'restore' it to a x2 of anything.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 10 -> 20. The old 'damage must not move' reasoning applied to the STAT conversion only.",
+   "priorLive": 20
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783633",
+   "immFile": "0x82a33",
+   "width": 1,
+   "live": 10,
+   "insn": "mov byte ptr [eax + 0x3e], 5",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "TWallUnit.SetWallType, non-stone (wooden/other) branch. Same correction as the stone branc",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 5 -> 10. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783748",
+   "immFile": "0x82b48",
+   "width": 1,
+   "live": 4,
+   "insn": "cmp al, 4",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 1 (dl==1) — ATTACK. Field +0x3C on class TAdjustableUnit.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578374c",
+   "immFile": "0x82b4c",
+   "width": 1,
+   "live": 2,
+   "insn": "mov byte ptr [ebx + 0x3d], 2",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 4,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 1 (dl==1) — DEFENCE. Field +0x3D on TAdjustableUnit.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783750",
+   "immFile": "0x82b50",
+   "width": 1,
+   "live": 3,
+   "insn": "mov byte ptr [ebx + 0x3e], 3",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 1 (dl==1) — RESISTANCE. Field +0x3E on TAdjustableUnit.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783754",
+   "immFile": "0x82b54",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [ebx + 0x40], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 1 — DAMAGE (+0x40). DO NOT TOUCH. Listed so the build script has",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783758",
+   "immFile": "0x82b58",
+   "width": 1,
+   "live": 10,
+   "insn": "mov byte ptr [ebx + 0x3f], 5",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 10,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 1 — HITS (+0x3F). DO NOT TOUCH.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 5 -> 10. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783784",
+   "immFile": "0x82b84",
+   "width": 1,
+   "live": 5,
+   "insn": "cmp al, 5",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 10,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 2 (dl==2) — ATTACK.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783788",
+   "immFile": "0x82b88",
+   "width": 1,
+   "live": 3,
+   "insn": "mov byte ptr [ebx + 0x3d], 3",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 2 (dl==2) — DEFENCE.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578378c",
+   "immFile": "0x82b8c",
+   "width": 1,
+   "live": 3,
+   "insn": "mov byte ptr [ebx + 0x3e], 3",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 2 (dl==2) — RESISTANCE.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783790",
+   "immFile": "0x82b90",
+   "width": 1,
+   "live": 6,
+   "insn": "mov byte ptr [ebx + 0x40], 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 6,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 2 — DAMAGE (+0x40). DO NOT TOUCH.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 3 -> 6. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783794",
+   "immFile": "0x82b94",
+   "width": 1,
+   "live": 16,
+   "insn": "mov byte ptr [ebx + 0x3f], 8",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 16,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 2 — HITS (+0x3F). DO NOT TOUCH.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 8 -> 16. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557837bd",
+   "immFile": "0x82bbd",
+   "width": 1,
+   "live": 6,
+   "insn": "cmp al, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 3 (dl==3) — ATTACK.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557837c1",
+   "immFile": "0x82bc1",
+   "width": 1,
+   "live": 3,
+   "insn": "mov byte ptr [ebx + 0x3d], 3",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 3 (dl==3) — DEFENCE.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557837c5",
+   "immFile": "0x82bc5",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [ebx + 0x3e], 4",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 3 (dl==3) — RESISTANCE.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557837c9",
+   "immFile": "0x82bc9",
+   "width": 1,
+   "live": 14,
+   "insn": "mov byte ptr [ebx + 0x40], 7",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 14,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 3 — DAMAGE (+0x40). DO NOT TOUCH.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 7 -> 14. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557837cd",
+   "immFile": "0x82bcd",
+   "width": 1,
+   "live": 30,
+   "insn": "mov byte ptr [ebx + 0x3f], 0xf",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 30,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit tier 3 — HITS (+0x3F). DO NOT TOUCH.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 15 -> 30. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783800",
+   "immFile": "0x82c00",
+   "width": 1,
+   "live": 6,
+   "insn": "cmp al, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit default branch (dl not in 1..3) — ATTACK.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783804",
+   "immFile": "0x82c04",
+   "width": 1,
+   "live": 3,
+   "insn": "mov byte ptr [ebx + 0x3d], 3",
+   "kind": "DEF",
+   "decision": "DOUBLE",
+   "newValue": 6,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit default branch — DEFENCE.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783808",
+   "immFile": "0x82c08",
+   "width": 1,
+   "live": 4,
+   "insn": "mov byte ptr [ebx + 0x3e], 4",
+   "kind": "RES",
+   "decision": "DOUBLE",
+   "newValue": 8,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit default branch — RESISTANCE.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5578380c",
+   "immFile": "0x82c0c",
+   "width": 1,
+   "live": 14,
+   "insn": "mov byte ptr [ebx + 0x40], 7",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 14,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit default branch — DAMAGE (+0x40). DO NOT TOUCH.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 7 -> 14. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55783810",
+   "immFile": "0x82c10",
+   "width": 1,
+   "live": 40,
+   "insn": "mov byte ptr [ebx + 0x3f], 0x14",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 40,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "MakeDefaultLevelUnit default branch — HITS (+0x3F). DO NOT TOUCH.",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 20 -> 40. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55760493",
+   "immFile": "0x5f893",
+   "width": 1,
+   "live": 1,
+   "insn": "mov byte ptr [esi + 0x45], 1",
+   "kind": "DEF",
+   "decision": "UNCHANGED",
+   "newValue": 1,
+   "sources": [
+    "M2/walls"
+   ],
+   "what": "OUT-OF-FAMILY LEAD (AoWEPACK data-side): a +0x45 defence-bonus byte on structure/terrain R",
+   "nsrc": 1,
+   "ruling": "DROPPED 2026-08-18. Decodes with an fs: segment override -- implausible for a Delphi field write, so the anchor is almost certainly wrong. The adversarial recheck independently ruled DROP: +0x45 is a \"not set\" SENTINEL (TCombatObject.Create writes 0xFF there), not a defence bonus, and the class at self+8 was never proven. Re-open only with a proven class."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55786cd3",
+   "immFile": "0x860d3",
+   "width": 1,
+   "live": 6,
+   "insn": "imul edi, eax, 6",
+   "kind": "SKILL-POINT-PRICE",
+   "decision": "HALVE",
+   "newValue": 3,
+   "sources": [
+    "M2/skillpoints"
+   ],
+   "what": "THero.UsedSkillPoints — ATTACK skill-point price (second copy of the SetUnitAttack price)",
+   "nsrc": 1,
+   "ruling": "D3 hero costs HALVE. ATK price, twin of SetUnitAttack 0x557877F2. NOT a stat - halve, do not double. If this and its twin disagree, THero.GetSkillPoints returns NEGATIVE and every purchase is refused (audit P1).",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55786cda",
+   "immFile": "0x860da",
+   "width": 1,
+   "live": 12,
+   "insn": "imul eax, eax, 0xc",
+   "kind": "SKILL-POINT-PRICE",
+   "decision": "HALVE",
+   "newValue": 6,
+   "sources": [
+    "M2/skillpoints"
+   ],
+   "what": "THero.UsedSkillPoints — DEFENCE skill-point price",
+   "nsrc": 1,
+   "ruling": "D3 hero costs HALVE. DEF price, twin of SetUnitDefense 0x5578783E. NOT a stat - halve, do not double. If this and its twin disagree, THero.GetSkillPoints returns NEGATIVE and every purchase is refused (audit P1).",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55786cee",
+   "immFile": "0x860ee",
+   "width": 1,
+   "live": 4,
+   "insn": "imul eax, eax, 4",
+   "kind": "SKILL-POINT-PRICE",
+   "decision": "HALVE",
+   "newValue": 2,
+   "sources": [
+    "M2/skillpoints"
+   ],
+   "what": "THero.UsedSkillPoints — RESISTANCE skill-point price",
+   "nsrc": 1,
+   "ruling": "D3 hero costs HALVE. RES price, twin of SetUnitResistance 0x5578796E. NOT a stat - halve, do not double. If this and its twin disagree, THero.GetSkillPoints returns NEGATIVE and every purchase is refused (audit P1).",
+   "stage": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55786ce5",
+   "immFile": "0x860e5",
+   "width": 1,
+   "live": 4,
+   "insn": "imul eax, eax, 4",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 4,
+   "sources": [
+    "M2/skillpoints"
+   ],
+   "what": "THero.UsedSkillPoints — DAMAGE skill-point price (x8 total)",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55786cf7",
+   "immFile": "0x860f7",
+   "width": 1,
+   "live": 2,
+   "insn": "imul eax, eax, 4",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M2/skillpoints"
+   ],
+   "what": "THero.UsedSkillPoints — HIT POINTS skill-point price",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 4 -> 2. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580c806",
+   "immFile": "0x10bc06",
+   "width": 1,
+   "live": 3,
+   "insn": "imul eax, eax, 3",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 3,
+   "sources": [
+    "M2/skillpoints",
+    "M2/derived"
+   ],
+   "what": "MOVES skill-point price — lives in Ziggurat cave 0x5580C800, called from THero.UsedSkillPo",
+   "nsrc": 2
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55787870",
+   "immFile": "0x86c70",
+   "width": 1,
+   "live": 40,
+   "insn": "cmp edx, 0x14",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 40,
+   "sources": [
+    "M2/skillpoints"
+   ],
+   "what": "THero.SetUnitDamage / SetUnitHits / SetUnitMoves — TOTAL caps that must NOT move",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 20 -> 40. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e2b5",
+   "immFile": "0x10d6b5",
+   "width": 1,
+   "live": 1,
+   "insn": "add eax, 1",
+   "kind": "NO-DOUBLE",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M2/derived"
+   ],
+   "what": "Turn Undead COMBAT damage cave (build_turnundead_res.py cave_turnundead_dmg @0x5580E2A0, h",
+   "nsrc": 1,
+   "stage": 11,
+   "owner": "build_turnundead_res.py",
+   "ruling": "Inside a cave owned by build_turnundead_res.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580e33c",
+   "immFile": "0x10d73c",
+   "width": 1,
+   "live": 1,
+   "insn": "add eax, 1",
+   "kind": "NO-DOUBLE",
+   "decision": "DOUBLE",
+   "newValue": 2,
+   "sources": [
+    "M2/derived"
+   ],
+   "what": "Turn Undead INFO-CARD display cave (build_turnundead_res.py cave_combatinfo @0x5580E300, j",
+   "nsrc": 1,
+   "stage": 11,
+   "owner": "build_turnundead_res.py",
+   "ruling": "Inside a cave owned by build_turnundead_res.py -- that script owns and verifies these bytes, so a foreign write breaks its re-apply/undo path. Must be edited BY the owner."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580be28",
+   "immFile": "0x10b228",
+   "width": 1,
+   "live": 2,
+   "insn": "rol byte ptr [ecx], 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M2/derived"
+   ],
+   "what": "UNDOCUMENTED pre-existing cave pair @0x5580BE00 (TUnit.GetMoves) / @0x5580BE15 (TUnit.GetH",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5580dc92",
+   "immFile": "0x10d092",
+   "width": 1,
+   "live": 2,
+   "insn": "add eax, 2",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 2,
+   "sources": [
+    "M2/derived"
+   ],
+   "what": "Life-steal caves @0x5580C150 (old, TStrikeCA.Execute+0x80) and @0x5580DC80 cave_lsround (b",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557688f8",
+   "immFile": "0x67cf8",
+   "width": 4,
+   "live": 6,
+   "insn": "mov ecx, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TWallCrushingAbility.fcExecuteCombatCommand — the ATTACK argument to AoWE.CreateDamageCA (",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768608",
+   "immFile": "0x67a08",
+   "width": 4,
+   "live": 6,
+   "insn": "mov eax, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TWallCrushingAbility.GetDamageValue — ATTACK arg to AoWE.StatisticsToLimitedDV (AI/UI dama",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768679",
+   "immFile": "0x67a79",
+   "width": 4,
+   "live": 6,
+   "insn": "mov eax, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TWallCrushingAbility.GetDamageValueEx — ATTACK arg to StatisticsToLimitedDV. AUDIT-MISSED.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768758",
+   "immFile": "0x67b58",
+   "width": 4,
+   "live": 6,
+   "insn": "mov eax, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TWallCrushingAbility.fcGetDamageValueEx — ATTACK arg to StatisticsToLimitedDV. AUDIT-MISSE",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768838",
+   "immFile": "0x67c38",
+   "width": 4,
+   "live": 6,
+   "insn": "mov eax, 6",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TWallCrushingAbility.tcGetDamageValueEx — ATTACK arg to StatisticsToLimitedDV (tactical-co",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768dea",
+   "immFile": "0x681ea",
+   "width": 1,
+   "live": 8,
+   "insn": "mov byte ptr [ebx + 1], 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TSelfDestructAbility.GetCombatInfo — record field 1 = ATTACK",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768e21",
+   "immFile": "0x68221",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TSelfDestructAbility.GetOffensiveStrength — ATTACK factor of the AI valuation",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768ba8",
+   "immFile": "0x67fa8",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TSelfDestructAbility.GetDamageValue — ATTACK arg to StatisticsToLimitedDV. AUDIT-MISSED.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768c4d",
+   "immFile": "0x6804d",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TSelfDestructAbility.GetDamageValueEx — ATTACK arg to StatisticsToLimitedDV. AUDIT-MISSED.",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768d5c",
+   "immFile": "0x6815c",
+   "width": 4,
+   "live": 8,
+   "insn": "mov eax, 8",
+   "kind": "ATK",
+   "decision": "DOUBLE",
+   "newValue": 16,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TSelfDestructAbility.fcGetDamageValueEx — ATTACK arg to StatisticsToLimitedDV. AUDIT-MISSE",
+   "nsrc": 1,
+   "stage": 10
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557688ef",
+   "immFile": "0x67cef",
+   "width": 1,
+   "live": 12,
+   "insn": "push 6",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TWallCrushingAbility.fcExecuteCombatCommand — the DAMAGE argument to CreateDamageCA",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 6 -> 12. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768944",
+   "immFile": "0x67d44",
+   "width": 4,
+   "live": 12,
+   "insn": "mov edx, 6",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "GetOffensiveStrength DAMAGE factors (both classes)",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 6 -> 12. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768603",
+   "immFile": "0x67a03",
+   "width": 4,
+   "live": 12,
+   "insn": "mov edx, 6",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "DV-family DAMAGE arguments to StatisticsToLimitedDV (the EDX twins of the seven ATTACK sit",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 6 -> 12. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x557686a3",
+   "immFile": "0x67aa3",
+   "width": 4,
+   "live": 12,
+   "insn": "mov eax, 6",
+   "kind": "NO-DOUBLE",
+   "decision": "UNCHANGED",
+   "newValue": 12,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "DV-family DAMAGE arguments to StatisticsToMaxDamage — the DANGEROUS look-alikes",
+   "nsrc": 1,
+   "ruling": "SUPERSEDED 2026-08-24: this value was doubled by the DAM/HP congruence pass (build_damhpdouble.py, damhp_manifest.json) -- 6 -> 12. The old 'damage must not move' reasoning applied to the STAT conversion only."
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x55768100",
+   "immFile": "0x67500",
+   "width": 1,
+   "live": 0,
+   "insn": "mov byte ptr [ebp + 1], 0",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 0,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TTouchAbility.GetCombatInfo — the clamp-to-zero that hides the −10 GetTouchAttack fail sen",
+   "nsrc": 1
+  },
+  {
+   "module": "AoWEPACK.dpl",
+   "immVA": "0x5576b235",
+   "immFile": "0x6a635",
+   "width": 4,
+   "live": 667847,
+   "insn": "jmp 0x5580e300",
+   "kind": "UNKNOWN",
+   "decision": "UNCHANGED",
+   "newValue": 667847,
+   "sources": [
+    "M2/combatinfo"
+   ],
+   "what": "TTurnUndeadAbility.GetCombatInfo is HOOKED to a Ziggurat cave — read the cave, not the fun",
+   "nsrc": 1,
+   "badAnchor": true,
+   "ruling": "BAD ANCHOR -- this entry is PROSE about a hook, not an immediate. Its recorded live value was garbage from the re-anchoring pass. Corrected to the byte actually there and marked badAnchor. decision=UNCHANGED so it is never written; do NOT promote it to a write without re-deriving the site from scratch."
+  }
+ ]
+}

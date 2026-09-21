@@ -1,0 +1,766 @@
+{
+ "11": {
+  "class": "TConcealArea",
+  "name": "Conceal Area",
+  "spell_id": 1,
+  "unit": "GlobalSpells",
+  "vanilla": "Conceal Area"
+ },
+ "12": {
+  "class": "TBirdsView",
+  "name": "Bird's View",
+  "spell_id": 2,
+  "unit": "GlobalSpells",
+  "vanilla": "Birds View"
+ },
+ "13": {
+  "class": "TFireStormSpell",
+  "name": "Fire Storm",
+  "spell_id": 3,
+  "unit": "Storms",
+  "vanilla": "Fire Storm"
+ },
+ "14": {
+  "class": "TIceStormSpell",
+  "name": "Ice Storm",
+  "spell_id": 4,
+  "unit": "Storms",
+  "vanilla": "Ice Storm"
+ },
+ "15": {
+  "class": "TDeathStormSpell",
+  "name": "Death Storm",
+  "spell_id": 5,
+  "unit": "Storms",
+  "vanilla": "Death Storm"
+ },
+ "16": {
+  "class": "TDivineStormSpell",
+  "name": "Divine Storm",
+  "spell_id": 6,
+  "unit": "Storms",
+  "vanilla": "Divine Storm"
+ },
+ "17": {
+  "class": "TLightningStormSpell",
+  "name": "Lightning Storm",
+  "spell_id": 7,
+  "unit": "Storms",
+  "vanilla": "Lightning Storm"
+ },
+ "18": {
+  "class": "TDispelMagic",
+  "name": "Dispel Magic",
+  "spell_id": 8,
+  "unit": "UnitSpells",
+  "vanilla": "Dispel Magic"
+ },
+ "19": {
+  "class": "TPestilenceStormSpell",
+  "name": "Pestilence",
+  "spell_id": 9,
+  "unit": "Storms",
+  "vanilla": "Pestilence"
+ },
+ "20": {
+  "class": "TFreezeWater",
+  "name": "Grip of Winter",
+  "spell_id": 10,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Freeze Water"
+ },
+ "21": {
+  "class": "TFireBarrier",
+  "name": "Fire Barrier",
+  "spell_id": 11,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Fire Barrier"
+ },
+ "22": {
+  "class": "TPoisonPlantSpell",
+  "name": "Poison Plants",
+  "spell_id": 12,
+  "unit": "PoisonP",
+  "vanilla": "Poison Plants"
+ },
+ "23": {
+  "class": "THolyGroundSpell",
+  "name": "Holy Woods",
+  "spell_id": 13,
+  "unit": "HolyG",
+  "vanilla": "Holy Grounds"
+ },
+ "24": {
+  "class": "TUnholyGroundSpell",
+  "name": "Evil Woods",
+  "spell_id": 14,
+  "unit": "UnHolyG",
+  "vanilla": "Unholy Grounds"
+ },
+ "25": {
+  "class": "THaste",
+  "name": "Haste",
+  "spell_id": 15,
+  "unit": "UnitSpells",
+  "vanilla": "Haste"
+ },
+ "26": {
+  "class": "TEnchantWeapon",
+  "name": "Enchant Weapon",
+  "spell_id": 16,
+  "unit": "UnitSpells",
+  "vanilla": "Enchant Weapon"
+ },
+ "27": {
+  "class": "TStoneSkin",
+  "name": "Stone Skin",
+  "spell_id": 17,
+  "unit": "UnitSpells",
+  "vanilla": "Stone Skin"
+ },
+ "28": {
+  "class": "TLevelTerrain",
+  "name": "Level Terrain",
+  "spell_id": 18,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Level Terrain"
+ },
+ "29": {
+  "class": "TRaiseTerrain",
+  "name": "Raise Terrain",
+  "spell_id": 19,
+  "unit": "Mountain",
+  "vanilla": "Raise Terrain"
+ },
+ "30": {
+  "class": "TSummonBlackSpider",
+  "name": "Summon Black Spider",
+  "spell_id": 20,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Black Spider"
+ },
+ "31": {
+  "class": "TSummonFireSprite",
+  "name": "Summon Fire Sprites",
+  "spell_id": 21,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Fire Sprite"
+ },
+ "32": {
+  "class": "TSummonFrog",
+  "name": "Summon Frog",
+  "spell_id": 22,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Frog"
+ },
+ "33": {
+  "class": "TSummonGreatEagle",
+  "name": "Summon Great Eagle",
+  "spell_id": 23,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Great Eagle"
+ },
+ "34": {
+  "class": "TSummonSyron",
+  "name": "Summon Syron",
+  "spell_id": 24,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Syron"
+ },
+ "35": {
+  "class": "TSummonGoldDragon",
+  "name": "Summon Gold Dragon",
+  "spell_id": 25,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Gold Dragon"
+ },
+ "36": {
+  "class": "TSummonBlackDragon",
+  "name": "Summon Black Dragon",
+  "spell_id": 26,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Black Dragon"
+ },
+ "37": {
+  "class": "TSummonAirElemental",
+  "name": "Summon Air Elemental",
+  "spell_id": 27,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Air Elemental"
+ },
+ "38": {
+  "class": "TSummonEarthElemental",
+  "name": "Summon Earth Elemental",
+  "spell_id": 28,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Earth Elemental"
+ },
+ "39": {
+  "class": "TSummonFireElemental",
+  "name": "Summon Fire Elemental",
+  "spell_id": 29,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Fire Elemental"
+ },
+ "40": {
+  "class": "TSummonWaterElemental",
+  "name": "Summon Water Elemental",
+  "spell_id": 30,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Water Elemental"
+ },
+ "41": {
+  "class": "TSummonBoar",
+  "name": "Summon Boar",
+  "spell_id": 31,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Boar"
+ },
+ "42": {
+  "class": "TFreeMovement",
+  "name": "Free Movement",
+  "spell_id": 32,
+  "unit": "UnitSpells",
+  "vanilla": "Free Movement"
+ },
+ "43": {
+  "class": "TFury",
+  "name": "Fury",
+  "spell_id": 33,
+  "unit": "UnitSpells",
+  "vanilla": "Fury"
+ },
+ "44": {
+  "class": "TWarpParty",
+  "name": "Warp Party",
+  "spell_id": 34,
+  "unit": "GlobalSpells",
+  "vanilla": "Warp Party"
+ },
+ "45": {
+  "class": "TRemedy",
+  "name": "Remedy",
+  "spell_id": 35,
+  "unit": "UnitSpells",
+  "vanilla": "Remedy"
+ },
+ "46": {
+  "class": "THolyChampion",
+  "name": "Holy Champion",
+  "spell_id": 36,
+  "unit": "UnitSpells",
+  "vanilla": "Holy Champion"
+ },
+ "47": {
+  "class": "TUnholyChampion",
+  "name": "Unholy Champion",
+  "spell_id": 37,
+  "unit": "UnitSpells",
+  "vanilla": "Unholy Champion"
+ },
+ "48": {
+  "class": "TTownGate",
+  "name": "Town Gate",
+  "spell_id": 38,
+  "unit": "CitySpells",
+  "vanilla": "Town Gate"
+ },
+ "49": {
+  "class": "TConcealment",
+  "name": "Concealment",
+  "spell_id": 39,
+  "unit": "UnitSpells",
+  "vanilla": "Concealment"
+ },
+ "50": {
+  "class": "TFireAura",
+  "name": "Fire Halo",
+  "spell_id": 40,
+  "unit": "UnitSpells",
+  "vanilla": "Fire Aura"
+ },
+ "51": {
+  "class": "TRejuvenate",
+  "name": "Desiccate",
+  "spell_id": 41,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Rejuvenate"
+ },
+ "52": {
+  "class": "TWaterWalking",
+  "name": "Water Walking",
+  "spell_id": 42,
+  "unit": "UnitSpells",
+  "vanilla": "Water Walking"
+ },
+ "53": {
+  "class": "TWindWalking",
+  "name": "Wind Walking",
+  "spell_id": 43,
+  "unit": "UnitSpells",
+  "vanilla": "Wind Walking"
+ },
+ "54": {
+  "class": "TEnchantedRoads",
+  "name": "Enchanted Roads",
+  "spell_id": 44,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Enchanted Roads"
+ },
+ "55": {
+  "class": "TWaterMastery",
+  "name": "Water Mastery",
+  "spell_id": 45,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Water Mastery"
+ },
+ "56": {
+  "class": "THatred",
+  "name": "Hatred",
+  "spell_id": 46,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Hatred"
+ },
+ "57": {
+  "class": "THarmony",
+  "name": "Tranquility",
+  "spell_id": 47,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Harmony"
+ },
+ "58": {
+  "class": "TPowerLeak",
+  "name": "Power Leech",
+  "spell_id": 48,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Power Leak"
+ },
+ "59": {
+  "class": "TLiquidForm",
+  "name": "Liquid Form",
+  "spell_id": 49,
+  "unit": "UnitSpells",
+  "vanilla": "Liquid Form"
+ },
+ "60": {
+  "class": "TFlood",
+  "name": "Flood",
+  "spell_id": 50,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Flood"
+ },
+ "61": {
+  "class": "TDisjunction",
+  "name": "Disjunction",
+  "spell_id": 51,
+  "unit": "GlobalSpells",
+  "vanilla": "Disjunction"
+ },
+ "62": {
+  "class": "TFountainOfLife",
+  "name": "Pyre of Vitality",
+  "spell_id": 52,
+  "unit": "CitySpells",
+  "vanilla": "Fountain Of Life"
+ },
+ "63": {
+  "class": "TGoldRush",
+  "name": "Gold Rush",
+  "spell_id": 53,
+  "unit": "CitySpells",
+  "vanilla": "Gold Rush"
+ },
+ "64": {
+  "class": "TAntiMagicShell",
+  "name": "Anti Magic Shell",
+  "spell_id": 54,
+  "unit": "CitySpells",
+  "vanilla": "Anti Magic Shell"
+ },
+ "65": {
+  "class": "THealingWater",
+  "name": "Healing Water",
+  "spell_id": 55,
+  "unit": "UnitSpells",
+  "vanilla": "Healing Water"
+ },
+ "66": {
+  "class": "TBless",
+  "name": "Bless",
+  "spell_id": 56,
+  "unit": "UnitSpells",
+  "vanilla": "Bless"
+ },
+ "67": {
+  "class": "TWatcher",
+  "name": "Watcher",
+  "spell_id": 57,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Watcher"
+ },
+ "68": {
+  "class": "TWarmonger",
+  "name": "Warmonger",
+  "spell_id": 58,
+  "unit": "CitySpells",
+  "vanilla": "Warmonger"
+ },
+ "69": {
+  "class": "TCosmeticSurgery",
+  "name": "Cosmagic Scrying",
+  "spell_id": 59,
+  "unit": "UnitSpells",
+  "vanilla": "Deform Face"
+ },
+ "70": {
+  "class": "TAirMastery",
+  "name": "Air Mastery",
+  "spell_id": 60,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Air Mastery"
+ },
+ "71": {
+  "class": "TLifeMastery",
+  "name": "Life Mastery",
+  "spell_id": 61,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Life Mastery"
+ },
+ "72": {
+  "class": "TDeathMastery",
+  "name": "Death Mastery",
+  "spell_id": 62,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Death Mastery"
+ },
+ "73": {
+  "class": "TFireMastery",
+  "name": "Fire Mastery",
+  "spell_id": 63,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Fire Mastery"
+ },
+ "74": {
+  "class": "TEarthMastery",
+  "name": "Earth Mastery",
+  "spell_id": 64,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Earth Mastery"
+ },
+ "75": {
+  "class": "TSpellWard",
+  "name": "Astral Ward",
+  "spell_id": 65,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": "Spell Ward"
+ },
+ "76": {
+  "class": "TResurrectHero",
+  "name": "Resurrect Hero",
+  "spell_id": 66,
+  "unit": "GlobalSpells",
+  "vanilla": "Resurrect Hero"
+ },
+ "77": {
+  "class": "TAnimateHero",
+  "name": "Animate Hero",
+  "spell_id": 67,
+  "unit": "GlobalSpells",
+  "vanilla": "Animate Hero"
+ },
+ "78": {
+  "class": "TTornado",
+  "name": "Tornado",
+  "spell_id": 68,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Tornado"
+ },
+ "79": {
+  "class": "TCallHero",
+  "name": "Call Hero",
+  "spell_id": 69,
+  "unit": "GlobalSpells",
+  "vanilla": "Call Hero"
+ },
+ "80": {
+  "class": "TVortex",
+  "name": "Vortex",
+  "spell_id": 70,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Vortex"
+ },
+ "81": {
+  "class": "TTownQuake",
+  "name": "Town Quake",
+  "spell_id": 71,
+  "unit": "CitySpells",
+  "vanilla": "Town Quake"
+ },
+ "82": {
+  "class": "TAnarchy",
+  "name": "Anarchy",
+  "spell_id": 72,
+  "unit": "CitySpells",
+  "vanilla": "Anarchy"
+ },
+ "83": {
+  "class": "THealingShowers",
+  "name": "Healing Showers",
+  "spell_id": 73,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Healing Showers"
+ },
+ "84": {
+  "class": "TSmokeCloudSpell",
+  "name": "Cloud of Ashes",
+  "spell_id": 74,
+  "unit": "GlobalTargetSpells",
+  "vanilla": "Smoke Cloud"
+ },
+ "85": {
+  "class": "TCrusade",
+  "name": "Crusade",
+  "spell_id": 75,
+  "unit": "GlobalSpells",
+  "vanilla": "Crusade"
+ },
+ "86": {
+  "class": "TAnimateRuins",
+  "name": "Animate Ruins",
+  "spell_id": 76,
+  "unit": "CitySpells",
+  "vanilla": "Animate Ruins"
+ },
+ "87": {
+  "class": "TDarkGift",
+  "name": "Dark Gift",
+  "spell_id": 77,
+  "unit": "UnitSpells",
+  "vanilla": "Dark Gift"
+ },
+ "88": {
+  "class": "TSummonMermaid",
+  "name": "Craft Aether Barge",
+  "spell_id": 78,
+  "unit": "SummonSpells",
+  "vanilla": "Summon Mermaid"
+ },
+ "110": {
+  "class": "TSolarFlare",
+  "name": "Solar Flare",
+  "spell_id": 100,
+  "unit": "CombatSpells",
+  "vanilla": "Solar Flare"
+ },
+ "111": {
+  "class": "TTurnUndead",
+  "name": "Turn Undead",
+  "spell_id": 101,
+  "unit": "CombatSpells",
+  "vanilla": "Turn Undead"
+ },
+ "112": {
+  "class": "THighPrayer",
+  "name": "High Prayer",
+  "spell_id": 102,
+  "unit": "CombatSpells",
+  "vanilla": "High Prayer"
+ },
+ "113": {
+  "class": "TDeathRay",
+  "name": "Death Rays",
+  "spell_id": 103,
+  "unit": "CombatSpells",
+  "vanilla": "Death Ray"
+ },
+ "114": {
+  "class": "TDiseaseCloud",
+  "name": "Disease Cloud",
+  "spell_id": 104,
+  "unit": "CombatSpells",
+  "vanilla": "Disease Cloud"
+ },
+ "115": {
+  "class": "TTerror",
+  "name": "Terror",
+  "spell_id": 105,
+  "unit": "CombatSpells",
+  "vanilla": "Terror"
+ },
+ "116": {
+  "class": "TMindDecay",
+  "name": "Mind Decay",
+  "spell_id": 106,
+  "unit": "CombatSpells",
+  "vanilla": "Mind Decay"
+ },
+ "117": {
+  "class": "TChainLightning",
+  "name": "Chain Lightning",
+  "spell_id": 107,
+  "unit": "CombatSpells",
+  "vanilla": "Chain Lightning"
+ },
+ "118": {
+  "class": "TColdBreath",
+  "name": "Cold Breath",
+  "spell_id": 108,
+  "unit": "CombatSpells",
+  "vanilla": "Cold Breath"
+ },
+ "119": {
+  "class": "TSlow",
+  "name": "Embrittle",
+  "spell_id": 109,
+  "unit": "CombatSpells",
+  "vanilla": null,
+  "note": "added by build_embrittle.py 2026-09-01 -- a TSlow instance, not a new class. Named for the Entangle/Entangled and Bless/Blessed pattern: the spell is the imperative verb, the status ability (0xB2) is the past participle."
+ },
+ "120": {
+  "class": "TSlow",
+  "name": "Slow",
+  "spell_id": 110,
+  "unit": "CombatSpells",
+  "vanilla": "Slow"
+ },
+ "121": {
+  "class": "TEntangle",
+  "name": "Entangle",
+  "spell_id": 111,
+  "unit": "CombatSpells",
+  "vanilla": "Entangle"
+ },
+ "122": {
+  "class": "TTremors",
+  "name": "Tremors",
+  "spell_id": 112,
+  "unit": "CombatSpells",
+  "vanilla": "Tremors"
+ },
+ "123": {
+  "class": "TCallFlames",
+  "name": "Call Flames",
+  "spell_id": 113,
+  "unit": "CombatSpells",
+  "vanilla": "Call Flames"
+ },
+ "124": {
+  "class": "TFireBreath",
+  "name": "Fire Breath",
+  "spell_id": 114,
+  "unit": "CombatSpells",
+  "vanilla": "Fire Breath"
+ },
+ "125": {
+  "class": "TSwarm",
+  "name": "Swarm",
+  "spell_id": 115,
+  "unit": "CombatSpells",
+  "vanilla": "Swarm"
+ },
+ "126": {
+  "class": "TGreatHail",
+  "name": "Great Hail",
+  "spell_id": 116,
+  "unit": "CombatSpells",
+  "vanilla": "Great Hail"
+ },
+ "127": {
+  "class": "TFireBall",
+  "name": "Triple Fireball",
+  "spell_id": 117,
+  "unit": "CombatSpells",
+  "vanilla": "Fire Ball"
+ },
+ "128": {
+  "class": "TGeyser",
+  "name": "Geyser",
+  "spell_id": 118,
+  "unit": "CombatSpells",
+  "vanilla": "Geyser"
+ },
+ "129": {
+  "class": "TIceShards",
+  "name": "Ice Shards",
+  "spell_id": 119,
+  "unit": "CombatSpells",
+  "vanilla": "Ice Shards"
+ },
+ "130": {
+  "class": "TFrostBeams",
+  "name": "Frost Beam",
+  "spell_id": 120,
+  "unit": "CombatSpells",
+  "vanilla": "Frost Beams"
+ },
+ "131": {
+  "class": "TVaporize",
+  "name": "Vaporize",
+  "spell_id": 121,
+  "unit": "CombatSpells",
+  "vanilla": "Vaporize"
+ },
+ "132": {
+  "class": "TStoning",
+  "name": "Stoning",
+  "spell_id": 122,
+  "unit": "CombatSpells",
+  "vanilla": "Stoning"
+ },
+ "133": {
+  "class": "TFlamingArrow",
+  "name": "Flaming Arrow",
+  "spell_id": 123,
+  "unit": "CombatSpells",
+  "vanilla": "Flaming Arrow"
+ },
+ "134": {
+  "class": "TOoze",
+  "name": "Ooze",
+  "spell_id": 124,
+  "unit": "CombatSpells",
+  "vanilla": "Ooze"
+ },
+ "135": {
+  "class": "TSacredWrath",
+  "name": "Sacred Wrath",
+  "spell_id": 125,
+  "unit": "CombatSpells",
+  "vanilla": "Sacred Wrath"
+ },
+ "136": {
+  "class": "TWindsOfFury",
+  "name": "Winds of Fury",
+  "spell_id": 126,
+  "unit": "CombatSpells",
+  "vanilla": "Winds Of Fury"
+ },
+ "137": {
+  "class": "TShockwave",
+  "name": "Shock Wave",
+  "spell_id": 127,
+  "unit": "CombatSpells",
+  "vanilla": "Shockwave"
+ },
+ "138": {
+  "class": "TSacrificialFlame",
+  "name": "Sacrificial Flame",
+  "spell_id": 128,
+  "unit": "CombatSpells",
+  "vanilla": "Sacrificial Flame"
+ },
+ "139": {
+  "class": "TRecallSpirit",
+  "name": "Recall Spirits",
+  "spell_id": 129,
+  "unit": "CombatSpells",
+  "vanilla": "Recall Spirit"
+ },
+ "140": {
+  "class": "TAnimateDead",
+  "name": "Animate Dead",
+  "spell_id": 130,
+  "unit": "CombatSpells",
+  "vanilla": "Animate Dead"
+ }
+}

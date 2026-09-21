@@ -1,0 +1,1042 @@
+HSEngine.TTerrainList.LoadFromStream@23EDC2EF:
+push	ebx
+push	esi
+push	edi
+mov	esi,edx
+mov	ebx,eax
+lea	edx,[ebx+04h]
+mov	ecx,04h
+mov	eax,esi
+mov	edi,[eax]
+call	[edi+04h]
+mov	edx,[ebx+04h]
+mov	eax,ebx
+call	HSEngine.TTerrainList.SetCount@23EDC2EF
+mov	ecx,[ebx+04h]
+ecx,ecx
+mov	edx,[ebx+08h]
+mov	eax,esi
+mov	ebx,[eax]
+call	[ebx+04h]
+pop	edi
+pop	esi
+pop	ebx
+retn
+HSEngine.TTerrainList.SaveToStream@23EDC2EF:
+push	ebx
+push	esi
+push	edi
+mov	esi,edx
+mov	ebx,eax
+mov	eax,ebx
+call	HSEngine.TTerrainList.Pack@23EDC2EF
+lea	edx,[ebx+04h]
+mov	ecx,04h
+mov	eax,esi
+mov	edi,[eax]
+call	[edi+08h]
+mov	ecx,[ebx+04h]
+ecx,ecx
+mov	edx,[ebx+08h]
+mov	eax,esi
+mov	ebx,[eax]
+call	[ebx+08h]
+pop	edi
+pop	esi
+pop	ebx
+retn
+HSEngine.TXYLList.Create@23EDC2EF:
+push	ebx
+push	esi
+test	dl,dl
+jz 	L556053C6
+esp,FFFFFFF0h
+call	jmp_VCL30.dpl!System.@ClassCreate@51F89FF7
+L556053C6:
+mov	ebx,edx
+mov	esi,eax
+xor	edx,edx
+mov	eax,esi
+call	jmp_VCL30.dpl!System.TObject.Create@23EDC2EF
+mov	byte ptr [esi+10h],FFh
+mov	byte ptr [esi+11h],FFh
+mov	byte ptr [esi+12h],FFh
+mov	byte ptr [esi+13h],00h
+test	bl,bl
+jz 	L556053F1
+pop	fs:[00h]
+esp,0Ch
+L556053F1:
+mov	eax,esi
+pop	esi
+pop	ebx
+retn
+Align	4
+HSEngine.TXYLList.Destroy@23EDC2EF:
+push	ebx
+push	esi
+mov	ebx,edx
+mov	esi,eax
+mov	eax,esi
+call	HSEngine.TXYLList.Clear@23EDC2EF
+test	bl,bl
+jz 	L55605410
+mov	eax,esi
+call	jmp_VCL30.dpl!System.@ClassDestroy@51F89FF7
+L55605410:
+mov	eax,esi
+pop	esi
+pop	ebx
+retn
+Align	4
+HSEngine.TXYLList.Assign@23EDC2EF:
+push	ebx
+push	esi
+push	edi
+mov	esi,edx
+mov	ebx,eax
+mov	eax,esi
+mov	edx,[TXYLList.Object_Entry]
+call	jmp_VCL30.dpl!System.@IsClass@51F89FF7
+test	al,al
+jz 	L5560545B
+mov	edi,esi
+mov	eax,[edi+08h]
+mov	[ebx+08h],eax
+mov	edx,[edi+0Ch]
+mov	eax,ebx
+call	HSEngine.TXYLList.SetCapacity@23EDC2EF
+mov	ecx,[ebx+08h]
+shl	ecx,02h
+mov	edx,[ebx+04h]
+mov	eax,[edi+04h]
+call	jmp_VCL30.dpl!System.Move@8E671582
+mov	eax,[edi+10h]
+mov	[ebx+10h],eax
+jmp	L55605464
+L5560545B:
+mov	edx,esi
+mov	eax,ebx
+call	jmp_VCL30.dpl!Classes.TPersistent.Assign@23EDC2EF
+L55605464:
+pop	edi
+pop	esi
+pop	ebx
+retn
+HSEngine.TXYLList.Add@23EDC2EF:
+push	ebx
+push	esi
+push	ecx
+mov	[esp],edx
+mov	ebx,eax
+mov	esi,[ebx+08h]
+cmp	esi,[ebx+0Ch]
+jnz	L5560547F
+mov	eax,ebx
+mov	edx,[eax]
+call	[edx+0Ch]
+L5560547F:
+mov	eax,[ebx+04h]
+mov	edx,[esp]
+mov	[eax+esi*4],edx
+inc	[ebx+08h]
+mov	eax,esi
+pop	edx
+pop	esi
+pop	ebx
+retn
+Align	4
+HSEngine.TXYLList.AddXYL@23EDC2EF:
+push	ebp
+mov	ebp,esp
+push	ecx
+push	ebx
+push	esi
+push	edi
+mov	[ebp-01h],cl
+mov	ebx,edx
+mov	edi,eax
+mov	esi,[edi+08h]
+cmp	esi,[edi+0Ch]
+jnz	L556054B1
+mov	eax,edi
+mov	edx,[eax]
+call	[edx+0Ch]
+L556054B1:
+mov	eax,[edi+04h]
+mov	[eax+esi*4],bl
+mov	dl,[ebp-01h]
+mov	[eax+esi*4+01h],dl
+mov	dl,[ebp+08h]
+mov	[eax+esi*4+02h],dl
+mov	byte ptr [eax+esi*4+03h],00h
+inc	[edi+08h]
+mov	eax,esi
+pop	edi
+pop	esi
+pop	ebx
+pop	ecx
+pop	ebp
+retn	0004h
+HSEngine.TXYLList.Clear@23EDC2EF:
+push	ebx
+mov	ebx,eax
+xor	edx,edx
+mov	eax,ebx
+call	HSEngine.TXYLList.SetCount@23EDC2EF
+xor	edx,edx
+mov	eax,ebx
+call	HSEngine.TXYLList.SetCapacity@23EDC2EF
+pop	ebx
+retn
+HSEngine.TXYLList.Delete@23EDC2EF:
+push	ebp
+mov	ebp,esp
+push	00h
+push	ebx
+push	esi
+mov	esi,edx
+mov	ebx,eax
+xor	eax,eax
+push	ebp
+push	L55605562
+push	fs:[eax]
+mov	fs:[eax],esp
+test	esi,esi
+jl 	L55605512
+cmp	esi,[ebx+08h]
+jl 	L55605529
+L55605512:
+lea	edx,[ebp-04h]
+mov	eax,[VCL30.dpl!Consts.SListIndexError@04ECFCC5]
+call	jmp_VCL30.dpl!System.LoadResString@02614E1B
+mov	edx,[ebp-04h]
+mov	ecx,esi
+mov	eax,[ebx]
+call	[eax+10h]
+L55605529:
+[ebx+08h]
+mov	eax,[ebx+08h]
+cmp	esi,eax
+jge	L5560554C
+sub	eax,esi
+mov	ecx,eax
+shl	ecx,02h
+mov	eax,[ebx+04h]
+lea	edx,[eax+esi*4]
+mov	eax,[ebx+04h]
+lea	eax,[eax+esi*4+04h]
+call	jmp_VCL30.dpl!System.Move@8E671582
+L5560554C:
+xor	eax,eax
+pop	edx
+pop	ecx
+pop	ecx
+mov	fs:[eax],edx
+push	L55605569
+L55605559:
+lea	eax,[ebp-04h]
+call	jmp_VCL30.dpl!System.@LStrClr@40929B27
+retn
+L55605562:
+jmp	jmp_VCL30.dpl!System.@HandleFinally@51F89FF7
+jmp	L55605559
+L55605569:
+pop	esi
+pop	ebx
+pop	ecx
+pop	ebp
+retn
+Align	4
+SUB_L55605570:
+mov	eax,[ebp+04h]
+retn
+HSEngine.TXYLList.Error@23EDC2EF:
+push	ebx
+push	esi
+esp,FFFFFFF8h
+mov	esi,ecx
+mov	ebx,edx
+call	SUB_L55605570
+push	eax
+mov	[esp+04h],esi
+mov	byte ptr [esp+08h],00h
+lea	eax,[esp+04h]
+push	eax
+push	00h
+mov	ecx,ebx
+mov	dl,01h
+mov	eax,[VCL30.dpl!Classes..EListError@AD3AAACF]
+call	jmp_VCL30.dpl!SysUtils.Exception.CreateFmt@23EDC2EF
+jmp	jmp_VCL30.dpl!System.@RaiseExcept@51F89FF7
+pop	ecx
+pop	edx
+pop	esi
+pop	ebx
+retn
+HSEngine.TXYLList.Exchange@23EDC2EF:
+push	ebp
+mov	ebp,esp
+esp,FFFFFFF8h
+push	ebx
+push	esi
+push	edi
+xor	ebx,ebx
+mov	[ebp-08h],ebx
+mov	edi,ecx
+mov	esi,edx
+mov	ebx,eax
+xor	eax,eax
+push	ebp
+push	L55605642
+push	fs:[eax]
+mov	fs:[eax],esp
+test	esi,esi
+jl 	L556055D7
+cmp	esi,[ebx+08h]
+jl 	L556055EE
+L556055D7:
+lea	edx,[ebp-08h]
+mov	eax,[VCL30.dpl!Consts.SListIndexError@04ECFCC5]
+call	jmp_VCL30.dpl!System.LoadResString@02614E1B
+mov	edx,[ebp-08h]
+mov	ecx,esi
+mov	eax,[ebx]
+call	[eax+10h]
+L556055EE:
+test	edi,edi
+jl 	L556055F7
+cmp	edi,[ebx+08h]
+jl 	L5560560E
+L556055F7:
+lea	edx,[ebp-08h]
+mov	eax,[VCL30.dpl!Consts.SListIndexError@04ECFCC5]
+call	jmp_VCL30.dpl!System.LoadResString@02614E1B
+mov	edx,[ebp-08h]
+mov	ecx,edi
+mov	eax,[ebx]
+call	[eax+10h]
+L5560560E:
+mov	eax,[ebx+04h]
+mov	eax,[eax+esi*4]
+mov	[ebp-04h],eax
+mov	eax,[ebx+04h]
+mov	eax,[eax+edi*4]
+mov	edx,[ebx+04h]
+mov	[edx+esi*4],eax
+mov	eax,[ebx+04h]
+mov	edx,[ebp-04h]
+mov	[eax+edi*4],edx
+xor	eax,eax
+pop	edx
+pop	ecx
+pop	ecx
+mov	fs:[eax],edx
+push	L55605649
+L55605639:
+lea	eax,[ebp-08h]
+call	jmp_VCL30.dpl!System.@LStrClr@40929B27
+retn
+L55605642:
+jmp	jmp_VCL30.dpl!System.@HandleFinally@51F89FF7
+jmp	L55605639
+L55605649:
+pop	edi
+pop	esi
+pop	ebx
+pop	ecx
+pop	ecx
+pop	ebp
+retn
+HSEngine.TXYLList.Expand@23EDC2EF:
+push	ebx
+mov	ebx,eax
+mov	eax,[ebx+08h]
+cmp	eax,[ebx+0Ch]
+jnz	L55605662
+mov	eax,ebx
+mov	edx,[eax]
+call	[edx+0Ch]
+L55605662:
+mov	eax,ebx
+pop	ebx
+retn
+Align	4
+HSEngine.TXYLList.First@23EDC2EF:
+push	ebx
+push	ecx
+mov	ebx,eax
+xor	edx,edx
+mov	eax,ebx
+call	HSEngine.TXYLList.Get@23EDC2EF
+mov	[esp],eax
+mov	eax,[esp]
+pop	edx
+pop	ebx
+retn
+Align	4
+HSEngine.TXYLList.Get@23EDC2EF:
+push	ecx
+test	edx,edx
+jl 	L5560568A
+cmp	edx,[eax+08h]
+jl 	L55605692
+L5560568A:
+mov	eax,[eax+10h]
+mov	[esp],eax
+jmp	L5560569B
+L55605692:
+mov	eax,[eax+04h]
+mov	eax,[eax+edx*4]
+mov	[esp],eax
+L5560569B:
+mov	eax,[esp]
+pop	edx
+retn
+HSEngine.TXYLList.Grow@23EDC2EF:
+mov	edx,[eax+0Ch]
+cmp	edx,40h
+jle	L556056B6
+mov	ecx,edx
+test	ecx,ecx
+jns	L556056B1
+ecx,03h
+L556056B1:
+sar	ecx,02h
+jmp	L556056C7
+L556056B6:
+cmp	edx,08h
+jle	L556056C2
+mov	ecx,10h
+jmp	L556056C7
+L556056C2:
+mov	ecx,04h
+L556056C7:
+ecx,edx
+mov	edx,ecx
+call	HSEngine.TXYLList.SetCapacity@23EDC2EF
+retn
+Align	4
+HSEngine.TXYLList.IndexOf@23EDC2EF:
+push	ecx
+mov	[esp],edx
+xor	edx,edx
+jmp	L556056DD
+L556056DC:
+inc	edx
+L556056DD:
+cmp	edx,[eax+08h]
+jge	L556056ED
+mov	ecx,[eax+04h]
+mov	ecx,[ecx+edx*4]
+cmp	ecx,[esp]
+jnz	L556056DC
+L556056ED:
+cmp	edx,[eax+08h]
+jnz	L556056F5
+or	edx,FFFFFFFFh
+L556056F5:
+mov	eax,edx
+pop	edx
+retn
+Align	4
+HSEngine.TXYLList.IndexOfXY@23EDC2EF:
+push	ecx
+mov	[esp],dl
+mov	[esp+01h],cl
+xor	edx,edx
+jmp	L55605709
+L55605708:
+inc	edx
+L55605709:
+cmp	edx,[eax+08h]
+jge	L5560571B
+mov	ecx,[eax+04h]
+mov	cx,[ecx+edx*4]
+cmp	cx,[esp]
+jnz	L55605708
+L5560571B:
+cmp	edx,[eax+08h]
+jnz	L55605723
+or	edx,FFFFFFFFh
+L55605723:
+mov	eax,edx
+pop	edx
+retn
+HSEngine.TXYLList.IndexOfXYL@23EDC2EF:
+push	ebp
+mov	ebp,esp
+push	ebx
+push	esi
+push	edi
+mov	edi,eax
+mov	eax,[ebp+08h]
+xor	esi,esi
+jmp	L55605738
+L55605737:
+inc	esi
+L55605738:
+cmp	esi,[edi+08h]
+jge	L55605757
+mov	ebx,[edi+04h]
+cmp	dl,[ebx+esi*4]
+jnz	L55605737
+mov	ebx,[edi+04h]
+cmp	cl,[ebx+esi*4+01h]
+jnz	L55605737
+mov	ebx,[edi+04h]
+cmp	al,[ebx+esi*4+02h]
+jnz	L55605737
+L55605757:
+cmp	esi,[edi+08h]
+jnz	L5560575F
+or	esi,FFFFFFFFh
+L5560575F:
+mov	eax,esi
+pop	edi
+pop	esi
+pop	ebx
+pop	ebp
+retn	0004h
+HSEngine.TXYLList.Insert@23EDC2EF:
+push	ebp
+mov	ebp,esp
+esp,FFFFFFF8h
+push	ebx
+push	esi
+xor	ebx,ebx
+mov	[ebp-08h],ebx
+mov	[ebp-04h],ecx
+mov	esi,edx
+mov	ebx,eax
+xor	eax,eax
+push	ebp
+push	L556057FB
+push	fs:[eax]
+mov	fs:[eax],esp
+test	esi,esi
+jl 	L55605793
+cmp	esi,[ebx+08h]
+jle	L556057AA
+L55605793:
+lea	edx,[ebp-08h]
+mov	eax,[VCL30.dpl!Consts.SListIndexError@04ECFCC5]
+call	jmp_VCL30.dpl!System.LoadResString@02614E1B
+mov	edx,[ebp-08h]
+mov	ecx,esi
+mov	eax,[ebx]
+call	[eax+10h]
+L556057AA:
+mov	eax,[ebx+08h]
+cmp	eax,[ebx+0Ch]
+jnz	L556057B9
+mov	eax,ebx
+mov	edx,[eax]
+call	[edx+0Ch]
+L556057B9:
+mov	eax,[ebx+08h]
+cmp	esi,eax
+jge	L556057D9
+sub	eax,esi
+mov	ecx,eax
+shl	ecx,02h
+mov	eax,[ebx+04h]
+lea	edx,[eax+esi*4+04h]
+mov	eax,[ebx+04h]
+lea	eax,[eax+esi*4]
+call	jmp_VCL30.dpl!System.Move@8E671582
+L556057D9:
+mov	eax,[ebx+04h]
+mov	edx,[ebp-04h]
+mov	[eax+esi*4],edx
+inc	[ebx+08h]
+xor	eax,eax
+pop	edx
+pop	ecx
+pop	ecx
+mov	fs:[eax],edx
+push	L55605802
+L556057F2:
+lea	eax,[ebp-08h]
+call	jmp_VCL30.dpl!System.@LStrClr@40929B27
+retn
+L556057FB:
+jmp	jmp_VCL30.dpl!System.@HandleFinally@51F89FF7
+jmp	L556057F2
+L55605802:
+pop	esi
+pop	ebx
+pop	ecx
+pop	ecx
+pop	ebp
+retn
+HSEngine.TXYLList.Last@23EDC2EF:
+push	ebx
+push	ecx
+mov	ebx,eax
+mov	edx,[ebx+08h]
+edx
+mov	eax,ebx
+call	HSEngine.TXYLList.Get@23EDC2EF
+mov	[esp],eax
+mov	eax,[esp]
+pop	edx
+pop	ebx
+retn
+HSEngine.TXYLList.Move@23EDC2EF:
+push	ebp
+mov	ebp,esp
+esp,FFFFFFF8h
+push	ebx
+push	esi
+push	edi
+xor	ebx,ebx
+mov	[ebp-08h],ebx
+mov	esi,ecx
+mov	edi,edx
+mov	ebx,eax
+xor	eax,eax
+push	ebp
+push	L5560589D
+push	fs:[eax]
+mov	fs:[eax],esp
+cmp	esi,edi
+jz 	L55605887
+test	esi,esi
+jl 	L5560584F
+cmp	esi,[ebx+08h]
+jl 	L55605866
+L5560584F:
+lea	edx,[ebp-08h]
+mov	eax,[VCL30.dpl!Consts.SListIndexError@04ECFCC5]
+call	jmp_VCL30.dpl!System.LoadResString@02614E1B
+mov	edx,[ebp-08h]
+mov	ecx,esi
+mov	eax,[ebx]
+call	[eax+10h]
+L55605866:
+mov	edx,edi
+mov	eax,ebx
+call	HSEngine.TXYLList.Get@23EDC2EF
+mov	[ebp-04h],eax
+mov	edx,edi
+mov	eax,ebx
+call	HSEngine.TXYLList.Delete@23EDC2EF
+mov	ecx,[ebp-04h]
+mov	edx,esi
+mov	eax,ebx
+call	HSEngine.TXYLList.Insert@23EDC2EF
+L55605887:
+xor	eax,eax
+pop	edx
+pop	ecx
+pop	ecx
+mov	fs:[eax],edx
+push	L556058A4
+L55605894:
+lea	eax,[ebp-08h]
+call	jmp_VCL30.dpl!System.@LStrClr@40929B27
+retn
+L5560589D:
+jmp	jmp_VCL30.dpl!System.@HandleFinally@51F89FF7
+jmp	L55605894
+L556058A4:
+pop	edi
+pop	esi
+pop	ebx
+pop	ecx
+pop	ecx
+pop	ebp
+retn
+HSEngine.TXYLList.Put@23EDC2EF:
+push	ebp
+mov	ebp,esp
+esp,FFFFFFF8h
+push	ebx
+push	esi
+xor	ebx,ebx
+mov	[ebp-08h],ebx
+mov	[ebp-04h],ecx
+mov	esi,edx
+mov	ebx,eax
+xor	eax,eax
+push	ebp
+push	L55605917
+push	fs:[eax]
+mov	fs:[eax],esp
+test	esi,esi
+jge	L556058E9
+lea	edx,[ebp-08h]
+mov	eax,[VCL30.dpl!Consts.SListIndexError@04ECFCC5]
+call	jmp_VCL30.dpl!System.LoadResString@02614E1B
+mov	edx,[ebp-08h]
+mov	ecx,esi
+mov	eax,[ebx]
+call	[eax+10h]
+L556058E9:
+cmp	esi,[ebx+08h]
+jl 	L556058F8
+lea	edx,[esi+01h]
+mov	eax,ebx
+call	HSEngine.TXYLList.SetCount@23EDC2EF
+L556058F8:
+mov	eax,[ebx+04h]
+mov	edx,[ebp-04h]
+mov	[eax+esi*4],edx
+xor	eax,eax
+pop	edx
+pop	ecx
+pop	ecx
+mov	fs:[eax],edx
+push	L5560591E
+L5560590E:
+lea	eax,[ebp-08h]
+call	jmp_VCL30.dpl!System.@LStrClr@40929B27
+retn
+L55605917:
+jmp	jmp_VCL30.dpl!System.@HandleFinally@51F89FF7
+jmp	L5560590E
+L5560591E:
+pop	esi
+pop	ebx
+pop	ecx
+pop	ecx
+pop	ebp
+retn
+HSEngine.TXYLList.Remove@23EDC2EF:
+push	ebx
+push	esi
+push	ecx
+mov	[esp],edx
+mov	ebx,eax
+mov	edx,[esp]
+mov	eax,ebx
+call	HSEngine.TXYLList.IndexOf@23EDC2EF
+mov	esi,eax
+cmp	esi,FFFFFFFFh
+jz 	L55605946
+mov	edx,esi
+mov	eax,ebx
+call	HSEngine.TXYLList.Delete@23EDC2EF
+L55605946:
+mov	eax,esi
+pop	edx
+pop	esi
+pop	ebx
+retn
+HSEngine.TXYLList.Pack@23EDC2EF:
+push	ebx
+push	esi
+mov	esi,eax
+mov	ebx,[esi+08h]
+ebx
+cmp	ebx,00h
+jl 	L55605976
+L55605959:
+mov	edx,ebx
+mov	eax,esi
+call	HSEngine.TXYLList.Get@23EDC2EF
+cmp	eax,[esi+10h]
+jnz	L55605970
+mov	edx,ebx
+mov	eax,esi
+call	HSEngine.TXYLList.Delete@23EDC2EF
+L55605970:
+ebx
+cmp	ebx,FFFFFFFFh
+jnz	L55605959
+L55605976:
+pop	esi
+pop	ebx
+retn
+Align	4
+HSEngine.TXYLList.SetCapacity@23EDC2EF:
+push	ebp
+mov	ebp,esp
+push	00h
+push	ebx
+push	esi
+mov	esi,edx
+mov	ebx,eax
+xor	eax,eax
+push	ebp
+push	L556059E4
+push	fs:[eax]
+mov	fs:[eax],esp
+cmp	esi,[ebx+08h]
+jl 	L556059A2
+cmp	esi,07FFFFFFh
+jle	L556059B9
+L556059A2:
+lea	edx,[ebp-04h]
+mov	eax,[VCL30.dpl!Consts.SListCapacityError@04ECFCC5]
+call	jmp_VCL30.dpl!System.LoadResString@02614E1B
+mov	edx,[ebp-04h]
+mov	ecx,esi
+mov	eax,[ebx]
+call	[eax+10h]
+L556059B9:
+cmp	esi,[ebx+0Ch]
+jz 	L556059CE
+mov	edx,esi
+shl	edx,02h
+lea	eax,[ebx+04h]
+call	jmp_VCL30.dpl!System.@ReallocMem@51F89FF7
+mov	[ebx+0Ch],esi
+L556059CE:
+xor	eax,eax
+pop	edx
+pop	ecx
+pop	ecx
+mov	fs:[eax],edx
+push	L556059EB
+L556059DB:
+lea	eax,[ebp-04h]
+call	jmp_VCL30.dpl!System.@LStrClr@40929B27
+retn
+L556059E4:
+jmp	jmp_VCL30.dpl!System.@HandleFinally@51F89FF7
+jmp	L556059DB
+L556059EB:
+pop	esi
+pop	ebx
+pop	ecx
+pop	ebp
+retn
+HSEngine.TMapContainer.GetMapLevel@23EDC2EF:
+mov	eax,[eax+08h]
+mov	eax,[eax+04h]
+mov	eax,[eax+edx*4]
+retn
+Align	4
+HSEngine.TMapContainer.GetFieldXYL@23EDC2EF:
+push	ebp
+mov	ebp,esp
+push	ecx
+mov	[ebp-04h],edx
+movsx	edx,[ebp-02h]
+mov	eax,[eax+08h]
+mov	eax,[eax+04h]
+mov	eax,[eax+edx*4]
+movsx	edx,[ebp-04h]
+mov	ecx,[eax+74h]
+mov	edx,[ecx+edx*4]
+movsx	ecx,[ebp-03h]
+mov	eax,[eax+78h]
+edx,[eax+ecx*4]
+mov	eax,edx
+pop	ecx
+pop	ebp
+retn
+Align	4
+HSEngine.TMapContainer.GetField@23EDC2EF:
+push	ebp
+mov	ebp,esp
+push	ebx
+mov	eax,[eax+08h]
+mov	eax,[eax+04h]
+mov	ebx,[ebp+08h]
+mov	eax,[eax+ebx*4]
+mov	ebx,[eax+74h]
+mov	edx,[ebx+edx*4]
+mov	eax,[eax+78h]
+edx,[eax+ecx*4]
+mov	eax,edx
+pop	ebx
+pop	ebp
+retn	0004h
+HSEngine.TMapContainer.Clear@23EDC2EF:
+push	ebx
+mov	ebx,eax
+mov	eax,ebx
+call	jmp_EngineP.dpl!Engine.TENode.Clear@23EDC2EF
+xor	eax,eax
+mov	[ebx+0Ch],eax
+xor	eax,eax
+mov	[ebx+10h],eax
+xor	eax,eax
+mov	[ebx+14h],eax
+pop	ebx
+retn
+HSEngine.TMapContainer.RemoveLevel@23EDC2EF:
+push	ebx
+push	esi
+mov	esi,edx
+mov	ebx,eax
+test	esi,esi
+jl 	L55608DF5
+mov	eax,[ebx+08h]
+cmp	esi,[eax+08h]
+jge	L55608DF5
+mov	eax,[ebx+08h]
+mov	eax,[eax+04h]
+mov	eax,[eax+esi*4]
+call	HSEngine.TMapLevel.DestroyHS@23EDC2EF
+mov	eax,[ebx+08h]
+mov	eax,[eax+04h]
+mov	eax,[eax+esi*4]
+call	jmp_VCL30.dpl!System.TObject.Free@23EDC2EF
+[ebx+14h]
+L55608DF5:
+pop	esi
+pop	ebx
+retn
+HSEngine.TMapContainer.AddLevel@23EDC2EF:
+push	ebx
+push	esi
+mov	ebx,eax
+mov	eax,[ebx+1Ch]
+mov	ecx,[eax]
+call	[ecx+94h]
+mov	esi,eax
+test	esi,esi
+jz 	L55608E3D
+mov	ecx,ebx
+mov	dl,01h
+mov	eax,esi
+call	[eax+20h]
+mov	esi,eax
+mov	eax,[ebx+14h]
+mov	[esi+08h],eax
+mov	edx,esi
+mov	eax,[ebx+1Ch]
+call	jmp_EngineP.dpl!Engine.TEngine.ActivateEObject@23EDC2EF
+mov	ecx,[ebx+10h]
+mov	edx,[ebx+0Ch]
+mov	eax,esi
+call	HSEngine.TMapLevel.CreateMapFieldList@23EDC2EF
+inc	[ebx+14h]
+mov	al,01h
+pop	esi
+pop	ebx
+retn
+L55608E3D:
+xor	eax,eax
+pop	esi
+pop	ebx
+retn
+Align	4
+HSEngine.TMapContainer.New@23EDC2EF:
+push	ebp
+mov	ebp,esp
+esp,FFFFFFF4h
+push	ebx
+push	esi
+push	edi
+mov	edi,edx
+mov	[ebp-04h],eax
+mov	eax,[ebp-04h]
+mov	edx,[eax]
+call	[edx+30h]
+xor	eax,eax
+push	ebp
+push	L55608EE3
+push	fs:[eax]
+mov	fs:[eax],esp
+mov	edx,[edi+1Ch]
+mov	eax,[ebp-04h]
+mov	eax,[eax+1Ch]
+mov	ecx,[eax]
+call	[ecx+94h]
+mov	[ebp-08h],eax
+mov	esi,[edi+0Ch]
+esi
+test	esi,esi
+jl 	L55608EBE
+inc	esi
+mov	dword ptr [ebp-0Ch],00h
+L55608E8C:
+mov	ecx,[ebp-04h]
+mov	dl,01h
+mov	eax,[ebp-08h]
+call	[eax+20h]
+mov	ebx,eax
+mov	eax,[ebp-0Ch]
+mov	[ebx+08h],eax
+mov	eax,[ebp-04h]
+mov	eax,[eax+1Ch]
+mov	edx,ebx
+call	jmp_EngineP.dpl!Engine.TEngine.ActivateEObject@23EDC2EF
+mov	edx,edi
+mov	eax,ebx
+mov	ecx,[eax]
+call	[ecx+88h]
+inc	[ebp-0Ch]
+esi
+jnz	L55608E8C
+L55608EBE:
+mov	eax,[edi+04h]
+mov	edx,[ebp-04h]
+mov	[edx+0Ch],eax
+mov	eax,[edi+08h]
+mov	edx,[ebp-04h]
+mov	[edx+10h],eax
+mov	eax,[edi+0Ch]
+mov	edx,[ebp-04h]
+mov	[edx+14h],eax
+L55608ED9:
+xor	eax,eax
+pop	edx
+pop	ecx
+pop	ecx
+mov	fs:[eax],edx
+jmp	L55608EFA
+L55608EE3:
+jmp	jmp_VCL30.dpl!System.@HandleAnyException@51F89FF7
+mov	eax,[ebp-04h]
+mov	edx,[eax]
+call	[edx+30h]
+call	jmp_VCL30.dpl!System.@RaiseAgain@51F89FF7
+call	jmp_VCL30.dpl!System.@DoneExcept@51F89FF7
+L55608EFA:
+pop	edi
+pop	esi
+pop	ebx
+mov	esp,ebp
+pop	ebp
+retn
+Align	4
+HSEngine.TMapContainer.RemoveHS@23EDC2EF:
+push	ebp
+mov	ebp,esp
+esp,FFFFFFF8h
+push	ebx
+push	esi
+push	edi
+mov	[ebp-08h],ecx
+mov	[ebp-04h],edx
+mov	ebx,eax
+mov	esi,[ebp+08h]
+mov	eax,[ebx+08h]
+mov	eax,[eax+04h]
+mov	edx,[ebp+0Ch]
+mov	eax,[eax+edx*4]
+mov	edi,[ebp-08h]
+imul	edi,[ebx+0Ch]
+edi,[ebp-04h]
+imul	edi,[eax+28h]
+edi,[eax+2Ch]
+mov	edx,esi
+mov	eax,edi
+call	HSEngine.TMapField.RemoveHS@23EDC2EF
+inc	eax
+jz 	L55608F5E
+mov	eax,esi
+mov	edx,[eax]
+call	[edx+64h]
+cmp	al,0Fh
+ja 	L55608F5E
+mov	eax,[ebp+0Ch]
+push	eax
+mov	ecx,[ebp-08h]
+mov	edx,[ebp-04h]
+mov	eax,[ebx+18h]
+call	HSEngine.THSMap.InvalidateStaticScene@23EDC2EF
+L55608F5E:
+pop	edi
+pop	esi
+pop	ebx
+pop	ecx
+pop	ecx
+pop	ebp
+retn	0008h
