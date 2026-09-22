@@ -61,7 +61,7 @@ whole battle then runs deterministically off the raw stream. A synced draw *insi
 | — morale re-scale (ATK ±4, RES ±6) | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_morale_scale.py` | `AoWEPACK.dpl` |
 | — tactical wall/structure HP unified 40 stone / 10 wood | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_tcpck_damhp.py` | `AoWTCPCK.dpl` |
 | Hero library skill points spent down (589 unspent → 3) | 🔨 APPLIED, UNTESTED (2026-09-08) | `build_heroskill_spend.py` | `User/Ziggurat Heroes.ahl`, `Ziggurat release/User/` — **no binary** |
-| Map-placed heroes keep unspent points + get a turn-1 level-up prompt | 🔨 APPLIED, UNTESTED (2026-09-22) | `build_hero_turn1_upgrade.py` (hook `0x55786CB3`, cave `C_TURN1 0x5584B000`) | `AoWEPACK.dpl` |
+| A hero holding unspent skill points is offered them | 🔨 APPLIED, UNTESTED (2026-09-22, v2) | `build_hero_turn1_upgrade.py` (`0x55786CB3`→nops, `0x55787FE7` call-retarget, cave `C_TURN1 0x5584B000`) | `AoWEPACK.dpl` |
 | Excess-ATK → minimum-damage bonus | vanilla mechanism, RE only, no patch | — | `AoWEPACK.dpl` |
 | Strategic map damage (storms/grounds/fire/vortex/quake/poison) | vanilla mechanism; ATK/DAM sides doubled by the two passes above | — | `AoWEPACK.dpl` |
 | Missile trajectory & interception (manual tactical) | vanilla mechanism, RE only, no patch | — | `AoWTCPCK.dpl` |
@@ -927,85 +927,6 @@ copies each map player's leader into `TPlayerSetupSettings[+0x1C]` (a real `TLea
 `TPlayerSetupSettings.Create`), the dialog edits that copy, and `SetupMap` copies it back — a round
 trip, skipped when `TSetupSettings[+0x20] != 0`, which `hPickMap` reads from the map header `+0x174`.
 
-### Turn-1 hero upgrade — points kept, prompt raised
-
-**Status: `build_hero_turn1_upgrade.py` — 🔨 APPLIED, UNTESTED (2026-09-22).** `AoWEPACK.dpl` only;
-`THero.NewDay` exists in no other module, so there is no `AoWz.exe`/`AoWzCompat.exe` lockstep half.
-
-The confiscation block above (`0x55786CB3`, **10 bytes**, `8b c3 e8 0a 09 00 00 89 43 50`) is
-replaced in place by `mov eax,ebx / call C_TURN1 / 3× nop`. Both inbound jumps land on its
-boundaries — `je 0x55786CB3` from `0x55786CA0`, `jne 0x55786CBD` from `0x55786CB1` — so the whole run
-is safe to rewrite; nothing is displaced.
-
-⭐ **Preserving the points is not enough on its own — nothing opens the spend UI just because a hero
-has some.** The prompt comes from `THero.ValidateHeroUpgrade @0x55787D54`, called by
-`THero.NewTurn @0x55787FE7` on the owner's turn, and its condition is a **lag, not an event**:
-
-```
-if (hero.levelCache[+0x4C] < GetLevel())          ; GetLevel derives from XP [+0x48]
-    hero.levelCache = GetLevel()
-    raise THeroUpgradeEventLog(old -> new)        ; this IS the level-up dialog
-    if (player[+0xA7] != 0) ExecuteUpgradeHeroAI  ; AI spends its own
-```
-
-So the cave knocks the cache one below the XP-derived level and the next `NewTurn` raises the dialog,
-restores the cache, and `GetSkillPoints` then reports the full untaxed budget.
-
-`C_TURN1 = 0x5584B000`, **40 bytes** in an `0x80` span, PIC (two rel32 calls, no absolute memory
-reference, no rebase anchor needed). EAX = hero in; EBX preserved, EAX/EDX/ECX clobbered — all dead
-at the host, which does `mov eax,ebx / call UpdateSettings` immediately after.
-
-```
-push ebx / mov ebx,eax
-call THero.GetSkillPoints @0x557875C4 / test eax,eax / jle done      ; guard 1
-mov eax,ebx / call THero.GetLevel @0x55787740
-movsx eax,al / movzx edx,byte [ebx+0x4C] / cmp eax,edx / jl done     ; guard 2
-cmp dl,1 / jbe done                                                  ; guard 3
-dec byte [ebx+0x4C]
-done: pop ebx / ret
-```
-
-⚠⚠ **Guard 2 is the load-bearing one and its absence is silent.** `[hero+0x4C]` is tag `0x16` and is
-**persisted**. If the cache were ever above the XP-derived level, the decrement would not be undone by
-`ValidateHeroUpgrade` — the hero would lose 10 points of budget permanently, written into the save.
-Decrement only when the restore is guaranteed to fire. Guard 1 suppresses an empty dialog for a hero
-whose points were already spent in the editor (owner ruling 2026-09-22) and is the **whole reason the
-feature needs a cave**: the test is 14 bytes and only 10 are available in place. Guard 3 floors the
-cache at 1, because this write bypasses `SetLevel`'s clamp.
-
-**Scope**: the host is gated on day 1, so this covers exactly the heroes the map placed — leaders and
-pre-placed non-leader heroes alike (owner ruling 2026-09-22) — and never a later recruit. With
-"Customize leaders" ON, leaders skip the block entirely via the `IsClass` branch above it and behave
-as vanilla. AI-owned heroes get the prompt too and `ExecuteUpgradeHeroAI` spends for them.
-
-**MP**: deterministic — two pure reads and one byte decrement, no clock, no RNG, identical on every
-peer. Both fields are already streamed, so the save format does not move. **Saves**: new games only; a
-save whose day 1 passed under an unpatched DLL has the write-off baked into tag `0x27`, and the patch
-deliberately does not clear it, because a non-zero tag `0x27` is also the legitimate way a map author
-hands a hero a partial pool.
-
-Verified without the game: cave disassembles as designed, hook verified vanilla before write,
-`--undo` round-trip byte-identical to the pristine root over both the 10-byte run and the full `0x80`
-cave span, re-`--apply` idempotent, `.reloc` has no entry pointing into either region,
-`build_relocfix.py --audit` total 0, `rng_audit.py --owners` unchanged at 24 modded sites (the cave
-makes no draw and references neither generator, so it is correctly invisible).
-
-**In-game checklist:**
-1. **Launch `AoWz.exe` and reach the main menu** — the cave runs from `NewDay`, not package init, so
-   this only proves the DLL still loads.
-2. Editor: place a leader at **level 5** and a non-leader hero at **level 3**, save the map.
-3. Start a **PBEM** game on it. On turn 1 both should raise the level-up dialog, the leader offering
-   **60** points and the hero **40**. Assign them and confirm the stats stick.
-4. Confirm the hero card then reads level 5 / level 3 — not 4 / 2. If it reads one low,
-   `ValidateHeroUpgrade` did not restore the cache and guard 2's premise is wrong.
-5. Place a level-5 leader whose points are **fully spent** in the editor — it must get **no** prompt.
-6. A level-1 hero must get no prompt.
-7. Save and reload mid-game, then start a second day: **no second prompt**, and the points already
-   assigned stay assigned.
-8. Run the same map as a **hotseat/skirmish** game — same behaviour, since the gate is day 1 and not
-   the session mode.
-9. Watch an **AI** leader: it should arrive already upgraded rather than sitting on unspent points.
-
 **Price list** — `THero.UsedSkillPoints @0x55786CC8`, each price bound to its field:
 
 | stat | field | live price | site |
@@ -1022,11 +943,19 @@ too, `- Ability.GetSkillPoints(chassisOwner)`. ⚠ The entry point is VMT **`+0x
 not `+0xC8 ExpandCost`. The chassis's own ability owner is `[[hero+0x40]+0x2C]` = `HERORES.PFS`
 tag `0x1D`, a `top=False` directory.
 
+⭐ **The chassis credit is large and you cannot price a hero without it.** Measured 2026-09-22 on a
+live map: four leaders priced from their save records alone came out at −12 to −70 points, i.e.
+apparently over budget, while the editor's own Leader Properties reported one of them at
+**44/90 unspent**. Leadership 10 + Spell Casting 20 + Vision 4 is 34 of credit on its own. Never
+conclude "this hero has no points" from the hero record in isolation.
+
 `THeroResource.UsedSkillPoints @0x55789F50` prices the **chassis** on a different scale entirely:
 ATK `+0x24` ×5, DEF `+0x25` ×5, DAM `+0x26` ×10, **HP `+0x27` ×5, MOV `+0x28` ×2, RES `+0x29` ×5.**
 ⚠ It does not price the fields in tag order — the `×5` at `0x55789F70` reads `+0x29` (RES) and the
 one at `0x55789F79` reads `+0x27` (HP), so reading the multipliers off in source order gives HP/MOV/RES
-as 5/5/2 when they are 5/2/5. Never mix this list up with the hero one above.
+as 5/5/2 when they are 5/2/5. Never mix this list up with the hero one above. ⭐ This is the scale the
+**editor's Leader Properties dialog shows** (`Attack (sp:5)`, `Damage (sp:10)`, `Moves (sp:2)` …), so
+a price quoted from that dialog is the chassis price, not the hero one.
 
 **Ability prices.** Single-level: `TAbility.GetSkillPoints @0x5574E958` returns `[ability+0x14]` =
 `Ability.pfs` tag 6. Multi-level: `TMultiLevelAbility.GetSkillPoints @0x55765348` looks like a sum
@@ -1052,23 +981,24 @@ chassis ability and its level record onto the hero wherever the hero's level is 
 effective level is `max(hero, chassis)` and the chassis credit always cancels exactly.
 
 **Level ↔ XP.** `HeroExperienceTable @0x558E84B4`, stride 8. The **XP column is at `+4`**, i.e.
-`0x558E84B8`: live `20,30,40,50,60,70` against vanilla `15,15,20,20,25,25`. So levels 1–7 sit at XP
-**0, 20, 40, 60, 80, 110, 140**.
+`0x558E84B8`: live `20,30,40,50,60,70` against vanilla `15,15,20,20,25,25`. So levels 1–9 sit at XP
+**0, 20, 40, 60, 80, 110, 140, 170, 200** (re-derived from the live table 2026-09-22).
 
 ```
 LevelToExperience(L) @0x557876A0 = sum over k=1..L-1 of table[k div 5], skipping (k div 5) > 5
 ExperienceToLevel(xp) @0x557876D4 = walk L upward until the running sum exceeds xp
 ```
 ⚠ `ExperienceToLevel` has **no `> 5` guard** — it reads past the table end above level 30. The two
-are not inverses up there and must not share one implementation.
+are not inverses up there and must not share one implementation. ⭐ Below that they ARE exact
+inverses, and the `jg` is strictly-greater, so `ExperienceToLevel(LevelToExperience(L)) == L` with no
+off-by-one — verified for L = 3, 5 and 8 against the live table.
 
 **The five `ExecuteUpgradeHeroAI` constants are per-stat TARGET LEVELS, not prices.** Owner ruling
 2026-09-08. `THero.ExecuteUpgradeHeroAI @0x55787A24` carries five `cmp` immediates — live **4 / 16 /
 8 / 8 / 3** against vanilla 5/5/5/10/5, first at `0x55787A52` (`cmp esi,4`) — and they are the stat
 levels the AI levels a hero *toward*: ATK, DEF, DAM, RES and HP (or MV; the owner was not certain
 which of the last two, and the order has not been byte-checked against the field offsets). They are
-**not** skill-point affordability gates, which is how `fivepct_manifest.json` entry 28 described them
-until it was corrected. No script owns these bytes; they are pre-convention hand edits by the owner.
+**not** skill-point affordability gates.
 
 ⚠ Anyone re-pricing attribute purchases must not assume these move with the prices — they are a
 different quantity in different units.
@@ -1079,6 +1009,91 @@ different quantity in different units.
 `value == current`; `cmp bl,[esi+0x6a] / jle` takes the free branch and skips the budget check — but
 the cap clamp above it still fires, so an over-cap stat is **silently truncated** with no error.
 Assert the caps before writing; do not rely on the engine.
+
+
+### Unspent skill points are offered — `build_hero_turn1_upgrade.py`
+
+**Status: 🔨 APPLIED, UNTESTED (2026-09-22, v2).** `AoWEPACK.dpl` only; `THero.NewTurn` and
+`THero.NewDay` exist in no other module, so there is no `AoWz.exe`/`AoWzCompat.exe` lockstep half.
+
+⭐⭐ **The real defect is not the confiscation — it is that a level SET in the editor can never open
+the spend UI.** Measured live 2026-09-22 (out-of-band `ReadProcessMemory` poller across a real PBEM
+game start, plus the editor's own Leader Properties): a leader authored at level 8 arrives with
+**44 of 90 points unspent**, `[hero+0x50] == 0`, and no dialog, ever. `ValidateHeroUpgrade
+@0x55787D54` — called from `THero.NewTurn @0x55787FE7` on the owner's turn — fires only on a **lag**:
+
+```
+if (hero.levelCache[+0x4C] < GetLevel())          ; GetLevel derives from XP [+0x48]
+    hero.levelCache = GetLevel()
+    raise THeroUpgradeEventLog(old -> new)        ; this IS the level-up dialog
+    if (player[+0xA7] != 0) ExecuteUpgradeHeroAI  ; AI spends its own
+```
+
+⚠⚠ `THero.SetLevel @0x55787750` writes **both** `[+0x48] = LevelToExperience(level)` and
+`[+0x4C] = level`, so cache `==` GetLevel() from the moment the map loads. Measured: Grozt cache 8 /
+XP 170, and `LevelToExperience(8)` is exactly 170. The points stay stranded until the hero naturally
+earns past the **next** threshold (level 9 at XP 200); everything banked below it is never offered.
+
+**The patch — two sites, one cave.** `SITE 1 0x55786CB3` (10 B) → 10 × `nop`, disarming vanilla's
+day-1 confiscation; both inbound jumps land on the run's boundaries so the whole run is safe to blank.
+`SITE 2 0x55787FE7` (5 B) retargets `call ValidateHeroUpgrade` to the cave — the call-retarget idiom,
+4 displacement bytes, nothing displaced. `C_TURN1 = 0x5584B000`, **46 bytes**, PIC (three rel32
+transfers, no absolute operand, no anchor):
+
+```
+push ebx / mov ebx,eax
+call THero.GetSkillPoints @0x557875C4 / test eax,eax / jle done      ; guard 1
+mov eax,ebx / call THero.GetLevel @0x55787740
+movsx eax,al / movzx edx,byte [ebx+0x4C] / cmp eax,edx / jl done     ; guard 2
+cmp dl,1 / jbe done                                                  ; guard 3
+dec byte [ebx+0x4C]
+done: mov eax,ebx / pop ebx / jmp THero.ValidateHeroUpgrade @0x55787D54
+```
+
+EDX/ECX are clobbered, which is safe: the call site sets only EAX (`mov eax,esi @0x55787FE5`) and
+`ValidateHeroUpgrade` overwrites its third argument before reading it.
+
+⚠⚠ **Guard 2 is the load-bearing one and its absence is silent.** `[hero+0x4C]` is tag `0x16` and is
+**persisted**. If the cache were ever above the XP-derived level, the decrement would not be undone —
+a permanent 10-point budget loss written into the save. Guard 1 makes the behaviour self-limiting
+(once spent, it stops firing) and means a hero who **declines** is offered again next turn, by design.
+Guard 3 floors the cache at 1, because this write bypasses `SetLevel`'s clamp.
+
+**Scope**: every hero, every turn, on its owner's turn — map-placed, recruited, or levelled in play.
+AI-owned included; `ExecuteUpgradeHeroAI` spends for them.
+
+#### ⚠⚠ v1 hooked `THero.NewDay`'s day-1 block and NEVER FIRED — and every static check passed
+
+The obvious home for this is the confiscation block itself, gated on `map[+0x174] == 1`. It verified
+clean, disassembled correctly, round-tripped `--undo`, and did nothing. The poller showed the map
+loading with `map[+0x174] == 1`, every leader at `[+0x50] == 0`, and — at the sample immediately
+before `ValidateHeroUpgrade` ran (XP still exactly 170, i.e. pre-award) — the cache already reading
+**8, not 7**. All three guards passed on those values. `TPlayerControl.NewDay+0x27 @0x55754DCB` is
+the only incrementer of the counter and `TAoWHSMap.Create+0x32E` the only other writer, so the gate
+value was right; whatever dispatches per-unit `NewDay` simply does not reach heroes on the first day.
+Not chased further — `NewTurn` is provably on the path (the same poller watched its XP award move
+Grozt 170 → 172 and the other three leaders 45 → 47).
+
+⭐⭐ **Three static guards all passing is not evidence the code ran. Only an execution trace is.**
+This is the same lesson as the dead-VMT-slot gate in `02-abilities-modded.md`, reached a different
+way, and it cost a full build-and-test cycle. ⭐ The instrument that settled it needs no debugger:
+`re_tools/live_ui.py`'s `Mem` class plus a `Module32First` walk gives the runtime base of
+`AoWEPACK.dpl`, after which any global or object field is readable from a running game — including
+verifying that the **loaded** image carries the patched bytes.
+
+**In-game checklist:**
+1. **Launch `AoWz.exe` and reach the main menu** — proves the DLL still loads.
+2. Start a game on a map whose leader was authored above level 1 with points unspent (the editor's
+   Leader Properties shows the count, e.g. "Skill Points 44/90").
+3. On that leader's **first turn** the level-up dialog must appear, offering the full unspent count.
+4. Assign them; confirm the stats stick and the hero card reads the authored level, **not** one lower.
+   One low means `ValidateHeroUpgrade` did not restore the cache and guard 2's premise is wrong.
+5. **Decline** the dialog on another hero: it must be offered again next turn, and the points must
+   still be there.
+6. Spend everything on a third hero: the prompt must **stop** appearing.
+7. A hero with 0 unspent points must never be prompted; a level-1 hero must never be prompted.
+8. Save and reload; the level and the remaining points must survive.
+9. Watch an **AI** leader — it should arrive already upgraded rather than sitting on unspent points.
 
 #### `User/Ziggurat Heroes.ahl` — the hero library format
 

@@ -1,135 +1,119 @@
 #!/usr/bin/env python3
 r"""
-AoW1 mod -- "turn1upgrade": map-placed heroes KEEP their unspent skill points and
-get a level-up prompt on their owner's first turn.
+AoW1 mod -- "turn1upgrade": a hero holding unspent skill points is OFFERED them.
 
 FULL ANALYSIS: Modding Resources/Zig notes/01-combat-maths.md  section 5,
                "Hero skill points -- the budget, the price list, and the hero library"
 
 ================================================================================
-THE PROBLEM
+THE PROBLEM, AS MEASURED (2026-09-22, live process + PBEM saves)
 ================================================================================
-Set a leader to level 5 in the editor and it arrives in game with 60 unspent
-skill points (5*10+10, THero.GetSkillPoints @0x557875C4).  The player never gets
-to spend them: at the next level-up the dialog offers 10, not 70.
+Set a leader to level 8 in the editor and it arrives in game with 44 of its 90
+skill points unspent -- and NOTHING WILL EVER OFFER THEM.  The editor agrees the
+points exist ("Skill Points 44/90" in Leader Properties); the game simply has no
+path that opens the spend UI.
 
-Vanilla confiscates them on day 1.  THero.NewDay @0x55786C3C:
-
-    55786C4B  cmp dword ptr [map+0x174], 1     ; +0x174 is the DAY COUNTER -> day 1 only
-    ...
-    55786CB3  mov  eax, ebx
-    55786CB5  call THero.GetSkillPoints
-    55786CBA  mov  dword ptr [ebx+0x50], eax   ; <-- the confiscation
-
-[hero+0x50] is a permanent write-off that GetSkillPoints subtracts.  The write is
-self-referential -- writeoff' := (budget - used) - writeoff -- so the points still
-spendable after day 1 are EXACTLY the value the map stored in tag 0x27, whatever
-the hero's level.  The editor never writes that tag, so it is 0, so they all go.
-0x55786CBA is the only writer of [hero+0x50] in the module.
-
-Two vanilla exemptions exist and a PBEM game misses both:
-  * engine[+0x70] != 0 (a CAMPAIGN is loaded) AND player[+0xA7] == 0 (human owner)
-  * map[+0x149] != 0 (the "Customize leaders" setup checkbox) AND IsClass(TLeader)
-The checkbox is hard-disabled by the setup form in play-by-email -- AoWz.exe
-@0x00410D44 `cmp byte ptr [settings+0x3C], 2`, where session mode 2 is PBEM
-(TAoWHSMap.SetupPlayerControl @0x55777F1C builds TPBEMPlayerControl for it).
-
-================================================================================
-WHY PRESERVING THE POINTS IS NOT ENOUGH ON ITS OWN
-================================================================================
-Nothing opens the spend UI just because a hero has points.  The prompt comes from
-THero.ValidateHeroUpgrade @0x55787D54, called by THero.NewTurn @0x55787FE7 on the
-owner's turn, and its condition is a LAG, not an event:
+The level-up dialog is raised by THero.ValidateHeroUpgrade @0x55787D54, called
+from THero.NewTurn @0x55787FE7 on the owner's turn.  Its trigger is a LAG, not an
+event:
 
     if (hero.levelCache[+0x4C] < GetLevel())          ; GetLevel derives from XP [+0x48]
         hero.levelCache = GetLevel()
         raise THeroUpgradeEventLog(old -> new)        ; this IS the level-up dialog
         if (player[+0xA7] != 0) ExecuteUpgradeHeroAI  ; AI spends its own
 
-So the trigger is free: knock the cached level one below the XP-derived level and
-the next NewTurn raises the dialog, restores the cache, and GetSkillPoints then
-reports the full untaxed budget.
+⚠⚠ A level SET in the editor can never satisfy that condition.  THero.SetLevel
+@0x55787750 writes BOTH `[+0x48] = LevelToExperience(level)` and `[+0x4C] = level`,
+so cache == GetLevel() from the moment the map loads.  Measured live: Grozt at
+cache 8 / XP 170, where LevelToExperience(8) is exactly 170.  The points stay
+stranded until the hero naturally earns past the NEXT threshold -- level 9 at
+XP 200 -- and everything banked below that is simply never offered.
+
+So the fix is to create the lag artificially whenever a hero has points to spend.
 
 ================================================================================
-WHAT THIS PATCH DOES
+WHY THE HOOK IS IN NewTurn AND NOT NewDay  (v1 was wrong -- corrected 2026-09-22)
 ================================================================================
-Replace the 10-byte confiscation block in THero.NewDay's day-1 branch with a call
-to a cave that, instead of writing off the points:
+v1 put the decrement in the day-1 branch of THero.NewDay @0x55786C3C, replacing
+vanilla's skill-point confiscation there:
 
-    * leaves [hero+0x50] alone            -> unspent points survive
-    * decrements [hero+0x4C] by one       -> turn-1 level-up prompt
+    55786C4B  cmp dword ptr [map+0x174], 1     ; the DAY COUNTER -> day 1 only
+    55786CBA  mov dword ptr [ebx+0x50], eax    ; bank the unspent pool as a write-off
 
-Both inbound jumps land on the block's boundaries and never inside it
-(`je 0x55786CB3` from 0x55786CA0, `jne 0x55786CBD` from 0x55786CB1), so the run is
-safe to rewrite whole.  Nothing is displaced: 10 bytes in, 10 bytes out.
+**It never fired.**  Measured with an out-of-band ReadProcessMemory poller across a
+real PBEM game start: map loaded with `map[+0x174] == 1`, every leader read
+`[+0x50] == 0`, and at the sample immediately before ValidateHeroUpgrade ran (XP
+still exactly 170, i.e. pre-award) Grozt's cache already read 8, not 7.  All three
+guards passed on those values, so the block itself did not execute for heroes at
+game start.  `TPlayerControl.NewDay+0x27 @0x55754DCB` is the only incrementer of
+the counter and `TAoWHSMap.Create+0x32E` the only other writer, so the gate value
+is right -- but whatever dispatches per-unit NewDay does not reach heroes on the
+first day.  Not chased further: NewTurn is provably on the path, so use it.
 
-SCOPE.  The block runs for every hero alive on day 1 -- i.e. exactly the ones the
-map placed -- and not for later recruits, because the host is gated on day == 1.
-Leaders and pre-placed non-leader heroes are both covered (owner ruling
-2026-09-22).  If "Customize leaders" is ever ON, leaders skip the block entirely
-via the IsClass(TLeader) branch that already sits above it, and behave as vanilla.
+NewTurn IS proven live: the same poller watched XP move 170 -> 172 for Grozt and
+45 -> 47 for the other three leaders on turn 1, and that award is emitted by
+ValidateHeroUpgrade itself.
 
-================================================================================
-THE THREE GUARDS IN THE CAVE, AND WHY EACH IS LOAD-BEARING
-================================================================================
-1. GetSkillPoints() > 0.  Without it, a level-5 hero whose points were already
-   spent in the editor gets an empty level-up dialog on turn 1.  (Owner ruling
-   2026-09-22: suppress it.  This guard is the whole reason the feature needs a
-   cave -- the test is 14 bytes and only 10 are available in place.)
-
-2. GetLevel() >= levelCache.  ⚠ THE DANGEROUS ONE.  [hero+0x4C] is tag 0x16 and
-   is PERSISTED.  If the cache were ever above the XP-derived level, decrementing
-   it would not be undone by ValidateHeroUpgrade -- the hero would silently lose
-   10 points of budget for the rest of the game, in the save file.  With this
-   guard the decrement is only ever taken when the restore is guaranteed to fire.
-
-3. levelCache >= 2.  Keeps the floor at 1; level 0 is not a reachable state
-   anywhere else in the engine and SetLevel clamps to 1, but this cave writes the
-   field directly and bypasses that clamp.
+⭐ GENERALISABLE: three static guards all passing is not evidence the code ran.
+Only an execution trace is.  This cost a full build-and-test cycle.
 
 ================================================================================
-CAVE
+WHAT THIS PATCH DOES -- two sites, one cave
 ================================================================================
-C_TURN1 = 0x5584B000 in CODE, one cave, 40 bytes in an 0x80 span.
-  entry: EAX = hero      exit: nothing (EAX/EDX/ECX clobbered, EBX preserved)
+SITE 1  0x55786CB3, 10 bytes -> 10x nop.  Removes vanilla's day-1 confiscation
+        so an unspent pool survives if that block ever does execute.  Both inbound
+        jumps land on the run's boundaries (`je 0x55786CB3` from 0x55786CA0,
+        `jne 0x55786CBD` from 0x55786CB1), so the whole run is safe to blank.
+        ⚠ Kept even though the block was not observed to run: it is vanilla's only
+        writer of [hero+0x50] in the module, and leaving it armed would let a
+        confiscation land on any path that does reach it.
+
+SITE 2  0x55787FE7, 5 bytes.  `call ValidateHeroUpgrade` retargeted to the cave --
+        the call-retarget idiom: 4 displacement bytes change, nothing is displaced,
+        and --undo is the original rel32.  The cave tail-jumps to the real
+        ValidateHeroUpgrade, so its semantics are untouched.
+
+C_TURN1 = 0x5584B000, PIC (three rel32 transfers, no absolute operand, no anchor).
+  entry: EAX = hero, as ValidateHeroUpgrade expects.
 
     push ebx / mov ebx,eax
-    call THero.GetSkillPoints        ; rel32
-    test eax,eax / jle done          ; guard 1
-    mov eax,ebx / call THero.GetLevel
-    movsx eax,al / movzx edx,byte [ebx+0x4C]
-    cmp eax,edx / jl done            ; guard 2
-    cmp dl,1 / jbe done              ; guard 3
+    call THero.GetSkillPoints @0x557875C4 / test eax,eax / jle done      ; guard 1
+    mov eax,ebx / call THero.GetLevel @0x55787740
+    movsx eax,al / movzx edx,byte [ebx+0x4C] / cmp eax,edx / jl done     ; guard 2
+    cmp dl,1 / jbe done                                                  ; guard 3
     dec byte [ebx+0x4C]
-  done: pop ebx / ret
+  done: mov eax,ebx / pop ebx / jmp THero.ValidateHeroUpgrade @0x55787D54
 
-The host keeps the hero in EBX and does `mov eax,ebx; call UpdateSettings`
-immediately after the block, so EAX/EDX/ECX are dead across the call and EBX is
-the only register that must survive.  Both callees preserve EBX themselves; the
-cave saves it anyway because it holds the hero across two calls.
+ValidateHeroUpgrade then sees cache < GetLevel(), raises the dialog, and restores
+the cache in the same call.  EDX/ECX are clobbered, which is safe: the call site
+sets only EAX (`mov eax,esi` at 0x55787FE5) and ValidateHeroUpgrade overwrites its
+third argument before reading it.
 
-POSITION-INDEPENDENT: both calls are rel32 and there is no absolute memory
-reference, so no call/pop rebase anchor is needed.  Asserted in build_caves().
+================================================================================
+THE THREE GUARDS, AND WHY EACH IS LOAD-BEARING
+================================================================================
+1. GetSkillPoints() > 0.  The whole point: offer only when there is something to
+   assign.  It is also what makes the behaviour self-limiting -- once the player
+   spends, the guard stops firing.  ⚠ A hero who DECLINES the dialog is offered it
+   again next turn, by design: the alternative is stranding the points again.
+2. GetLevel() >= levelCache.  ⚠⚠ THE DANGEROUS ONE.  [hero+0x4C] is tag 0x16 and
+   is PERSISTED.  If the cache were ever above the XP-derived level, decrementing
+   it would not be undone -- a permanent 10-point budget loss written into the
+   save.  This guard makes the restore certain.
+3. levelCache >= 2.  Floors the cache at 1; this write bypasses SetLevel's clamp.
 
-Allocation: the high-water mark across build_scripts/ in the CODE cave run is
-0x5584A3FF (build_item_hpmv / neighbours); 0x55850000 appears only as the upper
-bound of build_minddecay_oos.py's .reloc scan, not as a claim.  0x5584B000 sits
-above everything and inside a verified 0x9CA10-byte zero run.
+SCOPE.  Every hero, every turn, on its owner's turn -- map-placed, recruited or
+levelled in play.  AI-owned heroes included; ExecuteUpgradeHeroAI spends for them.
 
-RNG    -- the cave makes no draw of any kind, and references neither generator.
-          Re-run re_tools/rng_audit.py --owners after --apply anyway (standing rule);
-          this is not a P4 site, so --hash is not needed.
+RNG    -- no draw of any kind, neither generator referenced.  Re-run
+          re_tools/rng_audit.py --owners after --apply (standing rule); not a P4
+          site, so --hash is not needed.
 MP     -- deterministic: two pure reads and one byte decrement, no clock, no RNG,
-          identical on every peer. [hero+0x4C] and [hero+0x50] are both already
+          identical on every peer.  [hero+0x4C] and [hero+0x50] are both already
           streamed (THero.ReadWrite tags 0x16 and 0x27), so the save format does
-          not move.  ⚠ Standing project rule still applies: no mixed modded /
-          unmodded multiplayer.
-BINARY -- AoWEPACK.dpl only.  THero.NewDay lives nowhere else, so there is no
-          AoWz.exe / AoWzCompat.exe lockstep half to keep.
-SAVES  -- affects NEW games only.  A save whose day 1 already passed under an
-          unpatched DLL has the write-off baked into tag 0x27; this patch does not
-          and deliberately should not clear it, because a non-zero tag 0x27 is
-          also the legitimate way a map author hands a hero a partial pool.
+          not move.  ⚠ Standing rule: no mixed modded / unmodded multiplayer.
+BINARY -- AoWEPACK.dpl only.  THero.NewTurn and THero.NewDay live nowhere else, so
+          there is no AoWz.exe / AoWzCompat.exe lockstep half.
 
 USAGE
     python build_scripts/build_hero_turn1_upgrade.py            # verify only
@@ -152,11 +136,15 @@ DLL = os.path.join(GAME, "AoWEPACK.dpl")
 BACKUP = os.path.join(BACKUP_DIR, os.path.basename(DLL) + ".pre-turn1upgrade")
 
 # ---------------------------------------------------------------- addresses ---
-HOOK          = 0x55786CB3      # THero.NewDay day-1 branch: the confiscation block
-HOOK_LEN      = 0x0A            # .. 0x55786CBC inclusive; 0x55786CBD is a jump target
+SITE_NEWDAY   = 0x55786CB3      # THero.NewDay day-1 confiscation block, 10 bytes
+NEWDAY_LEN    = 0x0A            # .. 0x55786CBC; 0x55786CBD is a jump target
 
-F_SKILLPOINTS = 0x557875C4      # AoWE.THero.GetSkillPoints   EAX=hero -> EAX=points
-F_GETLEVEL    = 0x55787740      # AoWE.THero.GetLevel         EAX=hero -> AL=level from XP
+SITE_NEWTURN  = 0x55787FE7      # THero.NewTurn: call ValidateHeroUpgrade, 5 bytes
+NEWTURN_LEN   = 0x05
+
+F_SKILLPOINTS = 0x557875C4      # AoWE.THero.GetSkillPoints        EAX=hero -> EAX=points
+F_GETLEVEL    = 0x55787740      # AoWE.THero.GetLevel              EAX=hero -> AL=level from XP
+F_VALIDATE    = 0x55787D54      # AoWE.THero.ValidateHeroUpgrade   EAX=hero
 
 OFF_LEVEL     = 0x4C            # THero level cache, 1 byte, streamed as tag 0x16
 OFF_WRITEOFF  = 0x50            # THero skill-point write-off, streamed as tag 0x27
@@ -168,20 +156,35 @@ CAVE_END  = 0x5584B080          # asserted zero-or-ours across this whole span
 _BASE = None                    # VA = file_offset + _BASE, resolved from the PE
 
 
-def orig_bytes():
+def rel32(frm_end, to):
+    return struct.pack("<i", to - frm_end)
+
+
+def orig_newday():
     """The 10-byte vanilla confiscation run, rebuilt rather than hard-coded."""
-    call_rel = F_SKILLPOINTS - (HOOK + 2 + 5)
-    return (bytes.fromhex("8bc3")                       # mov eax, ebx
-            + b"\xE8" + struct.pack("<i", call_rel)     # call THero.GetSkillPoints
-            + b"\x89\x43" + bytes([OFF_WRITEOFF]))      # mov [ebx+0x50], eax
+    return (bytes.fromhex("8bc3")                              # mov eax, ebx
+            + b"\xE8" + rel32(SITE_NEWDAY + 2 + 5, F_SKILLPOINTS)
+            + b"\x89\x43" + bytes([OFF_WRITEOFF]))             # mov [ebx+0x50], eax
 
 
-def patched_bytes():
-    """mov eax,ebx / call C_TURN1 / 3 nops -- same 10 bytes, nothing displaced."""
-    rel = C_TURN1 - (HOOK + 2 + 5)
-    p = bytes.fromhex("8bc3") + b"\xE8" + struct.pack("<i", rel) + b"\x90" * 3
-    assert len(p) == HOOK_LEN == len(orig_bytes())
-    return p
+def patched_newday():
+    return b"\x90" * NEWDAY_LEN
+
+
+def orig_newturn():
+    return b"\xE8" + rel32(SITE_NEWTURN + 5, F_VALIDATE)
+
+
+def patched_newturn():
+    return b"\xE8" + rel32(SITE_NEWTURN + 5, C_TURN1)
+
+
+SITES = {
+    SITE_NEWDAY:  (orig_newday,  patched_newday,  NEWDAY_LEN,
+                   "THero.NewDay day-1 confiscation block -> nops"),
+    SITE_NEWTURN: (orig_newturn, patched_newturn, NEWTURN_LEN,
+                   "THero.NewTurn: call ValidateHeroUpgrade -> C_TURN1"),
+}
 
 
 def off(va):
@@ -205,8 +208,8 @@ def resolve_base(d):
             continue
         lo, hi = image_base + va, image_base + va + vsz
         _BASE = lo - ro
-        for a in (HOOK, HOOK + HOOK_LEN - 1, F_SKILLPOINTS, F_GETLEVEL,
-                  CAVE_BASE, CAVE_END - 1):
+        for a in (SITE_NEWDAY, SITE_NEWDAY + NEWDAY_LEN - 1, SITE_NEWTURN,
+                  F_SKILLPOINTS, F_GETLEVEL, F_VALIDATE, CAVE_BASE, CAVE_END - 1):
             if not lo <= a < hi:
                 sys.exit("ABORT: 0x%08X is outside CODE (0x%08X..0x%08X)" % (a, lo, hi))
         return
@@ -216,7 +219,7 @@ def resolve_base(d):
 def check_reloc(d):
     """⚠ A stale .reloc entry corrupts live code at every load and is invisible to
     every other static check (aow1-stale-reloc-corrupts-code).  Nothing here is
-    displaced, but a pre-existing entry pointing INTO the rewritten run or into the
+    displaced, but a pre-existing entry pointing INTO a rewritten run or into the
     cave span would relocate bytes we own.  Assert there are none."""
     pe = struct.unpack_from("<I", d, 0x3C)[0]
     opt = struct.unpack_from("<H", d, pe + 20)[0]
@@ -234,6 +237,8 @@ def check_reloc(d):
             break
     if foff is None:
         return
+    owned = [(SITE_NEWDAY, NEWDAY_LEN), (SITE_NEWTURN, NEWTURN_LEN),
+             (CAVE_BASE, CAVE_END - CAVE_BASE)]
     bad, end, p = [], foff + size, foff
     while p < end - 8:
         page, blk = struct.unpack_from("<II", d, p)
@@ -243,9 +248,9 @@ def check_reloc(d):
             e = struct.unpack_from("<H", d, q)[0]
             if e >> 12 == 0:
                 continue
-            target = image_base + page + (e & 0xFFF)
-            if (HOOK <= target < HOOK + HOOK_LEN) or (CAVE_BASE <= target < CAVE_END):
-                bad.append(target)
+            t = image_base + page + (e & 0xFFF)
+            if any(a <= t < a + n for a, n in owned):
+                bad.append(t)
         p += blk
     if bad:
         sys.exit("ABORT: .reloc entries point into bytes this patch owns: %s"
@@ -311,15 +316,17 @@ def build_caves():
         (None,   "cmp dl, 1"),
         (None,   "jbe {DONE}"),
         (None,   "dec byte ptr [ebx + %s]" % hex(OFF_LEVEL)),
-        ("DONE", "pop ebx"),
-        (None,   "ret"),
+        # tail-call the real thing with EAX = hero, exactly as the call site had it
+        ("DONE", "mov eax, ebx"),
+        (None,   "pop ebx"),
+        (None,   "jmp %s" % hex(F_VALIDATE)),
     ], C_TURN1)
     if len(blob) > CAVE_END - CAVE_BASE:
         raise RuntimeError("cave is %d bytes, the span is %d"
                            % (len(blob), CAVE_END - CAVE_BASE))
     # position-independence: the .dpl never loads at its preferred base, so no
-    # absolute memory reference may appear. Both calls are rel32; assert no dword
-    # in the blob looks like an image VA.
+    # absolute memory reference may appear. Every transfer is rel32; assert no
+    # dword in the blob looks like an image VA.
     for i in range(len(blob) - 3):
         w = struct.unpack_from("<I", blob, i)[0]
         if 0x55700000 <= w < 0x55A00000:
@@ -343,9 +350,7 @@ def kill_game():
     """Standing authorization: the game/editor lock the binaries. Just kill them.
     ⚠ Match with ^...$ -- a bare -match also catches AowEmailWrapper, which does
     not lock anything and must be left alone."""
-    # ⚠ SCRATCH GUARD: AOW_GAME_DIR set => we are NOT writing to the real install,
-    # so we must NOT kill the user's running game.
-    if os.environ.get("AOW_GAME_DIR"):
+    if os.environ.get("AOW_GAME_DIR"):      # scratch guard: not the real install
         return
     subprocess.run(
         ["powershell", "-NoProfile", "-Command",
@@ -356,11 +361,11 @@ def kill_game():
 
 
 def state(d, caves):
-    """-> 'vanilla' | 'applied' | 'mixed'"""
-    orig, patch = orig_bytes(), patched_bytes()
-    cur = bytes(d[off(HOOK):off(HOOK) + HOOK_LEN])
-    applied = [cur == patch]
-    vanilla = [cur == orig]
+    applied, vanilla = [], []
+    for va, (orig_fn, patch_fn, n, _desc) in SITES.items():
+        cur = bytes(d[off(va):off(va) + n])
+        applied.append(cur == patch_fn())
+        vanilla.append(cur == orig_fn())
     for va, blob in caves.items():
         c = bytes(d[off(va):off(va) + len(blob)])
         applied.append(c == blob)
@@ -373,19 +378,19 @@ def state(d, caves):
 
 
 def show(d, caves):
-    orig, patch = orig_bytes(), patched_bytes()
-    cur = bytes(d[off(HOOK):off(HOOK) + HOOK_LEN])
-    tag = "PATCHED" if cur == patch else ("vanilla" if cur == orig
-                                          else "*** FOREIGN ***")
     print("AoWEPACK.dpl  %s" % DLL)
-    print("  map-placed heroes keep unspent skill points + get a turn-1 level-up prompt")
-    print("  hook 0x%08X  %-8s  %d bytes  THero.NewDay day-1 confiscation block"
-          % (HOOK, tag, HOOK_LEN))
-    print("       now: %s" % cur.hex())
+    print("  a hero holding unspent skill points is offered them on its owner's turn")
+    for va in sorted(SITES):
+        orig_fn, patch_fn, n, desc = SITES[va]
+        cur = bytes(d[off(va):off(va) + n])
+        tag = ("PATCHED" if cur == patch_fn() else
+               "vanilla" if cur == orig_fn() else "*** FOREIGN ***")
+        print("  site 0x%08X  %-8s  %2d B  %s" % (va, tag, n, desc))
+        print("       now: %s" % cur.hex())
     for va, blob in sorted(caves.items()):
         c = bytes(d[off(va):off(va) + len(blob)])
-        t = "PATCHED" if c == blob else ("zero" if c == bytes(len(blob))
-                                         else "*** FOREIGN ***")
+        t = ("PATCHED" if c == blob else
+             "zero" if c == bytes(len(blob)) else "*** FOREIGN ***")
         print("  cave 0x%08X  %-8s  %d bytes" % (va, t, len(blob)))
     print("  state: %s" % state(d, caves).upper())
 
@@ -396,24 +401,27 @@ def disassemble(caves):
     except ImportError:
         sys.exit("capstone not installed:  pip install capstone")
     md = Cs(CS_ARCH_X86, CS_MODE_32)
-    names = {F_SKILLPOINTS: "THero.GetSkillPoints", F_GETLEVEL: "THero.GetLevel"}
+    names = {F_SKILLPOINTS: "THero.GetSkillPoints", F_GETLEVEL: "THero.GetLevel",
+             F_VALIDATE: "THero.ValidateHeroUpgrade"}
     for va, blob in sorted(caves.items()):
-        print("\n---- 0x%08X  C_TURN1  (keep the points, lag the level cache)" % va)
+        print("\n---- 0x%08X  C_TURN1  (lag the cache when points are unspent)" % va)
         for i in md.disasm(bytes(blob), va):
             note = ""
-            if i.mnemonic == "call":
+            if i.mnemonic in ("call", "jmp"):
                 try:
                     note = "  ; " + names.get(int(i.op_str, 16), "")
                 except ValueError:
                     pass
             print("  %08X  %-22s %s %s%s" % (i.address, i.bytes.hex(), i.mnemonic,
                                              i.op_str, note.rstrip()))
-    print("\n---- hook site, vanilla -> patched")
-    for label, run in (("vanilla", orig_bytes()), ("patched", patched_bytes())):
-        print("  %s  %s" % (label, run.hex()))
-        for i in md.disasm(run, HOOK):
-            print("    %08X  %-22s %s %s" % (i.address, i.bytes.hex(), i.mnemonic,
-                                             i.op_str))
+    for va in sorted(SITES):
+        orig_fn, patch_fn, _n, desc = SITES[va]
+        print("\n---- site 0x%08X  %s" % (va, desc))
+        for label, run in (("vanilla", orig_fn()), ("patched", patch_fn())):
+            print("  %s  %s" % (label, run.hex()))
+            for i in md.disasm(run, va):
+                print("    %08X  %-22s %s %s" % (i.address, i.bytes.hex(),
+                                                 i.mnemonic, i.op_str))
 
 
 def check_space(d, caves):
@@ -437,10 +445,11 @@ def do_apply(d, caves):
         sys.exit("ABORT: partially applied / foreign bytes present. Run --undo first.")
     check_reloc(d)
     check_space(d, caves)
-    orig = orig_bytes()
-    cur = bytes(d[off(HOOK):off(HOOK) + HOOK_LEN])
-    if cur != orig:
-        sys.exit("ABORT: 0x%08X is %s, expected %s" % (HOOK, cur.hex(), orig.hex()))
+    for va, (orig_fn, _p, n, _desc) in SITES.items():
+        cur = bytes(d[off(va):off(va) + n])
+        if cur != orig_fn():
+            sys.exit("ABORT: 0x%08X is %s, expected %s"
+                     % (va, cur.hex(), orig_fn().hex()))
 
     kill_game()
     if not os.path.exists(BACKUP):          # ⚠ minted on --apply ONLY
@@ -451,10 +460,11 @@ def do_apply(d, caves):
 
     for va, blob in caves.items():
         d[off(va):off(va) + len(blob)] = blob
-    d[off(HOOK):off(HOOK) + HOOK_LEN] = patched_bytes()
+    for va, (_o, patch_fn, n, _desc) in SITES.items():
+        d[off(va):off(va) + n] = patch_fn()
     with open(DLL, "wb") as f:
         f.write(d)
-    print("APPLIED: 1 cave, 1 site.")
+    print("APPLIED: 1 cave, %d sites." % len(SITES))
 
 
 def do_undo(d, caves):
@@ -462,22 +472,23 @@ def do_undo(d, caves):
     if st == "vanilla":
         print("not applied -- nothing to undo.")
         return
-    orig, patch = orig_bytes(), patched_bytes()
-    cur = bytes(d[off(HOOK):off(HOOK) + HOOK_LEN])
-    if cur not in (orig, patch):
-        sys.exit("ABORT: 0x%08X is foreign (%s)" % (HOOK, cur.hex()))
+    for va, (orig_fn, patch_fn, n, _desc) in SITES.items():
+        cur = bytes(d[off(va):off(va) + n])
+        if cur not in (orig_fn(), patch_fn()):
+            sys.exit("ABORT: 0x%08X is foreign (%s)" % (va, cur.hex()))
     for va, blob in caves.items():
         c = bytes(d[off(va):off(va) + len(blob)])
         if c not in (blob, bytes(len(blob))):
             sys.exit("ABORT: cave 0x%08X is foreign" % va)
 
     kill_game()
-    d[off(HOOK):off(HOOK) + HOOK_LEN] = orig
+    for va, (orig_fn, _p, n, _desc) in SITES.items():
+        d[off(va):off(va) + n] = orig_fn()
     for va, blob in caves.items():
         d[off(va):off(va) + len(blob)] = bytes(len(blob))
     with open(DLL, "wb") as f:
         f.write(d)
-    print("UNDONE: hook restored, cave zeroed. No backup touched.")
+    print("UNDONE: %d sites restored, cave zeroed. No backup touched." % len(SITES))
 
 
 def main():

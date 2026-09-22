@@ -94,18 +94,18 @@ Everything below is written to a live binary and statically verified. **Nobody h
 file carries the specific checklist for its own rows.
 
 ### Combat maths — `01-combat-maths.md`
-- **Map-placed heroes keep their unspent skill points and get a turn-1 level-up prompt**
-  (`build_hero_turn1_upgrade.py`) — 🔨 APPLIED, UNTESTED (2026-09-22). Vanilla confiscates them on
-  day 1: `THero.NewDay @0x55786CBA` banks the whole pool into the write-off `[hero+0x50]` (tag
-  `0x27`), so a level-5 editor leader offers 10 points at level 6, not 70. ⚠ Both vanilla exemptions
-  miss a PBEM game — the campaign+human one needs a campaign, and the "Customize leaders" one is
-  **hard-disabled by the setup form in PBEM** (`AoWz.exe @0x00410D44`, session mode 2). The patch
-  rewrites the 10-byte block in place to call `C_TURN1 0x5584B000` (40 B, PIC), which leaves the
-  write-off alone and decrements the level cache `[hero+0x4C]` so `ValidateHeroUpgrade
-  @0x55787D54` — whose trigger is a **lag, not an event** — raises the dialog on the owner's first
-  turn. ⚠⚠ The cache is **persisted**; the `GetLevel() >= cache` guard is what stops an unrestored
-  decrement writing a permanent 10-point budget loss into the save. §5 of `01-combat-maths.md` holds
-  the mechanism, the three guards and the in-game checklist.
+- **A hero holding unspent skill points is offered them** (`build_hero_turn1_upgrade.py`) —
+  🔨 APPLIED, UNTESTED (2026-09-22, v2). ⭐⭐ The defect is **not** the day-1 confiscation: it is that
+  a level **set** in the editor can never open the spend UI. `THero.SetLevel @0x55787750` writes XP
+  and the level cache together, and `ValidateHeroUpgrade @0x55787D54` fires only on a **lag**
+  (`cache < GetLevel()`), so an authored level-8 leader sits on 44/90 unspent points forever —
+  measured live. v2 retargets `call ValidateHeroUpgrade` at `THero.NewTurn 0x55787FE7` to
+  `C_TURN1 0x5584B000` (46 B, PIC), which creates the lag when `GetSkillPoints() > 0` and tail-calls
+  the original; `0x55786CB3` is nop-ed so vanilla's confiscation stays disarmed. ⚠⚠ The cache is
+  **persisted** — the `GetLevel() >= cache` guard is what stops an unrestored decrement writing a
+  permanent 10-point budget loss into the save. ⚠⚠ **v1 hooked `NewDay`'s day-1 block and never
+  fired**, passing every static check: *three guards passing is not evidence the code ran*. §5 of
+  `01-combat-maths.md` holds the mechanism, the guards, the live-instrument recipe and the checklist.
 - HP ceiling 120 → 100 (four places that must move together) — 2026-08-31
 - Morale re-scale (ATK ±4, RES ±6) — 2026-08-26
 - Map-fire dead-code fix (was ~4× too weak) — 2026-08-26
