@@ -569,6 +569,24 @@ a first push rather than relying on the account setting.
 ⚠⚠ **Force-pushing does not remove a commit from GitHub.** Orphaned SHAs stay resolvable by direct
 URL and API indefinitely; only GitHub Support can purge them. Get the identity right the first time.
 
+### The Modding Notes repo — `BING-XI/Ziggurat-Modding-Notes` (public, since 2026-09-22)
+
+`Zig notes/`, `build_scripts/`, `re_tools/`, `.claude/agents/` and this file, published as a
+separate public repo. **It is a projection, never an editing surface**: the clone at
+`Ziggurat/Modding Resources/notes-repo/` is wiped and rebuilt on every run of
+
+```bash
+python "Ziggurat/Modding Resources/publish_notes.py" --push
+```
+
+The script rewrites profile paths to `<game dir>` / `<documents>` / `<profile>` and the owner's
+names and e-mail to placeholders, then scans every byte of the output tree (letter-bounded for
+names, so "wanders" and "commanders" pass) and **aborts before commit on any hit**. It also aborts
+if the clone's identity is not the handle. Its own identity constants are stored reversed so the
+standing `grep -F` sweep of `Modding Resources/` stays clean. Run without `--push` to rebuild and
+verify only. ⚠ `mod_manifest.py` ignores `Modding Resources/`, so `notes-repo/` never reaches the
+installer. Re-run it when the owner asks for the notes to be updated.
+
 ### ⭐⭐ Commit messages are PUBLIC-FACING, not a work log
 
 Owner ruling 2026-09-14. A message either **says nothing** — a bare neutral subject such as

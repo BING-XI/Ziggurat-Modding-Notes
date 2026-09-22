@@ -61,6 +61,7 @@ whole battle then runs deterministically off the raw stream. A synced draw *insi
 | — morale re-scale (ATK ±4, RES ±6) | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_morale_scale.py` | `AoWEPACK.dpl` |
 | — tactical wall/structure HP unified 40 stone / 10 wood | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_tcpck_damhp.py` | `AoWTCPCK.dpl` |
 | Hero library skill points spent down (589 unspent → 3) | 🔨 APPLIED, UNTESTED (2026-09-08) | `build_heroskill_spend.py` | `User/Ziggurat Heroes.ahl`, `Ziggurat release/User/` — **no binary** |
+| Map-placed heroes keep unspent points + get a turn-1 level-up prompt | 🔨 APPLIED, UNTESTED (2026-09-22) | `build_hero_turn1_upgrade.py` (hook `0x55786CB3`, cave `C_TURN1 0x5584B000`) | `AoWEPACK.dpl` |
 | Excess-ATK → minimum-damage bonus | vanilla mechanism, RE only, no patch | — | `AoWEPACK.dpl` |
 | Strategic map damage (storms/grounds/fire/vortex/quake/poison) | vanilla mechanism; ATK/DAM sides doubled by the two passes above | — | `AoWEPACK.dpl` |
 | Missile trajectory & interception (manual tactical) | vanilla mechanism, RE only, no patch | — | `AoWTCPCK.dpl` |
@@ -891,10 +892,119 @@ runtime:
 ```
 
 gated on `map[+0x174]==1 && (engine[+0x70]==0 || player==null || player[+0xA7]!=0) &&
-(map[+0x149]==0 || !IsClass(hero,TLeader))`. The write is self-referential — `writeoff := budget −
-used − writeoff` alternates with period 2 across successive days — so **measure it live with a
-watchpoint before building anything on it**; the static read is unambiguous but the effect over days
-is not.
+(map[+0x149]==0 || !IsClass(hero,TLeader))`.
+
+⭐ **This is the day-1 confiscation of unspent skill points, and it is vanilla** (NewDay,
+GetSkillPoints and UsedSkillPoints are all byte-identical to the root reference). `map[+0x174]` is
+the **day counter**, so `== 1` means it fires **once, on the first day only** — the write is
+self-referential but never iterates. Since `writeoff' := (budget − used) − writeoff`, the points
+still spendable afterwards are **exactly the value the map stored in tag `0x27`**, independent of
+level: absent tag ⇒ 0 ⇒ every unspent point a map-placed hero started with is gone. `0x55786CBA` is
+the **only** writer of `[hero+0x50]` in the module.
+
+The two exemptions:
+
+| gate | meaning | effect |
+|---|---|---|
+| `engine[+0x70] != 0` **and** `player[+0xA7] == 0` | a **campaign** is loaded (`TAoWEngine.LoadCampaign` writes `+0x70`, `CloseCampaign` clears it) and the hero's owner is a **human** player (`+0xA7` is the player-type enum, 0 = human, 1..7 = AI kinds — `TAIPlayerControl.Activate` switches on it) | skipped entirely |
+| `map[+0x149] != 0` **and** `IsClass(hero,TLeader)` | `+0x149` is the **"Customize leaders"** setup checkbox — `TSetupControl.SetupMap+0x529 @0x557E108D` copies it from `TSetupSettings[+0x2A]` (stream id `0x10`, **default 0**, `TSetupSettings.Reset @0x557DF5A4`) | leaders only |
+
+⚠ So in a non-campaign game (skirmish, hotseat, PBEM, network MP) with "Customize leaders" off —
+the default — **every hero on the map, leaders included, loses its unspent points at the start of
+day 1**. Setting a leader to level 5 in the editor and expecting the 60 points to be spendable at
+the next level-up does not work; the hero gets only the 10 the new level adds. Nothing else reads
+`[hero+0x50]` but `GetSkillPoints` and `GetSkillPointsMax`, and the field is streamed (tag `0x27`,
+dword) so a pre-set value survives in maps and saves.
+
+⚠⚠ **In PBEM the vanilla lever is unreachable.** `AoWz.exe @0x00410D44` `cmp byte ptr
+[TSetupSettings+0x3C], 2` disables the "Customize leaders" checkbox (`0x00410D60`
+`mov byte ptr [ctrl+0xC0], 0`, label greyed to `0x808080`) and restricts the Turns combo to
+"Classic". `+0x3C` is the session mode, written only by `TSetupControl.SetupHost+0x3A @0x557E24EA`
+and copied to `map[+0x13A]`; **2 = play-by-email**, proven by `TAoWHSMap.SetupPlayerControl
+@0x55777F1C`, which builds `TPBEMPlayerControl` for exactly that value. The enabled branch is
+`0x00410DC2`. ⭐ Customising does **not** replace the scenario's leader: `hPickMap @0x557E20C8`
+copies each map player's leader into `TPlayerSetupSettings[+0x1C]` (a real `TLeader` from
+`TPlayerSetupSettings.Create`), the dialog edits that copy, and `SetupMap` copies it back — a round
+trip, skipped when `TSetupSettings[+0x20] != 0`, which `hPickMap` reads from the map header `+0x174`.
+
+### Turn-1 hero upgrade — points kept, prompt raised
+
+**Status: `build_hero_turn1_upgrade.py` — 🔨 APPLIED, UNTESTED (2026-09-22).** `AoWEPACK.dpl` only;
+`THero.NewDay` exists in no other module, so there is no `AoWz.exe`/`AoWzCompat.exe` lockstep half.
+
+The confiscation block above (`0x55786CB3`, **10 bytes**, `8b c3 e8 0a 09 00 00 89 43 50`) is
+replaced in place by `mov eax,ebx / call C_TURN1 / 3× nop`. Both inbound jumps land on its
+boundaries — `je 0x55786CB3` from `0x55786CA0`, `jne 0x55786CBD` from `0x55786CB1` — so the whole run
+is safe to rewrite; nothing is displaced.
+
+⭐ **Preserving the points is not enough on its own — nothing opens the spend UI just because a hero
+has some.** The prompt comes from `THero.ValidateHeroUpgrade @0x55787D54`, called by
+`THero.NewTurn @0x55787FE7` on the owner's turn, and its condition is a **lag, not an event**:
+
+```
+if (hero.levelCache[+0x4C] < GetLevel())          ; GetLevel derives from XP [+0x48]
+    hero.levelCache = GetLevel()
+    raise THeroUpgradeEventLog(old -> new)        ; this IS the level-up dialog
+    if (player[+0xA7] != 0) ExecuteUpgradeHeroAI  ; AI spends its own
+```
+
+So the cave knocks the cache one below the XP-derived level and the next `NewTurn` raises the dialog,
+restores the cache, and `GetSkillPoints` then reports the full untaxed budget.
+
+`C_TURN1 = 0x5584B000`, **40 bytes** in an `0x80` span, PIC (two rel32 calls, no absolute memory
+reference, no rebase anchor needed). EAX = hero in; EBX preserved, EAX/EDX/ECX clobbered — all dead
+at the host, which does `mov eax,ebx / call UpdateSettings` immediately after.
+
+```
+push ebx / mov ebx,eax
+call THero.GetSkillPoints @0x557875C4 / test eax,eax / jle done      ; guard 1
+mov eax,ebx / call THero.GetLevel @0x55787740
+movsx eax,al / movzx edx,byte [ebx+0x4C] / cmp eax,edx / jl done     ; guard 2
+cmp dl,1 / jbe done                                                  ; guard 3
+dec byte [ebx+0x4C]
+done: pop ebx / ret
+```
+
+⚠⚠ **Guard 2 is the load-bearing one and its absence is silent.** `[hero+0x4C]` is tag `0x16` and is
+**persisted**. If the cache were ever above the XP-derived level, the decrement would not be undone by
+`ValidateHeroUpgrade` — the hero would lose 10 points of budget permanently, written into the save.
+Decrement only when the restore is guaranteed to fire. Guard 1 suppresses an empty dialog for a hero
+whose points were already spent in the editor (owner ruling 2026-09-22) and is the **whole reason the
+feature needs a cave**: the test is 14 bytes and only 10 are available in place. Guard 3 floors the
+cache at 1, because this write bypasses `SetLevel`'s clamp.
+
+**Scope**: the host is gated on day 1, so this covers exactly the heroes the map placed — leaders and
+pre-placed non-leader heroes alike (owner ruling 2026-09-22) — and never a later recruit. With
+"Customize leaders" ON, leaders skip the block entirely via the `IsClass` branch above it and behave
+as vanilla. AI-owned heroes get the prompt too and `ExecuteUpgradeHeroAI` spends for them.
+
+**MP**: deterministic — two pure reads and one byte decrement, no clock, no RNG, identical on every
+peer. Both fields are already streamed, so the save format does not move. **Saves**: new games only; a
+save whose day 1 passed under an unpatched DLL has the write-off baked into tag `0x27`, and the patch
+deliberately does not clear it, because a non-zero tag `0x27` is also the legitimate way a map author
+hands a hero a partial pool.
+
+Verified without the game: cave disassembles as designed, hook verified vanilla before write,
+`--undo` round-trip byte-identical to the pristine root over both the 10-byte run and the full `0x80`
+cave span, re-`--apply` idempotent, `.reloc` has no entry pointing into either region,
+`build_relocfix.py --audit` total 0, `rng_audit.py --owners` unchanged at 24 modded sites (the cave
+makes no draw and references neither generator, so it is correctly invisible).
+
+**In-game checklist:**
+1. **Launch `AoWz.exe` and reach the main menu** — the cave runs from `NewDay`, not package init, so
+   this only proves the DLL still loads.
+2. Editor: place a leader at **level 5** and a non-leader hero at **level 3**, save the map.
+3. Start a **PBEM** game on it. On turn 1 both should raise the level-up dialog, the leader offering
+   **60** points and the hero **40**. Assign them and confirm the stats stick.
+4. Confirm the hero card then reads level 5 / level 3 — not 4 / 2. If it reads one low,
+   `ValidateHeroUpgrade` did not restore the cache and guard 2's premise is wrong.
+5. Place a level-5 leader whose points are **fully spent** in the editor — it must get **no** prompt.
+6. A level-1 hero must get no prompt.
+7. Save and reload mid-game, then start a second day: **no second prompt**, and the points already
+   assigned stay assigned.
+8. Run the same map as a **hotseat/skirmish** game — same behaviour, since the gate is day 1 and not
+   the session mode.
+9. Watch an **AI** leader: it should arrive already upgraded rather than sitting on unspent points.
 
 **Price list** — `THero.UsedSkillPoints @0x55786CC8`, each price bound to its field:
 
