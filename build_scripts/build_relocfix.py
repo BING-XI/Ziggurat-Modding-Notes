@@ -121,8 +121,10 @@ EXE_ENTRIES = [
 ]
 TABLE = {
     "AoWEPACK.dpl": [
-        (0x07CC75, 0x27F3E2, "build_tierresearch_dll.py e9 @0x5577CC72 over "
-                             "`mov eax,[0x558FC958]` -- hits two dead nops"),
+        (0x07CC75, 0x27F3E2, "build_tierresearch_dll.py hook @0x5577CC72 over "
+                             "`mov eax,[0x558FC958]` (e8 since v2) -- a 64 KB-aligned delta "
+                             "moves only 0x5577CC77/78, two nops LIVE since v2 (the rel32 is "
+                             "untouched)"),
         (0x0807FB, 0x27F5C4, "ExecuteStormDamage Death/Divine dispatch rewrite -- "
                              "THE DEATH-ALTAR CRASH.  No owning build script."),
         (0x082B77, 0x27F6E4, "build_medal_hpmv.py shrank TUnit.GetHits -- hits inter-function "

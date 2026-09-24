@@ -101,7 +101,7 @@ Cosmos has none.
 |---|---|---|---|
 | `cave_grant` | `0x5580ED80` (136 B) | `call` @**`0x5577CDC4`** (NewTurn completion site only) | runs `ExecuteSpellResearched`, then grants every registry spell with the same sphere+tier word (`+0x20`/`+0x21`), category ≤ 2, `vmt+0x64` true. Tomes and day-1 use other paths and stay single-spell. |
 | `cave_cost` | `0x5580EE10` (28 B) | 6 B @**`0x5577D569`** → call+nop | `+0x38 = 100 << clamp(tier-1, 0..3)` → 100/200/400/800 |
-| `cave_day1` | `0x5580EE30` (186 B) | 7 B @**`0x5577CC72`** → jmp+2nop, exits `jmp 0x5577CD4A` | picked spheres (`GetSpherePicks>0`, s=1..6) → `Map.Random` picks one (Cosmos if none) → adds ALL its tier-1, category ≤2, enabled, unresearched spells directly to the researched list |
+| `cave_day1` | `0x5580EE30` (186 B; v2 182 B + 4 zero) | 7 B @**`0x5577CC72`** → jmp+2nop, exits `jmp 0x5577CD4A`. **v2 (2026-09-24)**: `call`+2nop, the routine ends `add esp,8 ; ret`, and `0x5577CC79` → `jmp 0x5577CD4A`; `build_pbem_leadersetup.py`'s `C_APPLY` calls it for a PBEM leader's deferred turn-1 grant (`07-ui.md` §10.6) | picked spheres (`GetSpherePicks>0`, s=1..6) → `Map.Random` picks one (Cosmos if none) → adds ALL its tier-1, category ≤2, enabled, unresearched spells directly to the researched list |
 | `cave_evtext` | `0x5580EEF0`+ | 6 B @**`0x5577C4B4`** in `TPlayerMagicEventLog.GetText` → call+nop | research popups/log read "**Death I** researched" (sphere RStr + Roman) instead of the representative spell's name |
 
 Caves end `0x5580EEEA` (zone limit `0x5580F400`). Globals (`[0x558FA044]` AoWHSSet,

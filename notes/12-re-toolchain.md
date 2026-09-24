@@ -794,18 +794,34 @@ a constant (`build_party_random.py` uses it in `AoWDevEd.exe`), and a cave livin
 section (a `.pty`, `.sc`, `.clog` section) has no `CODE`/`.text` name a naive whitelist would catch —
 the tool walks section **characteristics** instead. `--owners` maps a site to the nearest preceding
 VA literal in `build_scripts/`, because an exact grep for the call's own VA usually finds nothing —
-scripts only ever name the cave's *base* address.
+scripts only ever name the cave's *base* address. Exe-range literals (`0x00400000`–`0x006FFFFF`) are
+shared by every module based at `0x400000` — the exe pair, `AoWDevEd.exe`, `AoWTCPCK.dpl` — so below
+`0x55000000` a script is a candidate only if its code names the module (filename or `zigexe`
+constant). `--hash` also requires the script to import `rngstd`: `build_herodlg_columns.py` lists
+`0x628010` in its `.hcol` squatter comment and would otherwise win `0x006280A9` from its real owner.
 
-Reference binaries: `AoWEPACK_original_backup.dpl` and `Ziggurat upload/AoW.exe` are pristine.
-⚠ **`Ziggurat upload/AoWEPACK.dpl` and `Ziggurat upload/AoWTCPCK.dpl` are NOT** — they are a snapshot
-of an already-patched build (hash differs from the pristine DLL). There is no vanilla `AoWTCPCK.dpl`
-anywhere in the tree, so that module can't be byte-diffed; it's audited by inspection instead (no
-script that patches it adds a draw — verified 2026-08-31).
+Targets are the live modules in `Ziggurat/`, exe names from `zigexe`. **References are the stock
+copies at the game root**, located by the GOG manifest (`goggame-*.hashdb` lives only there) and
+md5-checked against it on every run: `AoWEPACK.dpl`, `AoW.exe` for `AoWz.exe`, `AoWCompat.exe` for
+`AoWzCompat.exe`, `AoWTCPCK.dpl`, `aowInt.dpl`, `HSEPack.dpl`. `AoWDevEd.exe` has none — the root
+copy is modded and the hashdb has no entry — so its sites print unseparated. A missing target, a
+missing reference or a reference that fails the hashdb check exits **2** before anything is printed.
 
-### 4.8 Audit of every modded RNG site (2026-08-31, re-measured 2026-09-03)
+⚠ **From the 2026-09-09 move until 2026-09-23 no default run audited the mod exes.** The module
+table still named `AoW.exe`/`AoWCompat.exe`, which do not exist in `Ziggurat/`; the tool printed
+`(missing)`, counted zero sites and exited 0, and the reference it listed, `Ziggurat upload/AoW.exe`,
+had gone too. Explicit `rng_audit.py AoWz.exe …` runs did scan the exe, but with no reference, so
+they could not separate a modded site from a stock one. Re-measured 2026-09-23: the gap hid no
+modded draw (§4.8).
 
-24 modded sites total: 22 in `AoWEPACK.dpl` (originally), plus 3 in `AoWDevEd.exe`, none anywhere
-else, with one addition since:
+### 4.8 Audit of every modded RNG site (2026-08-31, re-measured 2026-09-03 and 2026-09-23)
+
+24 modded sites in `AoWEPACK.dpl`, plus 3 in `AoWDevEd.exe` (no reference; attributed by
+inspection). Re-measured 2026-09-23 with every other module diffed against its root copy: none in
+`AoWz.exe`/`AoWzCompat.exe` (1 stock RAW site each), `AoWTCPCK.dpl` (273 stock), `HSEPack.dpl`
+(9 stock) or `aowInt.dpl` (no entry point). The P4 site `0x006280A9` in both exes
+(`build_heroskill_race.py`) makes no draw and shows only under `--hash`. Changes since the
+2026-08-31 audit:
 
 | feature (script) | new sites | note |
 |---|---|---|
@@ -1413,7 +1429,7 @@ hand-authored Ziggurat caves that predate the build-script convention entirely:
 | `0x5580E2A0`, `0x5580E300` | `build_turnundead_res.py` | — | Turn Undead damage = level × caster RES (`CAVE`, `CAVE2`) |
 | `0x5580E370`, `0x5580E3B0`, `0x5580E400` | `build_trueseeing.py` (original owner) — **rewritten in place** by `build_invis_penalty.py` (v2) | — | `CAVE_TS_MELEE` / `CAVE_TS_MELEE3` / `CAVE_TS_RNG`. **⚠ COUPLED, deliberately**: both scripts declare the *identical three addresses*. v1 (`build_trueseeing.py`) gave True Seeing a +3/+1 attack bonus vs Invisible; v2 (`build_invis_penalty.py`) flips the framing — Invisible is a defensive advantage, and lacking True Seeing costs **−2 melee / −5 ranged** attack (not the −1/−3 an older design doc states — verified live: `build_invis_penalty.py:110-112`, `MELEE_PENALTY=2`, `RANGED_PENALTY=5`). v2 rewrites the three cave *bodies* at these same addresses; the chain plumbing v1 installed (the exit jumps into these caves) is unchanged and reused. Do not revert `.pre-trueseeing` to "undo" this — it predates combatlog/tierresearch/leadership4 and would silently undo them too; re-tune by editing v2's constants and re-applying, since it rewrites in place. |
 | `0x5580E440`–`0x5580ED80` | `build_combatlog_dll.py` (**legacy, relocated 2026-07-22**) | — | old home of the combat-log capture cave; overlapped `build_tierresearch_dll.py`'s `cave_grant` at `0x5580ED80` by a few bytes (harmless padding, but broke `verify` forever — this is *why* it moved). Current home is `0x55811000`. Relocation is optional to vacate (`--vacate` flag zeroes the old bytes); **whether that flag was ever run is not established from the source alone — byte-check before assuming `0x5580E440` is free.** `build_invis_penalty.py`'s own `RNG_LIMIT = 0x5580E440` boundary still treats it as occupied ("combat-log worker"). Treat this address range as claimed. |
-| `0x5580ED80` | `build_tierresearch_dll.py` | — | `CAVE_GRANT` — tier research mechanics (day-1 free spells, group completion) |
+| `0x5580ED80` | `build_tierresearch_dll.py` | — | `CAVE_GRANT` — tier research mechanics (day-1 free spells, group completion). **⚠ COUPLED**: its `cave_day1` at `0x5580EE30` is **v2 since 2026-09-24** — a callable routine (`call` at `0x5577CC72`, `add esp,8 ; ret`, return path `jmp 0x5577CD4A` at `0x5577CC79`), because `build_pbem_leadersetup.py`'s `C_APPLY` calls it and pins its sha256. Undo `build_pbem_leadersetup.py` before any change to that routine |
 | `0x5580EFC0`, `0x5580F000` | `build_leadership4.py` | — | `CAVE_COSTS` / `CAVE_NAME` — Leadership I–IV |
 | `0x5580F0C0` | `build_leadership4.py` | 32 B | **LIVE DATA**, not code — two 4-byte ladders `{1,2,3,4}` at `0x5580F0C0`/`0x5580F0C8`, read absolutely by `mov al,[eax+…]` at `0x55766205` and `0x55766219` (**both `.reloc`-covered**, correct for vanilla-space code), plus a four-pointer block at `0x5580F0D0` holding link-time VAs `0x557BBF18/24/30/40`. ⭐ That block is read from inside the cave at `0x5580F030` by `mov ecx,[ebp+edx*4+0x5580F0D0]; add ecx,ebp` — **the delta-in-EBP rebase idiom**, so it is position-independent and correctly carries **no** `.reloc` entry. ⚠ Its first byte is legitimately `0x00` (ladder element), so a non-zero-run scan reports it as `0x5580F0C1`. Audited 2026-09-12. |
 | `0x5580F100` | `build_leadership_fix.py` | — | fixes Leadership going permanently dead after stacking with another leader |
@@ -1533,7 +1549,8 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x55848000` | `build_powerleech.py` | **exclusive**, `0x400` (379 B used — `cave_powerleech` `0x55848000`, `nodepower` `0x5584810F`) | Power Leech: the caster steals 25% of the power of every magic node owned by another player. Entered by retargeting the opening `call` of `GetNetPower @0x5577CEC4`. **PIC anchored on a function**, not on a data global — `sub ecx, 0x77C50` leaves EDI = runtime `TPowerNode.GetPower @0x557D03C8`, so the node test is `cmp [edx+0x1F8], edi` and the map (`edi + 0x129C78`) and `TPlayerStructurePowerSource.Power` (`edi − 0x6E874`) are small offsets. **No `0x55xxxxxx` operand in the cave.** |
 | `0x55849000` | `combatunitguard.py` (**a module, not a build script**) | **exclusive**, `0x100` (98 B used — `guard_unit` `0x55849000`, `guard_hero` `0x55849040`) | The shared "is this combat object really a `TCombatUnit`?" guard, added 2026-09-11 after a wall-target AV. `guard_unit(EAX=combat obj) -> EAX = [obj+0x4C]` or 0; `guard_hero(EAX=combat obj) -> AL = target is a THero`. **⚠ COUPLED, by design**: `build_assassin.py` and `build_magebane.py` both install the identical blob (verify-before-write accepts zero-or-ours from either) and both call `combatunitguard.undo_if_unused()`, which zeroes it **only when no caller outside the undoing script's own caves remains**. Clobbers EAX + flags only; PIC via a `call $+5`/`pop` anchor to the classref cells `0x55715A54` (TCombatUnit) and `0x55711FAC` (THero) |
 | `0x5584A000` | `build_leadership_others.py` (🔨 APPLIED, UNTESTED 2026-09-16) | **exclusive**, `0x400` (518 B used — `cave_blevel` `0x5584A000` 28 B, `cave_pass2` `0x5584A040` 226 B, `cave_lname` `0x5584A180` 264 B incl. the four `" (+<roman> received)"` AnsiStrings and their pointer table at `0x5584A214`) | Leadership buffs only the OTHER units in the party, and the card splits own level from received level. Hooks `0x557661FC` / `0x55766210` (the two bonus getters, 5 B `call`), `0x5578D128` (`TArmy.UpdateFormation` pass 2, 6 B `jmp`, resuming at the shared exit `0x5578D186` — only the first 6 bytes may be displaced, `0x5578D162` carries the region's sole `.reloc` entry) and the VMT slot `0x55722060` (`GetName`, itself `.reloc`-covered — the value is repointed, the entry kept). **⚠ COUPLED**: `cave_lname` reaches `build_leadership4.py`'s `cave_lsname` through `VMT+0x10c` rather than by address, so the two compose; and `build_leadership_fearless.py` depends on `TLeadershipAbility.GetLevel` still returning `max(own, borrowed)`, which is why the original author's own-only `GetLevel` change was deliberately not ported. PIC: one `call $+5`/`pop edi` anchor for `0x558FA044` in `cave_pass2`, one `pop ebp` anchor for the literal table in `cave_lname`. |
-| `0x5584B000` | `build_hero_turn1_upgrade.py` (🔨 APPLIED, UNTESTED 2026-09-22, **v2**) | **exclusive**, `0x80` (46 B used — `C_TURN1` `0x5584B000`) | A hero holding unspent skill points is offered them. Entered by **retargeting the `call rel32`** at `THero.NewTurn+0x1B @0x55787FE7` (was `ValidateHeroUpgrade @0x55787D54`); the cave creates the level-cache lag when `GetSkillPoints() > 0` and **tail-jumps** to the original, so nothing is displaced and `--undo` is the original rel32. Second site `0x55786CB3` is 10× `nop` (vanilla's day-1 confiscation, disarmed) — both its inbound jumps land on the run's boundaries, never inside. PIC for free: three rel32 transfers, no absolute operand, no anchor. Clobbers EAX/EDX/ECX, preserves EBX. ⚠ **v1 hooked `0x55786CB3` instead and never executed** — see `01-combat-maths.md` §5. **Current high-water mark** |
+| `0x5584B000` | `build_hero_turn1_upgrade.py` (🔨 APPLIED, UNTESTED 2026-09-22 v2; **v3** 2026-09-24) | **exclusive**, `0x100` (was `0x80`; 129 B used — `C_TURN1` `0x5584B000`) | A hero holding unspent skill points is offered them. Entered by **retargeting the `call rel32`** at `THero.NewTurn+0x1B @0x55787FE7` (was `ValidateHeroUpgrade @0x55787D54`); the cave creates the level-cache lag when `GetSkillPoints() > 0` and **tail-jumps** to the original. Second site `0x55786CB3` is 10× `nop` (vanilla's day-1 confiscation, disarmed). v3 adds guard 4: no lag for a PBEM human's leader on day 1 (`pbemday1.py` predicate; map via a `call $+5` anchor), re-tuned in place over v2. **⚠ COUPLED** to `build_pbem_leadersetup.py`, which accepts this cave only fully v3 or fully absent. ⚠ **v1 hooked `0x55786CB3` instead and never executed** — see `01-combat-maths.md` §5 |
+| `0x5584C000` | `build_pbem_leadersetup.py` (stage 1 ✅ 2026-09-24; stage 2 🔨 APPLIED, UNTESTED 2026-09-24) | **exclusive**, `0x400` (was `0x100`; 649 B used), asserted zero-or-ours | PBEM turn-1 leader window. Fixed entries: `C_RAISE 0x5584C000` (124 B; 5-byte E9 over `0x55756B94`, raises `TPlayerMagicEventLog` mode 3; VMT derived PIC), `C_GATE 0x5584C100` (71 B; E9 + 17 nop over `0x5577CC5C`, defers the day-1 grant), `C_APPLY 0x5584C180` (265 B; called from the exe through the rebase delta `[0x45DF7C] − 0x558FA040` — the exe holds this constant, so it must not move). Second site `0x5577C3FF` (one rel8 byte, `4B→47`). **⚠ COUPLED**: `C_APPLY` calls `build_tierresearch_dll.py`'s `cave_day1` v2 at `0x5580EE30`. Exe half is the `0x0062C000` row in §6.2. Full record `07-ui.md` §10.5–10.6. **Current high-water mark** |
 
 ⚠ **`build_spellcast_herotier.py --apply` would abort today.** Its `ZONE_END` is `0x55848000`
 (line 125) and it asserts `cave_end..ZONE_END` is zero, but `build_spellward_rescope.py`'s cave
@@ -1542,8 +1559,8 @@ touch that script. Found 2026-09-07 during the Power Leech scoping; the abort is
 corrupting, and `build_powerleech.py` does not make it worse — its cave starts at exactly
 `0x55848000`, which is where both neighbours' zero-asserts stop.
 
-Free above `0x55849100`, all the way to the `0x558E7918` CODE ceiling. (`0x55844000`, `0x55848000`
-and `0x55849000` are now claimed — see the rows above. `0x55848400..0x55849000` is the gap between
+Free above `0x5584C400`, all the way to the `0x558E7918` CODE ceiling. (`0x55844000`, `0x55848000`,
+`0x55849000`, `0x5584A000`, `0x5584B000` and `0x5584C000` are now claimed — see the rows above. `0x55848400..0x55849000` is the gap between
 Power Leech's reservation ceiling and the guard, and is free but small.)
 
 ### 6.2 Other binaries
@@ -1567,13 +1584,14 @@ telling you to run it after an exe patch is stale.):
 | `0x0062B000`–`0x0062B0FF` | `build_taskbar_icon.py` | **exclusive**, `0x100` (96 B used) — sets `WM_SETICON` ICON_BIG + ICON_SMALL on the `TApplication` owner window so the taskbar button stops showing the grey placeholder. Reached by **retargeting the existing `call Forms.TApplication.Initialize` at `0x004599DE`** (4 bytes of operand, nothing displaced); the cave tail-jumps to the real thunk `0x00401754`. Borrows `user32!LoadIconA`/`SendMessageA` and the `'MAINICON'` literal out of **vcl30.dpl** via the rebase delta `[0x0045D56C] − 0x4133C0F8` (that IAT slot is `Forms.TApplication.GetExeName`, preferred VA `0x4133C0F8`) — AoWz.exe imports exactly one user32 function (UnionRect) and neither of those two. Editor half is the `.vgo` row below |
 | `0x00630000`–`0x00632FFF` | `build_itembanner_hpmv.py` | **exclusive**, its own new RWX section **`.ibnr`** (`0x3000`, appended after `.pyar`; SizeOfImage `0x230000` → `0x233000`). Layout: the grown `TITEMBANNER` DFM at `0x00630000` (9469 B), the relocated 17-entry field table at `0x00632500`, `cave_hpmv` at `0x00632700` (328 B) and `cave_clamp` at `0x00632848` (40 B) — top of blob `0x00632870`, leaving `0x00632870..0x00633000` = **1936 B** spare (measured all-zero, file-backed at file `0x22CA70..0x22D200`). ⚠ **`--apply` zeroes the whole `0x3000` before writing**, so a squatter in that tail is wiped by the next re-apply exactly as `.hcol`'s below-floor squatters would be — take one of the three `.hcol` runs listed below the table instead unless you also add a floor here. ⚠⚠ **This section consumed the LAST free section-header slot in the exe**: the table starts at file `0x1F8` and SizeOfHeaders is `0x400`, so 13 headers end at exactly `0x400`. No 14th section can be added — squat in a zero tail, or `--undo` this first (its `--undo` removes the section and gives the slot back). ⚠ Its relocated field table carries **one absolute with no `.reloc` entry** — the class-table VA `0x00406AA0` at `0x00632502`, whose original at `0x0040697A` did have a HIGHLOW entry. That is precedent, not a defect: `build_herodlg_columns.py` relocates `THeroUpgradeDlg`'s table with the byte-identical shape and is CONFIRMED WORKING, and AoWz.exe is `RELOCS_STRIPPED=0 / DYNAMIC_BASE=0` (DllCharacteristics `0x0000`), so the image always loads at `0x00400000`. **`build_relocfix.py` detects only STALE relocations, never a MISSING one**, so a clean audit says nothing either way. Full record in `07-ui.md` §9 |
 | `0x0062D100`–`0x0062D2FF` | `build_powerleech_ui.py` | **exclusive**, `0x200` (0xA8 B of data + 107 B of code at `0x0062D1A8`) — the Power Leech income row in `TMagicWin` tab 4, hooked from `0x0042CFD9` (7 B). Also `.hcol`, the next clear `0x100`-aligned slot above `build_savedate_format.py`'s cave (last non-zero `0x0062D07A`); the script asserts `0x0062D0A0..0x0062DFFF` is zero outside its own span. The data half is two Delphi literal AnsiStrings plus a **fake object + 24-slot fake VMT of `xor eax,eax ; ret`** — the name list's `AddObject` object may not be nil, because `PowerSourceListDoubleClick @0x0042D944` and `PowerValueListMouseDown @0x0042D988` deref it unchecked. DLL half is `build_powerleech.py`, cave `0x55848000` |
+| `0x0062C000`–`0x0062C3FF` | `build_pbem_leadersetup.py` (stage 1 ✅ 2026-09-24; stage 2 🔨 APPLIED, UNTESTED 2026-09-24) | **exclusive**, `0x400` (944 B used), asserted zero-or-ours, inside the `.hcol` run `0x0062B100..0x0062D000`. Globals `G_EVENT 0x0062C000`, `G_CODE ..04`, `G_DATA ..08`, `G_MODAL ..0C` (byte); `.hcol` is RWX (`0xE0000060`, asserted), so `--undo` is one contiguous zero-fill. `C_SHOW 0x0062C010` (315 B, fixed: the dispatch hook targets it), `C_DONE 0x0062C150` (210 B, calls the DLL's `C_APPLY`), `C_PANEL 0x0062C230` (29 B), `C_OFFER 0x0062C250` (234 B, the P4 offer roll — `rng_audit.py --hash` lists it at `0x0062C301`), panel table `0x0062C340`, `G_VIS 0x0062C390`, `G_PLAYER 0x0062C3A0`. Sites: the rel32 of the `jmp 0x44F51E` at `0x0044F183` (nothing displaced) and a 6-byte E9 over `0x004161C9` in `TLeaderSetupWin`'s available-ability loop. Reads `build_heroskill_race.py`'s table at `0x00629000`. DLL half is the `0x5584C000` row. Full record `07-ui.md` §10.5–10.6 |
 
 ⚠⚠ **`.hcol` below `0x00628000` is NOT allocatable — `build_herodlg_columns.py` zeroes it on every
 `--apply`.** Its line 1547 is `exe.wr(SEC_VA, b"\0" * (SQUATTER_FLOOR - SEC_VA))`, i.e. it wipes
 `0x00612000..0x00628000` wholesale before laying its blob back down. The **15,872 free bytes at
 `0x00624200..0x00628000`** the row above advertises are inside that wipe: anything parked there
 verifies clean, survives until the next columns re-apply, and then vanishes with no diagnostic. The
-genuinely free, unpoliced space is **three disjoint runs**, re-measured byte-by-byte on the live exe
+genuinely free, unpoliced space is **four disjoint runs**, re-measured byte-by-byte on the live exe
 2026-09-13 (the earlier "`0x0062A400..0x0062D000`, all-zero" was wrong — `build_taskbar_icon.py`'s
 cave is inside it, 85 non-zero bytes in 8 runs spanning `0x0062B000..0x0062B05F`, and that script
 declares the whole `0x100` exclusive):
@@ -1581,7 +1599,8 @@ declares the whole `0x100` exclusive):
 | run | size | note |
 |---|---|---|
 | `0x0062A400..0x0062B000` | 3072 B | above `build_skylevel_ui.py`, below the taskbar cave |
-| `0x0062B100..0x0062D000` | 7936 B | above `build_taskbar_icon.py`'s exclusive `0x0062B000..0x0062B0FF` |
+| `0x0062B100..0x0062C000` | 3840 B | above `build_taskbar_icon.py`'s exclusive `0x0062B000..0x0062B0FF` |
+| `0x0062C400..0x0062D000` | 3072 B | above `build_pbem_leadersetup.py`'s exclusive `0x0062C000..0x0062C3FF` (claimed 2026-09-23 out of the former 7936 B run) |
 | `0x0062D213..0x0062E000` | 3565 B | `.hcol`'s real tail, above `build_powerleech_ui.py`'s last byte `0x0062D212` — **not** everything from `0x0062D000`, which is that script's own cave |
 
 `.syd` / `.pyar` are both whole-section blobs their owners rewrite and byte-compare — neither is
@@ -1591,7 +1610,7 @@ it is inside another script's section: see the `.ibnr` row above before taking i
 ⚠⚠ **AoWz.exe HAS NO SPARE SECTION-HEADER SLOT since 2026-09-13.** `build_itembanner_hpmv.py`'s
 `.ibnr` is the 13th section and the header table now ends at exactly `0x400` = SizeOfHeaders. A 14th
 header would overwrite CODE's raw data at file `0x400`, so **a new exe feature cannot add a section**:
-take space from `0x0062A400..0x0062D000`, from `.ibnr`'s own tail (`0x00632844..0x00633000`), or run
+take space from the free `.hcol` runs listed above, from `.ibnr`'s own tail (`0x00632844..0x00633000`), or run
 `build_itembanner_hpmv.py --undo` first — its undo removes the section and returns the slot. Both
 `add_section()` implementations (here and in `build_herodlg_columns.py`) assert the bound rather than
 corrupting the image, so the failure is loud.
@@ -1911,7 +1930,7 @@ and a type-0 pad at offset 0, so an `(rva, type)` lookup can alias the pad.
 
 | module | RVA | sits in | displaced by | what the loader would smash |
 |---|---|---|---|---|
-| `AoWEPACK.dpl` | `0x07CC75` | `TPlayerMagicControl.NewTurn+0x49` | `build_tierresearch_dll.py` `e9` @`0x5577CC72` over `mov eax,[0x558FC958]` | the two `nop`s at `0x5577CC77/78` — **dead** (its cave exits via `jmp 0x5577CD4A`, never resuming there) |
+| `AoWEPACK.dpl` | `0x07CC75` | `TPlayerMagicControl.NewTurn+0x49` | `build_tierresearch_dll.py` hook @`0x5577CC72` over `mov eax,[0x558FC958]` — `e9` in v1, **`e8` (call) since v2, 2026-09-24** | the two `nop`s at `0x5577CC77/78` — a rebase delta is a multiple of 64 KB, so a `HIGHLOW` entry at `CC75` moves only the dword's top two bytes; the hook's rel32 (`CC73..CC76`) is never touched. ⚠ **Live since v2**: the grant now returns through those `nop`s to the `jmp 0x5577CD4A` at `0x5577CC79`, so this neutralisation is load-bearing (in v1 they were dead) |
 | `AoWEPACK.dpl` | **`0x0807FB`** | **`ExecuteStormDamage+0x193`** | the Death/Divine dispatch rewrite over `mov dx,[0x55780840]` — ⚠ **no owning build script**, an unowned legacy patch | ⚠⚠ **`mov dx,0x20` — THE DEATH-ALTAR CRASH** |
 | `AoWEPACK.dpl` | `0x082B77` | `TUnit.GetHits+0xF` | `build_medal_hpmv.py` shrank the body to `call 0x5580BE15 / ret` | inter-function padding before `TUnit.GetMoves@0x55782B84` — **dead** |
 | `AoWz.exe` / `AoWzCompat.exe` | `0x02EDAE`, `0x02EE14` | `TSpellBook.SpellBookDestroy+0x686/+0x6EC` | `build_tierresearch_exe.py` nop'd the `push` at `0x42EDAD`/`0x42EE13` | latent |
@@ -5132,11 +5151,17 @@ fired" for a probe that is installed — every one of those a wrong answer with 
 loudly-failing variant (`open(GAME/"AoW.exe")` → `FileNotFoundError`) is the harmless one. Scan
 `zigexe.EXES` for "the mod game", `zigexe.ALL_EXES` for "any mod binary".
 
-⚠ **Two `re_tools` scripts name the old exes CORRECTLY — do not sweep them into this.**
-`rng_audit.py:51-52` maps `AoW.exe`/`AoWCompat.exe` to `Ziggurat upload/AoW.exe`, the pristine
-vanilla donor the audit compares against; `mod_manifest.py:85` lists `AoWEd.exe` in `NEVER_SHIP`,
-a filename to exclude from the payload. (`AoWEd.exe` no longer exists in the overlay at all — only
-the root's stock copy, md5 `f45bebf5627d5900cd39da45d21eb792`, MATCH against the GOG hashdb.)
+⚠ **One `re_tools` script names an old exe CORRECTLY — do not sweep it into this.**
+`mod_manifest.py:85` lists `AoWEd.exe` in `NEVER_SHIP`, a filename to exclude from the payload.
+(`AoWEd.exe` no longer exists in the overlay at all — only the root's stock copy, md5
+`f45bebf5627d5900cd39da45d21eb792`, MATCH against the GOG hashdb.)
+
+⚠ `rng_audit.py` was exempted here as a second exception until 2026-09-23, and the exemption hid a
+defect: `AoW.exe`/`AoWCompat.exe` were the **keys** of its module table — audit targets, joined to
+`Ziggurat/` — not only the reference path they mapped to, so both mod exes dropped out of every
+default run for two weeks with exit code 0 (§4.7). Before exempting a name from a sweep, check
+whether it is used as a target or as a reference. `rng_audit.py` now takes both from `zigexe`:
+`GAME_EXE`/`COMPAT_EXE` as targets, `VANILLA_EXE`/`VANILLA_COMPAT` as references.
 
 ⚠ **A name alone does not locate a binary that is to be LAUNCHED.** `AoWz.exe` and `AoWzCompat.exe`
 exist in **both** trees: the pair in `Ziggurat\` is the canonical patch source that nothing runs,
@@ -5739,8 +5764,8 @@ hard-coded. The only literals that had to move were the constant itself and pros
 
 ⚠ **Prose is what actually costs on a rung move.** Both moves needed a documentation sweep across
 four notes files while the code needed a one-line constant edit and a data migration. Budget for
-that, and grep the fingerprint (`2a098b10` at the time; the owner's table is **`1bea8277`** today,
-`319/494/258/153`) as well as the rung values — the ladder appears
+that, and grep the fingerprint (`2a098b10` at the time; the owner's table is **`818757b6`** today,
+`430/357/248/201`) as well as the rung values — the ladder appears
 written as `0/10/25/60` and as `0 / 10 / 25 / 60`, and a single-spacing grep misses half of it.
 
 ⚠⚠ **A number the grid does not have a column for is a number nothing checks.** The calibration

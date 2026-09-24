@@ -57,6 +57,7 @@ safe, and the traps that have cost this project the most time.
 | **`build_herodlg_tall.py`** | superseded same-day by `build_herodlg_columns.py`, which now owns the dialog. Use `build_herodlg_columns.py --undo`. |
 | **Wall HP** | never "restore" it to a ×2 — there are THREE independent tables, unified to 40 stone / 10 wood by owner ruling. |
 | **`build_razediag.py --want-open`** | **test-map use only** — it sets `TAIGroupRazeControl`'s mode bit `0x04`, which makes the AI raze **everything** it stands on, cities of its own race included. It shipped live for two months undetected (`10-ai-and-structures.md` §3.6). ⚠ **A diagnostic that changes game behaviour needs a status row** — this one had none anywhere, which is exactly why nobody looked. Run `python build_razediag.py` (no args) before any playtest; all three levers must read `STOCK`. |
+| **`build_pbem_leadersetup.py`** (PBEM turn-1 leader customisation, ✅ confirmed 2026-09-24, `07-ui.md` §10) | its `C_APPLY` **calls** `build_tierresearch_dll.py`'s `cave_day1` v2 routine and relies on `build_hero_turn1_upgrade.py` v3's leader guard: **undo this script before changing either**. `build_tierresearch_dll.py` has no `--undo`. Undoing `build_heroskill_race.py` empties the PBEM window's ability list (it reads that table); this script's dry run then says `chain: BROKEN`. ⚠ Never ship its `AoWEPACK.dpl` half without the exe half: the event queue stalls on every PBEM day 1. |
 | **`build_spellcast_book_exe.py`** | **retired — it no longer owns its own cave**, so a dry run reports `MISMATCH cave @ 0060C0A8` **permanently, and that is the correct output**, not a broken state: `build_scroll_spellbook.py` rewrote `cave_bookfilter@0x0060C0A8` in place (130 → 344 B) and owns the live bytes. ⚠ Do not "repair" the mismatch by relaxing the check or re-deriving the cave — that destroys the scroll feature and the hero-tier exemption. `--apply` is safe by accident only: the verify gate aborts before writing (`:174`). Re-tune the filter in `build_scroll_spellbook.py`'s `_loop`. Full record: `06-unit-spellcasting.md` §"The cave's second owner". |
 
 **Retired 2026-09-03:** the standing "never run `build_magebane.py --apply`" warning. That hazard was
@@ -106,6 +107,9 @@ file carries the specific checklist for its own rows.
   permanent 10-point budget loss into the save. ⚠⚠ **v1 hooked `NewDay`'s day-1 block and never
   fired**, passing every static check: *three guards passing is not evidence the code ran*. §5 of
   `01-combat-maths.md` holds the mechanism, the guards, the live-instrument recipe and the checklist.
+  **v3 (2026-09-24)**: a fourth guard skips the lag for a PBEM human player's leader on day 1 — that
+  leader gets the turn-1 leader window instead (`07-ui.md` §10.6); `C_TURN1` 46 → 129 B, span grown to
+  `0x5584B000..0x5584B0FF`, re-tuned in place.
 - HP ceiling 120 → 100 (four places that must move together) — 2026-08-31
 - Morale re-scale (ATK ±4, RES ±6) — 2026-08-26
 - Map-fire dead-code fix (was ~4× too weak) — 2026-08-26
@@ -170,9 +174,10 @@ file carries the specific checklist for its own rows.
   both scripts' snapshot gates were minting `.pre-*` files from already-patched DLLs and now
   require virgin hooks. Full record: `03-abilities-added.md`, Assassin section
 - **Per-race hero level-up offer gate** — each ability now has a race-dependent chance of appearing
-  in the Upgrades columns (Turn Undead: High Men / Dark Elf / Undead at 60 %, the other eleven races
-  0 %, raceless 10 %; Elves see Archery and Forestry at 60 % each; **13.5–18.4** of 102 offered per
-  level-up on average since the second retune of 2026-09-10). 🔨 APPLIED, UNTESTED (2026-09-09):
+  in the Upgrades columns (Turn Undead: High Men / Dark Elf / Undead at 60 %, Human / Azrac / Elf /
+  Halfling / Dwarf and raceless at 25 %, Lizardman / Frostling / Orc / Goblin 0 %; Elves see Archery
+  and Forestry at 60 % each; **15.6–22.1** of 103 offered per level-up on average, table `818757b6`,
+  baked). 🔨 APPLIED, UNTESTED (2026-09-09):
   `build_heroskill_race.py` on `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe` (6 B displaced at `cf_gate`, today
   `0x00623E53` — **it moves on every `build_herodlg_columns.py --apply`**, so never hard-code it;
   cave `0x00628000..0x0062A000`, 201 B code + a 16×256 table at `0x00629000`;
@@ -190,7 +195,7 @@ file carries the specific checklist for its own rows.
   than any deliberately-marked racial signature. Still the right fail-open (the alternative is a new
   ability silently never appearing), but it is a new asymmetry
 - **The offer table's editor — Ziggurat Manual, "Hero Offers" tab** — 🔨 BUILT (2026-09-09), **no
-  binary patched**. 102 abilities × 12 races, one dropdown per cell at **0/10/25/60** (0/15/40/100
+  binary patched**. 103 abilities × 12 races, one dropdown per cell at **0/10/25/60** (0/15/40/100
   until the first retune of 2026-09-10, then 0/10/30/100 until the second; the tiers are
   colour-ramped), hover + `Q W E
   R`, live per-race expected-offer count. `build_scripts/heroskill_races.json` is now the table
@@ -199,17 +204,17 @@ file carries the specific checklist for its own rows.
   Seed with `heroskill_races.py --seed` (quantises 5→0, 15→10, 25/30/40→25, 100→60). ⚠⚠ **Moving a
   rung migrates the JSON by TIER IDENTITY, never by re-quantising** — `07-ui.md` §2.8a. ⚠⚠ **The top
   rung is 60, so nothing is guaranteed to anyone**: every race's deterministic floor is **0** and a
-  High Man sees Turn Undead 60 % of level-ups, not every one. Expected offers now run **13.5–18.4**
-  (mean 16.3, sd 3.0–3.3), all thirteen rows under 20 — inherent to a top rung of 60, **not** a
-  defect; `report()` prints `low` in a `vs 20-30` column and gates nothing. ⚠ Editing it changes
-  nothing until `build_heroskill_race.py --apply` is re-run — baked 2026-09-09, **`stale` since the
-  first rung change and still `stale` after the second**. ⚠ Raceless (row 15) is not in the grid and is **derived** —
-  the per-ability mean of the 12, quantised onto the ladder (13.5 expected). It was
+  High Man sees Turn Undead 60 % of level-ups, not every one. Expected offers now run **15.6–22.1**
+  (mean 18.2, sd 3.1–3.5); ten of thirteen rows sit under 20, **not** a defect; `report()` prints
+  `low` in a `vs 20-30` column and gates nothing. ⚠ Editing it changes nothing until
+  `build_heroskill_race.py --apply` is re-run — the exes carry `818757b6`, the JSON's current table
+  (`table=True` on both, verified 2026-09-23). ⚠ Raceless (row 15) is not in the grid and is **derived** —
+  the per-ability mean of the 12, quantised onto the ladder (17.0 expected). It was
   left at `TABLE_DEFAULT` = all 102 offered until 2026-09-09, invisibly, because `report()` skipped
   the row. ⭐ Its three staleness mitigations (DOM-as-model, a `built`/`now` fingerprint pair,
   defeating Chromium's `<select>` restore) answer the 2026-08-14 export-reopen trap —
   `12-re-toolchain.md` §14.4, detail in `07-ui.md` §2.8. The second toolbar figure is the ladder
-  distribution `380/454/238/152`, not an "authored cells" count (100 was both the default and a
+  distribution `430/357/248/201`, not an "authored cells" count (100 was both the default and a
   ladder value, so setting a cell to 100 % counted down)
 - **Ziggurat Manual build cache** — 🔨 BUILT (2026-09-10), **no binary patched**. Opening the
   Manual when nothing has changed no longer rebuilds it: **8.3 s cold, 0.43 s warm**. Keyed on the

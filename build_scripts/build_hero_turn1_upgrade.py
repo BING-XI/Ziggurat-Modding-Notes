@@ -115,16 +115,51 @@ MP     -- deterministic: two pure reads and one byte decrement, no clock, no RNG
 BINARY -- AoWEPACK.dpl only.  THero.NewTurn and THero.NewDay live nowhere else, so
           there is no AoWz.exe / AoWzCompat.exe lockstep half.
 
+================================================================================
+GUARD 4 (v3, 2026-09-24) -- the PBEM day-1 LEADER is left alone
+================================================================================
+Coupled to build_pbem_leadersetup.py (stage 2, 07-ui.md section 10): on a PBEM game's day 1
+a human player's leader gets the pre-game skill-point and sphere pages instead, and that
+window's copy-back would overwrite whatever this prompt changed.  So C_TURN1 does NOT create
+the lag for a hero that is its human player's leader in a PBEM game on day 1:
+
+    call $+5 / pop ecx / add ecx, 0x558FA040 - anchor / mov ecx,[ecx]    ; map, PIC
+    player = TPlayerList.GetPlayers([map+0x140], movsx [hero+0x24])       ; the hero's owner
+    pbemday1.asm(map, player)  and  hero == [player+0xD4]   ->  skip the decrement
+
+The predicate text comes from build_scripts/pbemday1.py, the SAME module that emits it into
+build_pbem_leadersetup.py's three sites, so the four copies cannot drift.  [hero+0x24] is the
+owner index THero.NewTurn itself filters on (0x55787FDC `cmp bl,[esi+0x24]`), and GetPlayers
+returns list[i] whose [+0xA6] == i (TPlayerList.SetNumberOfPlayers 0x557546E2), so this is the
+same TPlayer as the other three sites'.  Other heroes, other days and other game types are
+unchanged.  ValidateHeroUpgrade still runs; only the ARTIFICIAL lag is withheld.
+
+WHY THE GUARD LIVES HERE (an in-place re-tune) and not in a chain from build_pbem_leadersetup:
+a chain would retarget this script's own `call` at 0x55787FE7, which this script's state
+machine reads as foreign -- its --undo would then refuse.  In place, both scripts keep a
+working --undo and neither depends on the other at run time.  The guard needs no code from
+the other script: it only reads the map and the player.
+
+Re-tune: --apply over an installed v2 (KNOWN_BODIES) rewrites the cave in place, no backup.
+Undo order: none required.  This script's --undo removes the whole feature, guard included,
+and build_pbem_leadersetup.py accepts this cave either fully v3 or fully absent (it refuses a
+v2 without the guard, which would give the leader both a level-up prompt and the window).
+
 USAGE
     python build_scripts/build_hero_turn1_upgrade.py            # verify only
     python build_scripts/build_hero_turn1_upgrade.py --dis      # + cave disasm
-    python build_scripts/build_hero_turn1_upgrade.py --apply
+    python build_scripts/build_hero_turn1_upgrade.py --apply    # also re-tunes v2 -> v3
     python build_scripts/build_hero_turn1_upgrade.py --undo     # surgical
 """
+import hashlib
 import os
 import struct
 import subprocess
 import sys
+
+sys.dont_write_bytecode = True          # a .pyc embeds the absolute source path -- never mint one
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pbemday1                         # noqa: E402  -- the shared PBEM day-1 predicate
 
 # game dir = two levels up from this script (<game>/Modding Resources/<subdir>/);
 # override with the AOW_GAME_DIR environment variable.
@@ -151,7 +186,20 @@ OFF_WRITEOFF  = 0x50            # THero skill-point write-off, streamed as tag 0
 
 CAVE_BASE = 0x5584B000
 C_TURN1   = 0x5584B000
-CAVE_END  = 0x5584B080          # asserted zero-or-ours across this whole span
+CAVE_END  = 0x5584B100          # asserted zero-or-ours across this whole span (v2: 0x5584B080; grown
+                                # for guard 4 -- the growth zone is proven zero by the known-body hash)
+
+# guard 4 (v3): the PBEM day-1 leader -- see the docstring
+F_GETPLAYERS  = 0x557544D0      # AoWE.TPlayerList.GetPlayers      EAX=list EDX=index -> EAX=player
+V_AOWHSMAP    = 0x558FA040      # AoWE.AoWHSMap, the variable holding the map (reached PIC)
+MAP_PLAYERS   = 0x140
+OFF_OWNER     = 0x24            # TAbstractUnit owner player index, the byte NewTurn filters on
+
+# earlier bodies this script installed: sha256 of the cave's non-zero prefix -> tag.
+# --apply rewrites one of these in place; anything else in the span aborts.
+KNOWN_BODIES = {
+    "0e2742eb45cf86001a850d7003da007a49343cfd4410dacae58bfeca707f433f": "v2 2026-09-22, 46 B",
+}
 
 _BASE = None                    # VA = file_offset + _BASE, resolved from the PE
 
@@ -267,8 +315,8 @@ def _ks():
 
 
 def asm_layout(frags, base):
-    """frags: list of (label|None, text|bytes|None). Text may use {LABEL}
-    placeholders. Iterates to a fixed point so forward references settle."""
+    """frags: list of (label|None, text|callable(labels)->text|bytes|None). Text may use
+    {LABEL} placeholders. Iterates to a fixed point so forward references settle."""
     ks = _ks()
     labels = {lab: base for lab, _ in frags if lab}
     for _ in range(8):
@@ -282,7 +330,8 @@ def asm_layout(frags, base):
                 out += bytes(item)
                 va += len(item)
                 continue
-            text = item.format(**{k: hex(v) for k, v in labels.items()})
+            text = item(labels) if callable(item) else item.format(
+                **{k: hex(v) for k, v in labels.items()})
             enc, _ = ks.asm(text, va)
             if enc is None:
                 raise RuntimeError("keystone failed on: %s" % text)
@@ -315,7 +364,25 @@ def build_caves():
         # guard 3 -- floor the cache at 1; this write bypasses SetLevel's clamp.
         (None,   "cmp dl, 1"),
         (None,   "jbe {DONE}"),
-        (None,   "dec byte ptr [ebx + %s]" % hex(OFF_LEVEL)),
+        # guard 4 (v3) -- the PBEM day-1 leader gets build_pbem_leadersetup.py's window
+        # instead, whose copy-back would overwrite this prompt's choices.  Map reached PIC.
+        (None,   "call {ANCHOR}"),
+        ("ANCHOR", "pop ecx"),
+        (None,   lambda L: "add ecx, %d" % (V_AOWHSMAP - L["ANCHOR"])),
+        (None,   "mov ecx, dword ptr [ecx]"),
+        (None,   "test ecx, ecx"),
+        (None,   "je {DEC}"),
+        (None,   "movsx edx, byte ptr [ebx + %s]" % hex(OFF_OWNER)),
+        (None,   "mov eax, dword ptr [ecx + %s]" % hex(MAP_PLAYERS)),
+        (None,   "push ecx"),
+        (None,   "call %s" % hex(F_GETPLAYERS)),
+        (None,   "pop ecx"),
+        (None,   "test eax, eax"),
+        (None,   "je {DEC}"),
+    ] + [(None, line) for line in pbemday1.asm("ecx", "eax", "{DEC}")] + [
+        (None,   "cmp dword ptr [eax + %s], ebx" % hex(pbemday1.PL_LEADER)),
+        (None,   "je {DONE}"),
+        ("DEC",  "dec byte ptr [ebx + %s]" % hex(OFF_LEVEL)),
         # tail-call the real thing with EAX = hero, exactly as the call site had it
         ("DONE", "mov eax, ebx"),
         (None,   "pop ebx"),
@@ -324,14 +391,28 @@ def build_caves():
     if len(blob) > CAVE_END - CAVE_BASE:
         raise RuntimeError("cave is %d bytes, the span is %d"
                            % (len(blob), CAVE_END - CAVE_BASE))
-    # position-independence: the .dpl never loads at its preferred base, so no
-    # absolute memory reference may appear. Every transfer is rel32; assert no
-    # dword in the blob looks like an image VA.
-    for i in range(len(blob) - 3):
-        w = struct.unpack_from("<I", blob, i)[0]
-        if 0x55700000 <= w < 0x55A00000:
-            raise RuntimeError("cave holds what looks like an absolute VA 0x%08X "
-                               "at +0x%X -- it must be position-independent" % (w, i))
+    # position-independence, checked PER INSTRUCTION (v3): the .dpl never loads at its
+    # preferred base, so no memory operand may lack a base/index register and no immediate
+    # outside a relative branch may look like an image VA.  (v2 scanned raw dwords, which
+    # false-alarms on byte runs that straddle instructions once the cave holds an anchor.)
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+    from capstone.x86 import X86_OP_IMM, X86_OP_MEM
+    md = Cs(CS_ARCH_X86, CS_MODE_32)
+    md.detail = True
+    seen = 0
+    for i in md.disasm(blob, C_TURN1):
+        seen += len(i.bytes)
+        rel = i.mnemonic == "call" or i.mnemonic.startswith("j")
+        for op in i.operands:
+            if op.type == X86_OP_MEM and op.mem.base == 0 and op.mem.index == 0:
+                raise RuntimeError("absolute memory operand at 0x%08X: %s %s"
+                                   % (i.address, i.mnemonic, i.op_str))
+            if (op.type == X86_OP_IMM and not rel
+                    and 0x55700000 <= (op.imm & 0xFFFFFFFF) < 0x55A00000):
+                raise RuntimeError("image-VA immediate at 0x%08X: %s %s"
+                                   % (i.address, i.mnemonic, i.op_str))
+    if seen != len(blob):
+        raise RuntimeError("cave does not disassemble cleanly")
     return {C_TURN1: blob}
 
 
@@ -360,20 +441,34 @@ def kill_game():
         capture_output=True)
 
 
+def installed_known(d):
+    """Tag of the earlier body in the cave span, if it is one this script wrote."""
+    span = bytes(d[off(CAVE_BASE):off(CAVE_END)])
+    nz = [i for i, b in enumerate(span) if b]
+    if not nz:
+        return None
+    return KNOWN_BODIES.get(hashlib.sha256(span[:nz[-1] + 1]).hexdigest())
+
+
 def state(d, caves):
     applied, vanilla = [], []
     for va, (orig_fn, patch_fn, n, _desc) in SITES.items():
         cur = bytes(d[off(va):off(va) + n])
         applied.append(cur == patch_fn())
         vanilla.append(cur == orig_fn())
+    sites_patched = all(applied)
     for va, blob in caves.items():
         c = bytes(d[off(va):off(va) + len(blob)])
         applied.append(c == blob)
         vanilla.append(c == bytes(len(blob)))
-    if all(applied):
+    span = bytes(d[off(CAVE_BASE):off(CAVE_END)])
+    used = sum(len(b) for b in caves.values())
+    if all(applied) and not any(span[used:]):
         return "applied"
-    if all(vanilla):
+    if all(vanilla) and not any(span):
         return "vanilla"
+    if sites_patched and installed_known(d):
+        return "stale"          # our hooks + a known earlier body: re-tune in place
     return "mixed"
 
 
@@ -389,8 +484,10 @@ def show(d, caves):
         print("       now: %s" % cur.hex())
     for va, blob in sorted(caves.items()):
         c = bytes(d[off(va):off(va) + len(blob)])
+        k = installed_known(d)
         t = ("PATCHED" if c == blob else
-             "zero" if c == bytes(len(blob)) else "*** FOREIGN ***")
+             "zero" if c == bytes(len(blob)) else
+             "older body (%s)" % k if k else "*** FOREIGN ***")
         print("  cave 0x%08X  %-8s  %d bytes" % (va, t, len(blob)))
     print("  state: %s" % state(d, caves).upper())
 
@@ -444,20 +541,24 @@ def do_apply(d, caves):
     if st == "mixed":
         sys.exit("ABORT: partially applied / foreign bytes present. Run --undo first.")
     check_reloc(d)
-    check_space(d, caves)
-    for va, (orig_fn, _p, n, _desc) in SITES.items():
-        cur = bytes(d[off(va):off(va) + n])
-        if cur != orig_fn():
-            sys.exit("ABORT: 0x%08X is %s, expected %s"
-                     % (va, cur.hex(), orig_fn().hex()))
+    if st == "vanilla":
+        check_space(d, caves)
+        for va, (orig_fn, _p, n, _desc) in SITES.items():
+            cur = bytes(d[off(va):off(va) + n])
+            if cur != orig_fn():
+                sys.exit("ABORT: 0x%08X is %s, expected %s"
+                         % (va, cur.hex(), orig_fn().hex()))
 
     kill_game()
-    if not os.path.exists(BACKUP):          # ⚠ minted on --apply ONLY
+    if st == "vanilla":                     # ⚠ minted on --apply ONLY, from a PROVED-unpatched file
         import shutil
         os.makedirs(BACKUP_DIR, exist_ok=True)
         shutil.copy2(DLL, BACKUP)
         print("backup -> %s" % os.path.basename(BACKUP))
+    else:
+        print("re-tune in place over %s -- no backup (the file is patched)" % installed_known(d))
 
+    d[off(CAVE_BASE):off(CAVE_END)] = bytes(CAVE_END - CAVE_BASE)   # an old tail cannot survive
     for va, blob in caves.items():
         d[off(va):off(va) + len(blob)] = blob
     for va, (_o, patch_fn, n, _desc) in SITES.items():
@@ -472,6 +573,9 @@ def do_undo(d, caves):
     if st == "vanilla":
         print("not applied -- nothing to undo.")
         return
+    if st == "stale":
+        sys.exit("ABORT: an older body (%s) is installed; run --apply first so --undo zeroes "
+                 "exactly what is there" % installed_known(d))
     for va, (orig_fn, patch_fn, n, _desc) in SITES.items():
         cur = bytes(d[off(va):off(va) + n])
         if cur not in (orig_fn(), patch_fn()):

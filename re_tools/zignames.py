@@ -20,10 +20,11 @@ WHY THIS EXISTS
   against is a real decision -- `Ziggurat\AoWz.exe` is the canonical PATCH TARGET while the
   RUNNABLE copy of that same name sits at the game ROOT (see `veh_capture.py`'s resolver).
 
-  ⚠ Two re_tools scripts name the old exes CORRECTLY and must not be swept into this:
-  `rng_audit.py` maps `AoW.exe`/`AoWCompat.exe` to `Ziggurat upload/AoW.exe`, the pristine vanilla
-  donor it compares against, and `mod_manifest.py` lists `AoWEd.exe` in `NEVER_SHIP`, a filename to
-  exclude from the release payload rather than a target.
+  ⚠ One re_tools script names an old exe CORRECTLY and must not be swept into this:
+  `mod_manifest.py` lists `AoWEd.exe` in `NEVER_SHIP`, a filename to exclude from the release
+  payload rather than a target.  (`rng_audit.py` was exempted too until 2026-09-23, wrongly: its
+  `AoW.exe` keys were audit targets, not references.  It now uses `zigexe.VANILLA_EXE` /
+  `VANILLA_COMPAT` for its references.)
 
 No third-party packages, no I/O beyond the import itself.
 """

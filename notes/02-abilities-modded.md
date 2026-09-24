@@ -1932,52 +1932,51 @@ This costs nothing: the surgical `--undo` restores the 6 displaced bytes and zer
 touching no backup, and that was always the revert path.
 
 Every ability now has a per-race chance of appearing in the Upgrades columns. Turn Undead is offered
-to High Men, Dark Elves and the Undead at 60 %, to the other eleven races never, and to a raceless
-hero at 10 %; an Elf sees Archery and Forestry at 60 % each, a Dwarf sees Mountaineering, Cave
-Crawling and Fire Musket at 60 % each; the rest is a per-level weighted coin flip.
-Single-dialog range is **4–31** across the twelve races (**3–31** counting raceless), computed
-exactly as a Poisson binomial over the live table and cut where the tail falls below 1 in 5,400.
+to High Men, Dark Elves and the Undead at 60 %, to Humans, Azracs, Elves, Halflings and Dwarves at
+25 %, to Lizardmen, Frostlings, Orcs and Goblins never, and to a raceless hero at 25 %; an Elf sees
+Archery and Forestry at 60 % each, a Dwarf sees Mountaineering, Cave Crawling and Tunneling at 60 %
+each; the rest is a per-level weighted coin flip.
+Single-dialog range is **6–35** across the twelve races (raceless 6–30), computed exactly as a
+Poisson binomial over the live table and cut where either tail falls below 1 in 5,400.
 
 ⚠⚠ **The top rung is 60, so nothing is guaranteed to anyone.** Since the second retune of
 2026-09-10 no authored cell reads 100: every race's deterministic floor is **0**, and a High Man is
 offered Turn Undead 60 % of the time rather than at every level-up. `always=[...]` in the `OFFERS`
 shorthand still means 100, but the shorthand is not the live table — the JSON is.
 
-**The live table (`heroskill_races.json`, fingerprint `2a098b10`, ladder `0/10/25/60`).**
-⚠⚠ **NOT baked — the exes still carry the `5792beea` table** and `build_heroskill_race.py` reports
-`stale` against both, correctly, since the first 2026-09-10 rung change. Expected offers of 102, the
-deterministic floor (cells at the top rung — **zero for every row** since the second retune, and
-kept as a column only because `report()` prints it), and the ladder distribution per race:
+**The live table (`heroskill_races.json`, fingerprint `818757b6`, ladder `0/10/25/60`), baked into
+both exes** — `build_heroskill_race.py` reports `applied -- hook, cave, tails and table all current`
+against `AoWz.exe` and `AoWzCompat.exe` (verified 2026-09-23). Expected offers of 103, the
+deterministic floor (`det`: cells at 100 — **zero for every row** since the second retune, and kept
+as a column only because `report()` prints it), and the ladder distribution per race:
 
-| race | row | expected | at 60 | sd | 0% | 10% | 25% | 60% |
+| race | row | expected | det | sd | 0% | 10% | 25% | 60% |
 |---|---|---|---|---|---|---|---|---|
-| Human | 0 | 14.5 | 0 | 3.0 | 34 | 42 | 15 | 11 |
-| Azrac | 1 | 16.2 | 0 | 3.2 | 31 | 38 | 21 | 12 |
-| Lizardman | 2 | 14.4 | 0 | 3.1 | 32 | 39 | 23 | 8 |
-| Frostling | 3 | 15.3 | 0 | 3.2 | 30 | 39 | 24 | 9 |
-| Elf | 4 | 17.1 | 0 | 3.2 | 32 | 35 | 21 | 14 |
-| Halfling | 5 | 14.8 | 0 | 3.1 | 34 | 38 | 20 | 10 |
-| Dwarf | 6 | 17.1 | 0 | 3.2 | 33 | 36 | 18 | 15 |
-| High Men | 7 | 16.4 | 0 | 3.2 | 31 | 39 | 19 | 13 |
-| Dark Elf | 8 | 17.7 | 0 | 3.3 | 30 | 37 | 20 | 15 |
-| Orc | 9 | 16.4 | 0 | 3.2 | 32 | 40 | 16 | 14 |
-| Goblin | 10 | 17.5 | 0 | 3.3 | 30 | 36 | 22 | 14 |
-| Undead | 11 | 18.4 | 0 | 3.3 | 31 | 35 | 19 | 17 |
-| **Raceless** (derived) | 15 | 13.5 | 0 | 3.3 | 24 | 40 | 38 | 0 |
+| Human | 0 | 15.9 | 0 | 3.1 | 37 | 34 | 19 | 13 |
+| Azrac | 1 | 19.0 | 0 | 3.2 | 43 | 20 | 20 | 20 |
+| Lizardman | 2 | 15.6 | 0 | 3.1 | 38 | 32 | 21 | 12 |
+| Frostling | 3 | 16.3 | 0 | 3.2 | 39 | 28 | 23 | 13 |
+| Elf | 4 | 17.1 | 0 | 3.3 | 34 | 31 | 25 | 13 |
+| Halfling | 5 | 18.9 | 0 | 3.3 | 33 | 35 | 16 | 19 |
+| Dwarf | 6 | 17.4 | 0 | 3.3 | 33 | 33 | 23 | 14 |
+| High Men | 7 | 22.1 | 0 | 3.5 | 30 | 28 | 22 | 23 |
+| Dark Elf | 8 | 20.4 | 0 | 3.4 | 32 | 29 | 22 | 20 |
+| Orc | 9 | 16.5 | 0 | 3.1 | 39 | 29 | 21 | 14 |
+| Goblin | 10 | 17.4 | 0 | 3.2 | 36 | 31 | 21 | 15 |
+| Undead | 11 | 21.5 | 0 | 3.4 | 36 | 27 | 15 | 25 |
+| **Raceless** (derived) | 15 | 17.0 | 0 | 3.4 | 23 | 43 | 27 | 10 |
 
-Grid totals 380 / 454 / 238 / 152 over 102 × 12 = 1224 cells, and
+Grid totals 430 / 357 / 248 / 201 over 103 × 12 = 1236 cells, and
 `E = 0.60·#60 + 0.25·#25 + 0.10·#10` reproduces each row's expected count exactly.
 
-**⚠ The second rung change cost a further 4.4–7.8 expected offers** across the twelve races (4.3 for
-raceless; mean 22.4 → 16.3, sd 2.6–2.9 → 3.0–3.3).
-The spread went **up** while the mean went down: a cell at 100 contributes no
-variance and a cell at 60 contributes more than any other rung. ⚠ All thirteen rows now sit under
-20 and `report()` prints `low` against its `vs 20-30` calibration column; that is **inherent to a
-top rung of 60 and is not a defect** — 20–30 gates nothing and is not a band (§2.8a). ⚠ The
-**twelve-race ladder distribution did not move**, because a tier remap is a bijection on rungs;
-only the column labels above the counts changed. ⚠ **Row 15 is the exception** — it is derived by
-re-quantising, not remapped, so its distribution *did* move: `4 / 58 / 40 / 0` → `24 / 40 / 38 / 0`.
-Migration rule and the arithmetic: `07-ui.md` §2.8a.
+**⚠ The twelve races' mean is 18.2 expected offers** (15.6–22.1, sd 3.1–3.5; raceless 17.0, sd 3.4).
+The second rung change took it from 22.4 to 16.3 and the cell edits since have raised it again. A
+cell at 60 contributes more variance than any other rung and a cell at 100 contributes none, which
+is why the spread rose when the top rung dropped. ⚠ Ten of the thirteen rows sit under 20 and
+`report()` prints `low` against them in its `vs 20-30` calibration column; High Men (22.1), Undead
+(21.5) and Dark Elves (20.4) do not. That is **not a defect** — 20–30 gates nothing and is not a
+band (§2.8a). Migration rule, the per-race arithmetic of both rung changes, and why a tier remap
+moves row 15's distribution but not the twelve's: `07-ui.md` §2.8a.
 
 **⚠ Row 15 (raceless — Mind Vessel, Dragon Golem) is DERIVED, not authored.** The grid is 12 races by
 user ruling and the JSON stores 12 columns; `raceless_cells()` computes row 15 at table-build time as
@@ -1986,13 +1985,13 @@ instead — which is what JSON mode did until 2026-09-09 — offered a raceless 
 shorthand gave him 25.4. Nothing could catch it: `report()` printed row 15 as "not in the grid" and
 skipped it, so `--strict` skipped it too. Both now cover it, tagged `derived` or `authored`.
 
-**No cell in row 15 reaches the top rung**: a mean of the twelve only quantises to 60 once it passes
-42.5, which takes nine of the twelve races already at 60, and no ability is that broadly signature.
-⚠ That used to be what made row 15 unique — a deterministic floor of 0 and sd 3.7 against the
-twelve's 2.6–2.9. Since the second retune **every** row has a floor of 0 and row 15's sd 3.3 is
-level with the twelve's 3.0–3.3, so spread no longer distinguishes it. What still does is its
-middle-heavy shape: 38 cells at 25 against 15–24 for the twelve.
-In shorthand mode row 15 stays authored by the `always=["Raceless"]` markers (25.4 expected — the
+**Row 15 carries 10 cells at the top rung** (Forestry, Strike, Marksmanship, Spell Casting, Vision,
+Shield and the Death, Fire, Poison and Cold Protections): a mean of the twelve quantises to 60 once
+it passes 42.5, which seven races at 60 and five at 25 already clear. Neither floor nor spread
+distinguishes row 15 — every row's floor is 0, and its sd 3.4 sits inside the twelve's 3.1–3.5.
+Its shape does: 70 cells on the two middle rungs against 40–56 for the twelve, and only 10 at 60
+against their 12–25.
+In shorthand mode row 15 stays authored by the `always=["Raceless"]` markers (26.4 expected — the
 shorthand's `always` is 100 and does not follow `LADDER`).
 
 **The gate is `cave_fill`'s third test**, after `CanExpand` (mask `0x200`, `call [ability_vmt+0xC4]`)
@@ -2007,9 +2006,9 @@ must match **exactly once inside `.hcol`** or the script aborts:
 
 | site | pattern | today | is |
 |---|---|---|---|
-| `cf_gate` | `8b 45 f4 8b 40 0c 3d 00 01 00 00` | `0x00623E5D` (moves on every `build_herodlg_columns.py --apply` — the script re-locates it by this pattern, never by the address) | `mov eax,[ebp-0xC]` ; `mov eax,[eax+0xC]` |
-| resume | `cf_gate + 6` | `0x00623E93` | `cmp eax, 0x100` |
-| `cf_next` | `46 ff 4d f0` | `0x00623F32` | `inc esi` ; `dec dword [ebp-0x10]` |
+| `cf_gate` | `8b 45 f4 8b 40 0c 3d 00 01 00 00` | `0x00623E53` (moves on every `build_herodlg_columns.py --apply` — the script re-locates it by this pattern, never by the address) | `mov eax,[ebp-0xC]` ; `mov eax,[eax+0xC]` |
+| resume | `cf_gate + 6` | `0x00623E59` | `cmp eax, 0x100` |
+| `cf_next` | `46 ff 4d f0` | `0x00623EF8` | `inc esi` ; `dec dword [ebp-0x10]` |
 
 ⚠ Scope the `cf_next` search to `.hcol`: `46 ff 4d f0` matches **twice** in the whole file (the other
 hit is at file `0x45FA8`, in CODE).
@@ -2080,10 +2079,8 @@ the ability id are **pushed across the hash** rather than parked in registers. E
 index) and EBP (host frame) all survive — rngstd touches only EAX/EDX/ECX/flags.
 
 **The cave adds no draw**, so `rng_audit.py --owners` is unchanged (24 modded sites before and after);
-`--hash` is what proves the site exists, and it now lists `006280A9 rngstd.fmix32` in both exes. ⚠ It
-labels them `UNOWNED`: `rng_audit.py`'s `_HEX_RE` only indexes `0x55xxxxxx`–`0x58xxxxxx` literals, so
-it cannot attribute an **exe** cave to a script. A tool gap, not a patch gap — these are the project's
-first P4 sites and the first in an exe.
+`--hash` is what proves the site exists: it lists `006280A9 rngstd.fmix32 <- build_heroskill_race.py`
+in both exes. These are the project's first P4 sites and the first in an exe.
 
 **⚠ `TABLE_DEFAULT = 100` — fail open, and it is load-bearing.** The table is id-indexed, so an
 ability with no line in `heroskill_races.py` reads whatever the cell holds. At 0 a newly minted
@@ -2100,8 +2097,8 @@ ones. It also means a mistyped or newly minted id shows up as an ability offered
 which is a sharper tell than it used to be.
 
 **The offered set is re-derived live**, never hard-coded: `Release/Ability.pfs` tag 9 with **both**
-`0x100` (b8 Hero upgrade) and `0x200` (b9 THero, labelled "Editor" in AoWDevEd) — **102** abilities
-today, all real and named, against vanilla's 23. Column split: Wayfaring 25 / Resistances 16 / Melee
+`0x100` (b8 Hero upgrade) and `0x200` (b9 THero, labelled "Editor" in AoWDevEd) — **103** abilities
+today, all real and named, against vanilla's 23. Column split: Wayfaring 25 / Resistances 17 / Melee
 21 / Ranged 20 / Magic 20.
 
 ⚠⚠ **`Ability.pfs` record id = ability id + 10.** Joining record ids straight to ability ids produces a
@@ -2135,7 +2132,7 @@ installed gate produced byte-identical exes.
 
 **The AI is unaffected and that is structural, not incidental.** `THero.ValidateHeroUpgrade @0x55787D54`
 calls `ExecuteUpgradeHeroAI @0x55787A24` directly when `player[+0xA7] != 0`, never touching the dialog,
-so an AI hero still picks from all 102. Filtering the AI too would be a **second patch in
+so an AI hero still picks from all 103. Filtering the AI too would be a **second patch in
 `AoWEPACK.dpl`** — and that path *is* in the SYNC list (`0x55787C35 → call 0x5577827C`, feeding
 `RandomChanceItemB` at `0x55787C46`), so it would need the synced generator or this same hash. Out of
 scope.
@@ -2151,7 +2148,7 @@ unhooked and byte-intact, one caller at `0x44F1F3`; `PopulateLists @0x446954` wi
 (`0x4462DB`, `0x447122`, `0x4471B3`); `DoneClick @0x4472AC` builds the synchronised `THeroUpgradeTE`,
 and the offered list is never transmitted.
 
-**Zero-code alternative, still open and independent:** the 102-vs-23 gap is entirely `Ability.pfs`
+**Zero-code alternative, still open and independent:** the 103-vs-23 gap is entirely `Ability.pfs`
 tag 9, 2 bytes in every record — a length-preserving write needing no property-table rebuild
 (`build_pfs_typos.py` is the existing writer). It gives no per-race variation, but it is the cheapest
 global lever on "too many choices" and composes with this feature rather than competing with it.
@@ -2171,7 +2168,7 @@ to `heroskill_races.table()` with every cell in 0..100.
 **Re-applied 2026-09-09 to bake the seeded JSON + derived row 15.** `stale` → `on` on both exes.
 1062 of 4096 table bytes moved — 963 in rows 0–11 (the seed's quantisation, 5→0, 10→15, 25→15, 30→40)
 and 99 in row 15 (all-100 → derived) — and **nothing else**: diffed against
-`backups\*.pre-heroskillrace` the whole footprint of the feature is the 6-byte hook at `cf_gate` (`0x00623E5D` today)
+`backups\*.pre-heroskillrace` the whole footprint of the feature is the 6-byte hook at `cf_gate` (then `0x00623E5D`)
 plus bytes inside `0x00628000..0x0062A000`, 3901 bytes per exe, zero outside. Cave code (201 B),
 both tails, the `RGT1` magic and the hook are byte-identical across the re-apply; only data moved.
 File length and section table unchanged; the two exes still differ at exactly `0x3BB7C`; the backups
@@ -2192,31 +2189,32 @@ race can never be offered.
 
 1. Level a hero of each of two or three **different races** and confirm the Upgrades columns differ in
    a race-appropriate way — an Elf sees Archery and Forestry at 60 % each; a Dwarf sees
-   Mountaineering, Cave Crawling and Fire Musket at 60 % each. Over four or five level-ups each
+   Mountaineering, Cave Crawling and Tunneling at 60 % each. Over four or five level-ups each
    should turn up roughly three times in five; never appearing across five is worth a second look,
    once, not a bug report.
 2. **Turn Undead is still the sharp check, but only in the negative direction.** It must be
-   **absent at every level** for the nine grid races whose cell is 0 (everyone but High Men, Dark
-   Elves and the Undead) — one sighting there is a real defect. For those three it is 60 %, and for
-   a **raceless** hero it is 10 % (the derived row rounds the twelve's mean of 15 down to 10), so
-   an occasional raceless Turn Undead is correct and not a leak.
+   **absent at every level** for the four grid races whose cell is 0 (Lizardmen, Frostlings, Orcs
+   and Goblins) — one sighting there is a real defect. It is 60 % for High Men, Dark Elves and the
+   Undead, 25 % for Humans, Azracs, Elves, Halflings and Dwarves, and 25 % for a **raceless** hero
+   (the derived row rounds the twelve's mean of 25.4 to 25), so a raceless Turn Undead is correct
+   and not a leak.
 3. **The set must not shimmer.** Add an ability, then Remove it, then Cancel and reopen the dialog —
    the *available* list must be identical every time. (This is what reading `[ebx+0x1D8]` buys.)
 4. **Save mid-level-up, reload, reopen** — the same abilities must be offered. A different set means
    the salt or one of the hash inputs is not what it is thought to be.
 5. Level the **same** hero again and confirm the set *does* change — the level byte is a hash input,
-   so a hero who saw one set of ~16 at level 5 should see a different ~16 at level 6.
+   so a hero who saw one set of ~18 at level 5 should see a different ~18 at level 6.
 6. Confirm the columns still fill, sort and scroll normally, and that Add/Remove/Done still work — the
    gate sits inside `build_herodlg_columns.py`'s fill loop.
-7. A **raceless** hero (Mind Vessel, Dragon Golem) must be offered a *generic* list — roughly 13 or
-   14 of 102 — not all 102 and not none. That exercises the `min(race,15)` clamp
-   **and** the derived row 15. All 102 means the derivation did not reach the table.
-8. Count the offers on a few heroes. Per-race means are **13.5–18.4** and single-dialog counts run
-   **4 to 31** (3 to 31 counting raceless), so a correct install legitimately shows 6 or 28 and
-   neither indicts anything. Only a dialog of **0–2 or 60+** points at the table index. Judge across
-   several heroes, not one. ⚠ **20–30 is not a target, a floor or a band** — it is a direction the
-   owner sketched once, it gates nothing, and every row sitting under it is inherent to a top rung
-   of 60 (§2.8a). Do not read a count of 14 as a fault.
+7. A **raceless** hero (Mind Vessel, Dragon Golem) must be offered a *generic* list — roughly 17
+   of 103 — not all 103 and not none. That exercises the `min(race,15)` clamp
+   **and** the derived row 15. All 103 means the derivation did not reach the table.
+8. Count the offers on a few heroes. Per-race means are **15.6–22.1** (raceless 17.0) and
+   single-dialog counts run **6 to 35** (raceless 6 to 30), so a correct install legitimately shows
+   8 or 32 and neither indicts anything. Only a dialog of **0–2 or 60+** points at the table index.
+   Judge across several heroes, not one. ⚠ **20–30 is not a target, a floor or a band** — it is a
+   direction the owner sketched once, it gates nothing, and ten of the thirteen rows sit under it
+   (§2.8a). Do not read a count of 14 as a fault.
 
 #### Feature 2 — restore multi-level Leadership (superseded)
 

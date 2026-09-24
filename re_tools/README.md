@@ -15,7 +15,7 @@ process named `AoW.exe` reports "not running" against the mod — and, if vanill
 running, attaches to *it* and reports vanilla state with no error. Names come from
 `build_scripts/zigexe.py`, reached here as `from zignames import zigexe` (`zigexe.GAME_EXE`,
 `zigexe.EXES` = the mod game pair, `zigexe.ALL_EXES` = every mod binary, `zigexe.LIVE_EDITOR`).
-Rationale and the two deliberate exceptions: `../Zig notes/12-re-toolchain.md` §11.3.
+Rationale and the one deliberate exception: `../Zig notes/12-re-toolchain.md` §11.3.
 
 ## Files
 
@@ -65,7 +65,8 @@ General-purpose (work on ANY module, not just the game exe):
   short-strings. Length defaults to next-export distance.
 - **rng_audit.py** `[module ...] [--owners|--functions|--all-sites|--hash]` — every RNG draw in every
   binary, classified `ok` (synced `TAoWHSMap.Random`) / `RAW` (`System.@RandInt`, per-process
-  seed) / `seed`, diffed against the pristine references so modded sites stand out. `--owners`
+  seed) / `seed`, diffed against the stock copies at the game root (each md5-checked against the GOG
+  hashdb) so modded sites stand out. A missing target or reference exits 2. `--owners`
   attributes a site to its build script; `--functions` prints which vanilla functions use which
   generator — that is the answer to "which one should my cave use". Catches call/jmp rel32,
   indirect calls **and bare address constants**, across every EXECUTE section (not just

@@ -31,6 +31,34 @@ In-module calls are rel32 (rebase-safe).
 
 Layered on the existing patch stack; backup: AoWEPACK.dpl.pre-tierresearch.
 Dry-run by default; --apply to write. Idempotent, verify-before-write.
+
+cave_day1 v2 (2026-09-24) -- A CALLABLE ROUTINE, for build_pbem_leadersetup.py stage 2
+--------------------------------------------------------------------------------------
+v1 was entered by `jmp` at 0x5577CC72 and left by `jmp 0x5577CD4A`, so nothing could CALL it.
+build_pbem_leadersetup.py (07-ui.md section 10) defers the day-1 grant of a PBEM human leader
+until the leader has picked new spheres in the turn-1 window, then runs THIS grant from its
+C_APPLY with ESI = the player's TPlayerMagicControl.  v2 makes that possible with the smallest
+change that keeps the NewTurn path equivalent:
+
+    0x5577CC72  E9 <cave_day1> 90 90    ->  E8 <cave_day1> 90 90     (jmp -> call)
+    0x5577CC79  E8 2A 44 F8 FF (dead)   ->  E9 <0x5577CD4A>          (new: the return path)
+    cave tail   add esp,8 ; jmp 0x5577CD4A   ->   add esp,8 ; ret ; 4 zero bytes
+
+The routine keeps v1's register contract: IN esi = magic; clobbers eax/ecx/edx/ebx/edi/ebp;
+preserves esi; stack balanced.  0x5577CC79 is inside vanilla's replaced triple-random block,
+dead since v1 (its only entry was the fall-through from 0x5577CC72; nothing branches into
+0x5577CC7A..0x5577CC7D; no .reloc covers it).  The two `nop`s at 0x5577CC77/78 are now
+EXECUTED on the way back: they are bytes the neutralised .reloc entry 0x5577CC75
+(build_relocfix.py) used to cover, and that entry stays neutralised.
+
+WHY IN PLACE HERE, not a chain from build_pbem_leadersetup: the grant must be callable as a
+routine, and a jmp-exit cave can only be "called" through a synthetic return frame.  The only
+alternatives were this re-tune or a second copy of the grant in the other script, which would
+drift silently the first time this grant changes.
+⚠ COUPLING: build_pbem_leadersetup.py's C_APPLY CALLS 0x5580EE30 and pins this routine's bytes
+(sha256) on every run.  Never revert cave_day1 to v1 (jmp-exit) while that feature is
+installed -- C_APPLY's call would never return.  Undo order: build_pbem_leadersetup.py --undo
+first.  (This script has no --undo of its own.)  --apply re-tunes an installed v1 in place.
 """
 import shutil, sys, struct, os
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
@@ -59,6 +87,7 @@ HOOK_GRANT = 0x5577CDC4           # E8 -> ExecuteSpellResearched   (5 bytes)
 HOOK_COST  = 0x5577D569           # 8B 40 18 89 43 38              (6 bytes)
 HOOK_DAY1  = 0x5577CC72           # B2 01 A1 58 C9 8F 55           (7 bytes)
 DAY1_RET   = 0x5577CD4A
+HOOK_DAY1_BACK = 0x5577CC79       # v2: E8 2A 44 F8 FF (dead vanilla) -> jmp DAY1_RET (5 bytes)
 HOOK_EVTEXT = 0x5577C4B4          # 8B 40 08 89 45 F8 in TPlayerMagicEventLog.GetText (6 bytes)
 SPHERE_RSTRTAB = 0x558E8118       # AoWE.TMagicSphereRStr — array of RStr rec ptrs (relocated)
 LOADRES    = 0x55701210           # System.LoadResString(eax=rec, edx=&dest)
@@ -160,7 +189,8 @@ Lstore:
 
 # ---- cave_day1: grant all tier-1 spells of one random picked sphere ----
 # in: esi=magic (ebx/edi/ebp free to clobber, NewTurn body regs); exits jmp DAY1_RET
-def src_day1(p):
+def src_day1(p, v1=False):
+    TAIL = f"jmp 0x{DAY1_RET:X}" if v1 else "ret"      # v2: a callable routine
     return f"""
         call L1
     L1: pop ecx
@@ -226,7 +256,7 @@ def src_day1(p):
         jmp Lgl
     Lend:
         add esp, 8
-        jmp 0x{DAY1_RET:X}
+        {TAIL}
     """
 
 # ---- cave_evtext: research event/popup text = "Death I researched" (tier, not spell) ----
@@ -305,7 +335,14 @@ CAVE_COST  = (CAVE_GRANT + len(cave_grant) + 15) & ~15
 cave_cost  = bytes(ks.asm(SRC_COST, CAVE_COST)[0])
 CAVE_DAY1  = (CAVE_COST + len(cave_cost) + 15) & ~15
 cave_day1  = assemble_pic(src_day1, CAVE_DAY1, 1)
-CAVE_EVT   = (CAVE_DAY1 + len(cave_day1) + 15) & ~15
+cave_day1_v1 = assemble_pic(lambda p: src_day1(p, v1=True), CAVE_DAY1, 1)
+assert len(cave_day1) < len(cave_day1_v1) and cave_day1[:-1] == cave_day1_v1[:len(cave_day1) - 1]
+assert cave_day1[-4:] == bytes.fromhex("83c408c3"), "v2 must end add esp,8 ; ret"
+DAY1_REGION = len(cave_day1_v1)   # v2 is written zero-padded to v1's length: no stale tail
+# named literally so rng_audit.py --owners attributes the grant's synced draw (+0x46) here too;
+# build_pbem_leadersetup.py's C_APPLY calls this exact address and pins these bytes
+assert CAVE_DAY1 == 0x5580EE30, "cave_day1 moved -- build_pbem_leadersetup.py calls 0x5580EE30"
+CAVE_EVT   = (CAVE_DAY1 + DAY1_REGION + 15) & ~15
 cave_evt, EVT_CODE = build_evtext(CAVE_EVT)
 CAVE_END   = CAVE_EVT + len(cave_evt)
 
@@ -327,7 +364,10 @@ hook_grant_new  = b"\xE8" + rel(HOOK_GRANT, CAVE_GRANT)
 hook_cost_orig  = bytes.fromhex("8b 40 18 89 43 38".replace(" ", ""))
 hook_cost_new   = b"\xE8" + rel(HOOK_COST, CAVE_COST) + b"\x90"
 hook_day1_orig  = bytes.fromhex("b2 01 a1 58 c9 8f 55".replace(" ", ""))
-hook_day1_new   = b"\xE9" + rel(HOOK_DAY1, CAVE_DAY1) + b"\x90\x90"
+hook_day1_v1    = b"\xE9" + rel(HOOK_DAY1, CAVE_DAY1) + b"\x90\x90"
+hook_day1_new   = b"\xE8" + rel(HOOK_DAY1, CAVE_DAY1) + b"\x90\x90"      # v2: call, not jmp
+back_day1_orig  = bytes.fromhex("e82a44f8ff")                          # dead vanilla call
+back_day1_new   = b"\xE9" + rel(HOOK_DAY1_BACK, DAY1_RET)               # v2: the return path
 hook_evt_orig   = bytes.fromhex("8b 40 08 89 45 f8".replace(" ", ""))
 hook_evt_new    = b"\xE8" + rel(HOOK_EVTEXT, EVT_CODE) + b"\x90"
 
@@ -354,34 +394,41 @@ def va2off(secs, va):
 def main():
     d = bytearray(open(DLL, 'rb').read())
     secs = load_secs(d)
+    day1_region_new = cave_day1 + bytes(DAY1_REGION - len(cave_day1))
+    # (file offset, vanilla, current build, v1 build or None, description)
     patches = [
-        (va2off(secs, HOOK_GRANT), hook_grant_orig, hook_grant_new, "hook: NewTurn completion -> cave_grant"),
-        (va2off(secs, HOOK_COST),  hook_cost_orig,  hook_cost_new,  "hook: ExecuteResearchSpell cost -> cave_cost"),
-        (va2off(secs, HOOK_DAY1),  hook_day1_orig,  hook_day1_new,  "hook: day-1 freebies -> cave_day1"),
-        (va2off(secs, HOOK_EVTEXT), hook_evt_orig,  hook_evt_new,   "hook: research event text -> cave_evtext"),
-        (va2off(secs, CAVE_GRANT), bytes(len(cave_grant)), cave_grant, f"cave_grant @ {CAVE_GRANT:08X}"),
-        (va2off(secs, CAVE_COST),  bytes(len(cave_cost)),  cave_cost,  f"cave_cost @ {CAVE_COST:08X}"),
-        (va2off(secs, CAVE_DAY1),  bytes(len(cave_day1)),  cave_day1,  f"cave_day1 @ {CAVE_DAY1:08X}"),
-        (va2off(secs, CAVE_EVT),   bytes(len(cave_evt)),   cave_evt,   f"cave_evtext @ {CAVE_EVT:08X}"),
+        (va2off(secs, HOOK_GRANT), hook_grant_orig, hook_grant_new, None, "hook: NewTurn completion -> cave_grant"),
+        (va2off(secs, HOOK_COST),  hook_cost_orig,  hook_cost_new,  None, "hook: ExecuteResearchSpell cost -> cave_cost"),
+        (va2off(secs, HOOK_DAY1),  hook_day1_orig,  hook_day1_new,  hook_day1_v1, "hook: day-1 freebies -> call cave_day1"),
+        (va2off(secs, HOOK_DAY1_BACK), back_day1_orig, back_day1_new, None, "v2: return path jmp 0x5577CD4A"),
+        (va2off(secs, HOOK_EVTEXT), hook_evt_orig,  hook_evt_new,   None, "hook: research event text -> cave_evtext"),
+        (va2off(secs, CAVE_GRANT), bytes(len(cave_grant)), cave_grant, None, f"cave_grant @ {CAVE_GRANT:08X}"),
+        (va2off(secs, CAVE_COST),  bytes(len(cave_cost)),  cave_cost,  None, f"cave_cost @ {CAVE_COST:08X}"),
+        (va2off(secs, CAVE_DAY1),  bytes(DAY1_REGION),     day1_region_new, cave_day1_v1, f"cave_day1 @ {CAVE_DAY1:08X}"),
+        (va2off(secs, CAVE_EVT),   bytes(len(cave_evt)),   cave_evt,   None, f"cave_evtext @ {CAVE_EVT:08X}"),
     ]
-    ok = True; already = 0; todo = 0
-    for off, orig, new, desc in patches:
+    ok = True; already = 0; todo = 0; all_vanilla = True; v1_seen = 0
+    for off, orig, new, prev, desc in patches:
         cur = bytes(d[off:off+len(new)])
+        if cur != orig: all_vanilla = False
         if cur == new: already += 1
         elif cur == orig: todo += 1
+        elif prev is not None and cur == prev: todo += 1; v1_seen += 1
         else:
             print(f"MISMATCH {desc}:\n  exp {orig.hex(' ')}\n  got {cur.hex(' ')}"); ok = False
-    print(f"{already} already applied, {todo} to patch, {len(patches)} total; caves end {CAVE_END:08X} (zone to {ZONE_END:08X})")
+    print(f"{already} already applied, {todo} to patch ({v1_seen} of them v1 -> v2), {len(patches)} total; caves end {CAVE_END:08X} (zone to {ZONE_END:08X})")
     if not ok:
         print("ABORT: byte mismatch (different/partial patch state)."); return 1
     if '--apply' not in sys.argv:
         print("Dry run OK. Re-run with --apply to write."); return 0
     if todo == 0:
         print("Nothing to do."); return 0
-    if not os.path.exists(BACKUP):
+    if all_vanilla:                  # ⚠ a snapshot ONLY from a proved-unpatched file (v2: was `not exists`)
         os.makedirs(BACKUP_DIR, exist_ok=True)
         shutil.copyfile(DLL, BACKUP); print(f"backup -> {BACKUP}")
-    for off, orig, new, desc in patches:
+    else:
+        print("patched file (re-tune in place) -- no backup")
+    for off, orig, new, prev, desc in patches:
         d[off:off+len(new)] = new
     open(DLL, 'wb').write(d)
     print("applied.")

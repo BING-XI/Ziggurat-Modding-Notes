@@ -160,6 +160,18 @@ so an AI hero still picks from all 102.  Filtering the AI too would be a SECOND 
 need the synchronised generator or this same hash.  Out of scope here.
 
 `AoWDevEd.exe` is not touched: the editor's hero screens do not run this dialog.
+
+================================================================================
+⚠ A SECOND READER: build_pbem_leadersetup.py (2026-09-24)
+================================================================================
+The PBEM turn-1 leader window's `C_OFFER` (exe `0x0062C250`) reads THIS table at `TABLE_VA` and
+copies this cave's rngstd hash, offering an ability iff `u < min(2*pct, 100)`.  A re-bake changes
+both dialogs at once -- intended.  `--undo` here zeroes the table, so every threshold becomes 0 and
+the PBEM window's Available list comes up EMPTY (no crash); build_pbem_leadersetup.py's dry run then
+reports `chain: BROKEN` and its `--apply` refuses until this script is re-applied.  Its `--undo` works
+either way.  Moving or re-shaping the table breaks it: that script imports `TABLE_VA`, `HERO_RES`,
+`RES_RACE`, `MAPSLOT`, `MAP_SALT`, `HERO_UNITID`, `HERO_LEVEL`, `RACES.RACELESS_ROW` and
+`_assert_rngstd_shape` from here.  (07-ui.md §10.6.)
 """
 import argparse
 import os

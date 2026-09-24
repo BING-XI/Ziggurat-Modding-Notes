@@ -61,7 +61,7 @@ whole battle then runs deterministically off the raw stream. A synced draw *insi
 | — morale re-scale (ATK ±4, RES ±6) | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_morale_scale.py` | `AoWEPACK.dpl` |
 | — tactical wall/structure HP unified 40 stone / 10 wood | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_tcpck_damhp.py` | `AoWTCPCK.dpl` |
 | Hero library skill points spent down (589 unspent → 3) | 🔨 APPLIED, UNTESTED (2026-09-08) | `build_heroskill_spend.py` | `User/Ziggurat Heroes.ahl`, `Ziggurat release/User/` — **no binary** |
-| A hero holding unspent skill points is offered them | 🔨 APPLIED, UNTESTED (2026-09-22, v2) | `build_hero_turn1_upgrade.py` (`0x55786CB3`→nops, `0x55787FE7` call-retarget, cave `C_TURN1 0x5584B000`) | `AoWEPACK.dpl` |
+| A hero holding unspent skill points is offered them | 🔨 APPLIED, UNTESTED (2026-09-22, v2; v3 guard 2026-09-24) | `build_hero_turn1_upgrade.py` (`0x55786CB3`→nops, `0x55787FE7` call-retarget, cave `C_TURN1 0x5584B000`) | `AoWEPACK.dpl` |
 | Excess-ATK → minimum-damage bonus | vanilla mechanism, RE only, no patch | — | `AoWEPACK.dpl` |
 | Strategic map damage (storms/grounds/fire/vortex/quake/poison) | vanilla mechanism; ATK/DAM sides doubled by the two passes above | — | `AoWEPACK.dpl` |
 | Missile trajectory & interception (manual tactical) | vanilla mechanism, RE only, no patch | — | `AoWTCPCK.dpl` |
@@ -1037,8 +1037,8 @@ earns past the **next** threshold (level 9 at XP 200); everything banked below i
 **The patch — two sites, one cave.** `SITE 1 0x55786CB3` (10 B) → 10 × `nop`, disarming vanilla's
 day-1 confiscation; both inbound jumps land on the run's boundaries so the whole run is safe to blank.
 `SITE 2 0x55787FE7` (5 B) retargets `call ValidateHeroUpgrade` to the cave — the call-retarget idiom,
-4 displacement bytes, nothing displaced. `C_TURN1 = 0x5584B000`, **46 bytes**, PIC (three rel32
-transfers, no absolute operand, no anchor):
+4 displacement bytes, nothing displaced. `C_TURN1 = 0x5584B000`, **129 bytes since v3** (46 in v2),
+PIC (rel32 transfers; v3 reaches the map through a `call $+5` anchor):
 
 ```
 push ebx / mov ebx,eax
@@ -1046,6 +1046,8 @@ call THero.GetSkillPoints @0x557875C4 / test eax,eax / jle done      ; guard 1
 mov eax,ebx / call THero.GetLevel @0x55787740
 movsx eax,al / movzx edx,byte [ebx+0x4C] / cmp eax,edx / jl done     ; guard 2
 cmp dl,1 / jbe done                                                  ; guard 3
+map = [anchor + (0x558FA040 - anchor)] ; player = GetPlayers([map+0x140], movsx [ebx+0x24])
+pbemday1 predicate && [player+0xD4] == ebx -> done                   ; guard 4 (v3, 2026-09-24)
 dec byte [ebx+0x4C]
 done: mov eax,ebx / pop ebx / jmp THero.ValidateHeroUpgrade @0x55787D54
 ```

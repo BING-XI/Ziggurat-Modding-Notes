@@ -27,8 +27,16 @@ silently means "I did not look".
 The rule this enforces: "Zig notes/12-re-toolchain.md" section 4 (taxonomy + the
 four-pattern selection test in 4.10).
 
+Targets are the live modules in GAME (<root>/Ziggurat). Each is diffed against its stock
+copy at the game ROOT, which is a byte-clean GOG install: the root is located by the GOG
+manifest (goggame-*.hashdb lives only there) and every reference is md5-checked against that
+manifest before use. A missing target, a missing reference or a reference that is not stock
+is an ERROR (exit 2, nothing audited) -- until 2026-09-23 a missing target printed "(missing)",
+counted as zero sites and exited 0, which is how the 2026-09-09 exe rename dropped both mod
+exes out of every default run unnoticed.
+
 Usage:
-    python rng_audit.py                  # every module, diffed against pristine refs
+    python rng_audit.py                  # every module, diffed against its root reference
     python rng_audit.py AoWEPACK.dpl     # one module
     python rng_audit.py --owners         # attribute each modded site to a build script
     python rng_audit.py --all-sites      # list stock sites too, not just modded ones
@@ -38,22 +46,28 @@ Usage:
 import os, re, sys, struct, subprocess
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
-# game dir = two levels up from this script (<game>/Modding Resources/<subdir>/);
-# override with the AOW_GAME_DIR environment variable.
+# game dir = <root>/Ziggurat, two levels up from this script (<root>/Ziggurat/Modding
+# Resources/re_tools/); override with the AOW_GAME_DIR environment variable.
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, TOOLS)
 from pescan import PE
+from zignames import zigexe
+from mod_manifest import HASHDB, parse_hashdb, md5
 
-# module -> pristine reference to diff against (None = no reference available)
+# the vanilla install = the folder holding the GOG manifest (anchored on contents, not depth)
+ROOT = os.path.dirname(HASHDB)
+
+# module in GAME -> its stock name at ROOT (None = no stock copy exists anywhere).
+# Exe names come from zigexe, never a literal (re_tools/README.md).
 REFS = {
-    "AoWEPACK.dpl":   os.path.join(GAME, "Modding Resources", "AoWEPACK_original_backup.dpl"),
-    "AoW.exe":        os.path.join(GAME, "Ziggurat upload", "AoW.exe"),
-    "AoWCompat.exe":  os.path.join(GAME, "Ziggurat upload", "AoW.exe"),
-    "AoWTCPCK.dpl":   None,
-    "aowInt.dpl":     None,
-    "AoWDevEd.exe":   None,
-    "HSEPack.dpl":    None,
+    "AoWEPACK.dpl":    "AoWEPACK.dpl",
+    zigexe.GAME_EXE:   zigexe.VANILLA_EXE,
+    zigexe.COMPAT_EXE: zigexe.VANILLA_COMPAT,
+    "AoWTCPCK.dpl":    "AoWTCPCK.dpl",
+    "aowInt.dpl":      "aowInt.dpl",
+    zigexe.SRC_EDITOR: None,        # the root copy is modded too; the hashdb has no entry
+    "HSEPack.dpl":     "HSEPack.dpl",
 }
 MODULES = list(REFS)
 
@@ -209,7 +223,14 @@ def scan(pe):
 
 
 _CAVE_INDEX = None
-_HEX_RE = re.compile(r"0x(5[5-8][0-9A-Fa-f]{6})|\b(5[5-8][0-9A-Fa-f]{6})\b")
+_SCRIPT_CODE = {}           # script -> its text minus the module docstring
+# 0x55000000-0x58FFFFFF: AoWEPACK / HSEPack preferred VAs, each unique to one module.
+# 0x00400000-0x006FFFFF: the exe range, which the exe pair, AoWDevEd.exe and AoWTCPCK.dpl all
+# share (every one is based at 0x400000) -- owners() only credits a script there that NAMES
+# the module. Before 2026-09-23 this range was not indexed, so every exe site read UNOWNED.
+_HEX_RE = re.compile(r"0x(5[5-8][0-9A-Fa-f]{6})|\b(5[5-8][0-9A-Fa-f]{6})\b"
+                     r"|0x((?:00)?[4-6][0-9A-Fa-f]{5})\b")
+SHARED_BASE_TOP = 0x55000000
 
 
 def _cave_index():
@@ -233,22 +254,87 @@ def _cave_index():
             end = text.find('"""', m.end())
             if end != -1:
                 text = text[:m.start()] + text[end + 3:]
+        _SCRIPT_CODE[fn] = text
         for m in _HEX_RE.finditer(text):
-            _CAVE_INDEX.setdefault(int(m.group(1) or m.group(2), 16), set()).add(fn)
+            _CAVE_INDEX.setdefault(int(m.group(1) or m.group(2) or m.group(3), 16),
+                                   set()).add(fn)
     return _CAVE_INDEX
 
 
-def owners(va, window=0x400):
+def _names_module(fn, modname):
+    """Does script `fn`'s code name `modname` as a target -- by literal or by zigexe constant?"""
+    toks = [modname] + ["zigexe." + c for c in ("GAME_EXE", "COMPAT_EXE", "SRC_EDITOR",
+                                                "LIVE_EDITOR")
+                        if getattr(zigexe, c) == modname]
+    if modname in zigexe.EXES:
+        toks.append("zigexe.EXES")
+    return any(t in _SCRIPT_CODE[fn] for t in toks)
+
+
+def owners(va, modname, window=0x400, code_re=None):
     """Nearest VA literal at or before `va` in any build script -- that is the cave owner.
 
     A cave's RNG call sits some bytes past the cave base, so an exact-match grep misses
     it; the nearest preceding literal within `window` bytes is the reliable attribution.
+    Below SHARED_BASE_TOP the same VA exists in several modules, so only scripts that name
+    `modname` are candidates. `code_re`, if given, must also match the script's code.
     """
     idx = _cave_index()
-    best = max((v for v in idx if va - window <= v <= va), default=None)
-    if best is None:
+    cands = {}
+    for v, fns in idx.items():
+        if va - window <= v <= va:
+            if va < SHARED_BASE_TOP:
+                fns = set(f for f in fns if _names_module(f, modname))
+            if code_re is not None:
+                fns = set(f for f in fns if code_re.search(_SCRIPT_CODE[f]))
+            if fns:
+                cands[v] = fns
+    if not cands:
         return []
-    return ["%s (+0x%X from %08X)" % (s, va - best, best) for s in sorted(idx[best])]
+    best = max(cands)
+    return ["%s (+0x%X from %08X)" % (s, va - best, best) for s in sorted(cands[best])]
+
+
+def preflight(mods, need_refs):
+    """-> {module: (target path, reference path or None)}, or exit 2 listing every problem.
+
+    Runs before anything is printed, so a partial audit can never be read as a clean one.
+    """
+    errs, out, db = [], {}, None
+    for m in mods:
+        tgt = os.path.join(GAME, m)
+        if not os.path.isfile(tgt):
+            hint = ""
+            if m in (zigexe.VANILLA_EXE, zigexe.VANILLA_COMPAT):
+                hint = (" -- %s is the vanilla REFERENCE at the root; the mod pair is %s"
+                        % (m, " / ".join(zigexe.EXES)))
+            errs.append("target not found: %s%s" % (tgt, hint))
+            continue
+        ref = None
+        if need_refs and REFS.get(m):
+            ref = os.path.join(ROOT, REFS[m])
+            if not os.path.isfile(ref):
+                errs.append("reference not found: %s" % ref)
+                continue
+            if os.path.samefile(ref, tgt):
+                errs.append("target IS its reference (%s) -- GAME resolved to the vanilla "
+                            "root; is AOW_GAME_DIR set?" % tgt)
+                continue
+            if db is None:
+                db = parse_hashdb(HASHDB) if os.path.isfile(HASHDB) else {}
+            entry = db.get(REFS[m].lower())
+            if entry is None or entry[1] != md5(ref):
+                errs.append("reference is not stock: %s does not match %s"
+                            % (ref, os.path.basename(HASHDB)))
+                continue
+        out[m] = (tgt, ref)
+    if db == {}:
+        errs.insert(0, "GOG manifest not found: %s -- no reference can be proved stock" % HASHDB)
+    if errs:
+        for e in errs:
+            print("rng_audit: ERROR: " + e, file=sys.stderr)
+        sys.exit(2)
+    return out
 
 
 def enclosing(pe, va, exp_sorted, exp):
@@ -261,13 +347,12 @@ def enclosing(pe, va, exp_sorted, exp):
     return "%s+0x%X" % (exp[start], va - start)
 
 
-def by_function(modname):
+def by_function(modname, path, ref):
     """Which vanilla/live functions draw RAW and which draw SYNC -- the evidence base
     for 'match the generator the surrounding function already uses'."""
-    import bisect
-    for label, path in (("LIVE", os.path.join(GAME, modname)),
-                        ("PRISTINE", REFS.get(modname) or "")):
-        if not path or not os.path.exists(path):
+    for label, path in (("LIVE", path), ("PRISTINE", ref)):
+        if path is None:
+            print("\n-- PRISTINE: none for %s --" % modname)
             continue
         pe = PE(path)
         exp = {}
@@ -280,7 +365,7 @@ def by_function(modname):
             if kind == "SEED":
                 continue
             groups.setdefault(kind, []).append(enclosing(pe, va, exp_sorted, exp))
-        print("\n-- %s %s --" % (label, os.path.basename(path)))
+        print("\n-- %s %s --" % (label, os.path.relpath(path, ROOT)))
         for kind in ("SYNC", "RAW"):
             names = sorted(set(n.split("+")[0] for n in groups.get(kind, [])))
             print("   %s: %d site(s) in %d function(s)" %
@@ -301,6 +386,9 @@ def _rngstd_signature():
     return rngstd.SIGNATURE
 
 
+_IMPORTS_RNGSTD = re.compile(r"^\s*(import rngstd|from rngstd import)", re.M)
+
+
 def hash_sites(pe, sig=None):
     """[va] for every rngstd fmix32 signature in an EXECUTE section of `pe`."""
     if sig is None:
@@ -317,18 +405,14 @@ def hash_sites(pe, sig=None):
     return sorted(hits)
 
 
-def hash_audit(modname):
+def hash_audit(modname, path):
     """P4 DERIVED HASH sites: scan every EXECUTE section for rngstd's fmix32 signature.
 
     A P4 site derives its answer from replicated state and makes NO draw, so it
     references neither generator and audit() cannot see it. Anything that rolls
     without drawing has to be found by its arithmetic instead.
     """
-    path = os.path.join(GAME, modname)
     print("\n== %s ==" % modname)
-    if not os.path.exists(path):
-        print("   (missing)")
-        return 0
     sig = _rngstd_signature()
     hits = hash_sites(PE(path), sig)
     if not hits:
@@ -337,17 +421,15 @@ def hash_audit(modname):
     print("   P4 sites  %d   (rngstd fmix32: imul eax,eax,0x%s)"
           % (len(hits), sig[2:][::-1].hex().upper()))
     for va in hits:
-        o = owners(va)
-        print("      P4   %08X  imul   rngstd.fmix32   <- %s"
+        # only a script that emits rngstd's bytes can own one -- other scripts name the same
+        # cave in their collision lists (build_herodlg_columns.py's .hcol squatters)
+        o = owners(va, modname, code_re=_IMPORTS_RNGSTD)
+        print("      P4  %08X  imul   rngstd.fmix32   <- %s"
               % (va, ", ".join(o) if o else "UNOWNED (no build script)"))
     return len(hits)
 
 
-def audit(modname, show_all=False, show_owners=False):
-    path = os.path.join(GAME, modname)
-    if not os.path.exists(path):
-        print("\n== %s ==\n   (missing)" % modname)
-        return 0
+def audit(modname, path, ref, show_all=False, show_owners=False):
     pe = PE(path)
     hits, calls, slots = scan(pe)
     print("\n== %s ==" % modname)
@@ -360,19 +442,17 @@ def audit(modname, show_all=False, show_owners=False):
     for kind, label in entries:
         print("   entry  %-5s %s" % (kind, label))
 
-    ref = REFS.get(modname)
-    ref_hits = {}
-    if ref and os.path.exists(ref):
-        ref_hits = scan(PE(ref))[0]
+    # a reference with ZERO sites is still a reference: every live site is then NEW
+    ref_hits = scan(PE(ref))[0] if ref else {}
 
     tot = {}
     for kind, _, _ in hits.values():
         tot[kind] = tot.get(kind, 0) + 1
     print("   sites  " + ", ".join("%d %s" % (v, k) for k, v in sorted(tot.items())) +
-          ("   (ref: %s)" % os.path.basename(ref) if ref_hits else
+          ("   (ref: %s)" % os.path.relpath(ref, ROOT) if ref else
            "   (NO pristine reference -- cannot separate modded from stock)"))
 
-    if not ref_hits:
+    if not ref:
         if show_all:
             print("   all sites:")
             for va in sorted(hits):
@@ -393,7 +473,7 @@ def audit(modname, show_all=False, show_owners=False):
                 kind, label, mnem = group[va]
                 own = ""
                 if show_owners:
-                    o = owners(va)
+                    o = owners(va, modname)
                     own = "   <- " + (", ".join(o) if o else "UNOWNED (no build script)")
                 print("      %s %08X  %-6s %s%s" % (MARK[kind], va, mnem, label, own))
     if show_all:
@@ -409,20 +489,21 @@ def main():
     show_all = "--all-sites" in args
     show_owners = "--owners" in args
     mods = [a for a in args if not a.startswith("--")] or MODULES
+    paths = preflight(mods, need_refs="--hash" not in args)
     if "--functions" in args:
         for m in mods:
-            by_function(m)
+            by_function(m, *paths[m])
         return
     if "--hash" in args:
         n = 0
         for m in mods:
-            n += hash_audit(m)
+            n += hash_audit(m, paths[m][0])
         print("\n%d P4 derived-hash site(s). These make NO draw, so --owners cannot see "
               "them -- see Zig notes/12-re-toolchain.md section 4.10." % n)
         return
     n = 0
     for m in mods:
-        n += audit(m, show_all, show_owners)
+        n += audit(m, paths[m][0], paths[m][1], show_all, show_owners)
     print("\n%d modded RNG site(s). A RAW site is correct ONLY inside tactical combat "
           "-- see Zig notes/12-re-toolchain.md section 4. P4 derived-hash sites make no "
           "draw and are invisible here: run --hash as well." % n)
