@@ -22,7 +22,7 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | Webbed / Entangled DEF penalty silently not applying to units | ✅ CONFIRMED WORKING (2026-07-21) | `build_debuffcache.py` | AoWEPACK.dpl |
 | Panic — blocks offensive melee, retaliation preserved | ✅ CONFIRMED WORKING (2026-09-13; 6th hook `meleemove` applied 2026-09-12) | `build_panic_nomelee.py` | AoWTCPCK.dpl + AoWEPACK.dpl |
 | Panic — cleared by any damage that lands | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_panic_cleardamage.py` | AoWEPACK.dpl |
-| Command abilities (Seduce/Charm/Dominate) — cross-battle revert-on-controller-death nerf | SPECULATIVE | none built | AoWEPACK.dpl (proposed) |
+| Command abilities — bonds revert with the commander, −1 RES per thrall, RES vs RES roll, Dispel takes thralls | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_command_bond.py`, `build_command_resroll.py`, `build_command_bond_pfs.py`, rows in `build_pfs_typos.py` | AoWEPACK.dpl + Release/Ability.pfs + Release/Spells.pfs |
 | Dispel Magic — level cap III → V | 🔨 APPLIED, UNTESTED (2026-08-09) | `build_dispelmagic5.py` | AoWEPACK.dpl |
 | Lifesteal on Round Attack (offensive: normal + round) | ✅ CONFIRMED WORKING (2026-07-08) | `build_lifesteal_roundattack.py` | AoWEPACK.dpl |
 | Lifesteal — defensive/retaliation variant | SPECULATIVE (documented, `DEFENSIVE=False`, never applied) | `build_lifesteal_roundattack.py` (`DEFENSIVE` switch) | AoWEPACK.dpl |
@@ -30,6 +30,7 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | Leadership — aura-disable bug fix | ✅ CONFIRMED WORKING (2026-07-20) | `build_leadership_fix.py` | AoWEPACK.dpl |
 | Leadership — aura instant-refresh on level-up | 🔨 APPLIED, UNTESTED (2026-07-20) | `build_leadership_aura.py` | AoWEPACK.dpl |
 | Leadership IV grants the stack Fearless (Terror/Cause Fear immunity) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_leadership_fearless.py` | AoWEPACK.dpl |
+| An aura whose owner is missing no longer freezes its army | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_formation_guard.py` | AoWEPACK.dpl |
 | Leadership buffs only the OTHER units in the party (+ split "own (+received)" card text) | 🔨 APPLIED, UNTESTED (2026-09-16) | `build_leadership_others.py` | AoWEPACK.dpl |
 | Per-race probability gate on hero level-up ability offers | 🔨 APPLIED, UNTESTED (2026-09-09) — see Feature 1 below | `build_heroskill_race.py` + `heroskill_races.py` | `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe` |
 
@@ -1108,6 +1109,116 @@ the three 26-byte caves at `0x5580F900`/`0x5580F920`/`0x5580F940`.
 - `TCursedAbility.Create` never sets ability `+0x24`, leaving type 0 while its duration-family peers use
   1 — a cosmetic mislabel in the info panel, confirmed code, inferred (harmless) impact.
 - Whether `AoWDevEd.exe` shares these call paths — per the per-binary rule, not assumed, not checked.
+
+---
+
+## Command abilities — bound thralls, commander burden, RES roll, Dispel (2026-09-25)
+
+**Status: 🔨 APPLIED, UNTESTED (2026-09-25).** Owner's problem: in PvE (manual combat against
+independents) Seduce/Charm/Dominate grew an army instead of costing it. Scripts:
+`build_command_bond.py` (A, B, E — its docstring is the site-by-site record),
+`build_command_resroll.py` (C), `build_command_bond_pfs.py` (`Ability.pfs` records 197/198), and
+text rows in `build_pfs_typos.py` (Dominate 38, Seduce 39, Charm 158, Dispel ability 70, Dispel
+spell 18). Idea D (a RES floor) was dropped by the owner.
+
+**Owner rulings 2026-09-25.** A: control lasts only while the commander does — reverted units go
+**independent**; disbanding the commander or its changing sides counts; in a battle where the
+commander dies, its thralls switch **at once**; evil Turn Undead seizes are included; a specific
+message. B: **−1 RES per unit held, no cap**, shown as "Commanding N". C: the second command roll uses
+the commander's **full RES** in place of the flat 10. E: Dispel Magic (spell or ability) takes a
+controlled unit on an opposed **dispeller RES vs controller RES** roll, the controller's RES being the
+one stored when the bond was made; own control never makes a unit a target; a taken unit becomes the
+**dispeller's thrall**.
+
+### What vanilla keeps after a battle — nothing
+
+`TCommandAbility.Command @0x5576FE50` gives the victim a commanded status whose
+`TCommandedAbilityData` holds `[+0x10]` the commander's combat-object id, `[+0x14]` the controller
+ability id and `[+0x18]` the victim's original combat side. At battle end `TCommandAbility.CombatDone
+@0x5576FE28` deletes the commander's record and `TCommandedAbility.CombatDone @0x5576FB4C` removes the
+victim's status (VMT `+0xFC` in `TCommandedAbility` and the Dominated/Charmed/Seduced subclasses,
+VMTs `0x55720218`, `0x557206F0`, `0x55720A28`, `0x55720D54`). Nothing links the two afterwards.
+
+### As built
+
+- **Bound `0xBB`** — a separate `TCommandedAbility` instance, not a reuse of Seduced/Charmed/
+  Dominated: re-seizing a unit strips its vanilla status (`TCommandCA.Execute` loop 2 →
+  `Uncommand`), so a reused status would lose the bond whenever the re-seizure is reverted in the
+  same battle. Its data record (saved by the class's `ReadWrite`) holds `[+0x14]` the master's unit
+  id and `[+0x10]` the master's strategic RES when the bond was made. Written at the victim's
+  `CombatDone` from a vanilla status still standing at `Finalize` (commander resolved by
+  `TCombatData.FindID`); `Finalize` calls `CombatDone` on every object before its settlement passes.
+- **Master alive** = `FindUnit(id)` non-nil, killed bit `unit+0x25 & 0x10` clear
+  (`TAbstractUnit.Resurrect` clears it), same owner byte `+0x24` as the thrall. Disbanding makes a
+  unit independent in place (`TDisbandUnitTE.Execute @0x5574B494`), so it fails the owner test.
+  Unit ids come from a counter that wraps only past `0x0FFFFFFF` (`GetFreeID @0x5577E95C`).
+- **Turn start** (hook on `TArmy.NewTurn`'s `UpdateDesertion` call): recount Commanding, then strip
+  dead bonds and run `TArmy.Desert @0x5578F0E0` on those units with its reason text replaced (flag
+  in BSS `0x558FAD20`, consumed by the replacing cave; the text is the `TStringList` at
+  `[log+0x20]`, set through `TStrings.SetTextStr`, VMT `+0x2C`, the call Desert itself uses).
+  No ordinary desertion roll for that army that turn. ⚠ VCL30's `TStringList` VMT, read from the
+  DLL: `+0x2C` SetTextStr, `+0x34` Add, `+0x38` AddObject, `+0x40` Clear, `+0x44` Delete. v1
+  took Desert's `+0x2C` for Add and called `+0x38` as Clear, which raised "Exception occured during
+  TEndTurnTE" on every revert (fixed 2026-09-25).
+- **Mid-battle** (hook before `CheckTerminate` in `TCombat.ObjectDestroyed @0x55727554`, which all
+  three combat modes reach): thralls of the unit that just died switch to a combat player on the side
+  away from it, independents preferred; stripped if that side is independent, otherwise freed at that
+  player's next turn start. A thrall already on that side is left alone. Settlement at battle end
+  follows the combat player (`TCombatUnit.Finalize @0x55724D44`), so a side switch is enough.
+- **Commanding `0xBC`** — a `TMultiLevelAbility` instance; two base-VMT slots repointed (id-keyed):
+  GetResistance `+0x64` (−level) and GetLevelName `+0x10C` ("Commanding N"; plain "Commanding" at
+  level 0, because the ability card, `AoWz.exe 0x40701C`, asks for the name with no owner). Level: +1 per new bond,
+  −1 on the old master when a bond moves, absolute recount at the commander's turn start; every
+  change calls `Changed` (units cache RES at `+0x46`, heroes recompute).
+- **C** — one id-keyed cave per reader of GetTouchAttack in `TTouchAbility` (real roll, battle odds,
+  strategic estimate, info card); ids `0x1C`/`0x1D`/`0x94` only, so evil Turn Undead's hidden `0x88`
+  keeps its −10 sentinel.
+- **E** — `CanDispelEnchantment @0x5577F40C` (the target check behind all four Dispel routes) also
+  accepts a unit seized this battle from the dispeller's player, or a unit with a current bond owned
+  by someone else. Battle: `Generate` rolls (synced `TAoWHSMap.Random`, as it already does) and
+  leaves a sentinel in the action's id list; `Execute` either `Uncommand`s a fresh seizure back or
+  switches a bound unit to the dispeller and rebinds it. `TDispelMagicAbility.CreateCA` still clears
+  the list when its touch misses an enemy. Map: the unit is re-homed for the caster's player the way
+  Disband re-homes one (detach + `TAbstractUnit.Place @0x557810FC`, or `TArmy.SetPlayer` for a lone
+  unit outside a player structure) and rebound; the caster's dispelled count includes it.
+
+Command units and their RES (live `Unitres.pfs`): Lady of Pain 4; Nymph, Charlatan, Doom Priest 10;
+Satyr, Spider Queen, Mermaid 12; Chanter, Druidess, Leshy 14; Yaka Avatar 16. Live HitRole:
+chance = clamp(50 + 5 × diff, 10, 90) %.
+
+### Known limits
+
+- The AI values Dispel by enchantments, so it will not aim Dispel at thralls.
+- A commander seized mid-battle frees its thralls from earlier battles only at the next turn start.
+- RES can reach 0, but roll 2 bottoms at the engine's 10 %, so there is no hard cap on thralls.
+- Units taken before this build carry no bond.
+
+### Couplings
+
+`TArmy.NewTurn`'s entry is `build_drillmaster.py`'s; this hook is the later `UpdateDesertion` call.
+`TDispelMagicAbilityTE.Execute` also carries `build_abilityte_itemgrant.py` at `0x5576D7FC`. Evil
+Turn Undead's status `0x89` is one of the four handled statuses; its hidden controller `0x88` relies
+on the GetTouchAttack −10 sentinel, which C leaves alone. The two new ids raised both loop ceilings to
+`0xBD`. RES also feeds hero mana (Spellcasting × RES), spell resistance and Turn Undead damage, so the
+burden reaches those too; morale is unaffected (it modifies RES, never the reverse).
+
+### In-game checklist
+
+1. Seize an independent in manual combat and win: the unit's card shows **Bound**; the commander's
+   shows **Commanding 1** and 1 less Resistance. Two more: Commanding 3, −3 RES.
+2. Combat log: the second command roll's "ATK" figure is the commander's Resistance.
+3. The commander dies in a later battle where a thrall fights: the thrall changes side at once.
+4. The commander dies elsewhere, or is disbanded: at your next turn start its thralls leave as
+   independents with "With its master gone, this one breaks free of your control."
+5. An enemy seizes one of your thralls and that enemy then dies in the same battle: it comes back
+   still Bound.
+6. Dispel Magic in battle (ability, then spell) on an enemy's thrall: success tracks your RES against
+   its master's; it joins you and your caster shows Commanding 1. On a unit the enemy seized from
+   you this battle: it returns. Your own thralls are not valid targets.
+7. Dispel Magic on the world map (spell, then ability) on an enemy thrall: it joins your side beside
+   it and the message counts it as dispelled.
+8. An evil Turn Undead seize also binds.
+9. Save and reload: Bound and Commanding survive.
 
 ---
 
@@ -2765,6 +2876,23 @@ reproduces the pre-apply and post-apply md5 exactly; `build_relocfix.py --audit`
 10. Map editor: assigning and removing Leadership still behaves.
 
 ---
+
+## An aura whose owner is missing no longer freezes its army — 🔨 APPLIED, UNTESTED (2026-09-25)
+
+- **Script:** `build_formation_guard.py`, slot `0x5584D8C0`–`0x5584D8DF`. From Inioch's share8
+  `patch_bag_ability_crash.py` part B.
+- **Vanilla:** `TArmy.UpdateFormation 0x5578D034` asks each unit for ability `0x2E`'s owner (VMT
+  +0x154, call at `0x5578D0DE`) and dereferences the answer unchecked at `0x5578D0E7`. A nil owner
+  is an access violation, after which `TArmy.Update` leaks its lock and the army is wedged for the
+  rest of the game. This is the failure [[aow1-level-owner-query-asymmetry]] describes.
+- **Hook:** the 6-byte call → `cave_formation` (19 B). If the owner is nil, skip this unit (the
+  loop's `dec esi` at `0x5578D11E`).
+- **Cost:** a future level/owner asymmetry shows as a missing aura instead of a frozen army, so it
+  is quieter. Ours is not known to be exposed.
+- **Neighbour:** `build_leadership_others.py` starts at `0x5578D128`, just after the loop.
+
+**In-game checklist:** Leadership auras still apply to the stack (the unit card shows the bonus),
+and armies with Leadership heroes still move normally.
 
 ## Open items
 

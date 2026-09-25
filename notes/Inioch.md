@@ -87,7 +87,7 @@ Two verification passes confirm this at scale: ~30 anchors matched pristine byte
 ⚠ **The folder numbers are not chronological.** True arrival order:
 
 **share2/3 (2026-07-24) → share5 (through 2026-08-15) → share4 (2026-08-15 → 08-24) →
-share6 (2026-08-24 → 2026-09-01).**
+share6 (2026-08-24 → 2026-09-01) → share7 (2026-09-15) → share8 (2026-09-23).**
 
 `share1/` is not a drop at all — it is **our own** distillation of share2+3, written 2026-07-29 →
 2026-09-02.
@@ -101,6 +101,9 @@ share6 (2026-08-24 → 2026-09-01).**
 | `share4/` | 2026-08-19 → 2026-08-24 | 11 memory notes + 50 patch scripts — AoWx project internals (installer, release process, exe string pipeline, an AI turn hang) + mouse-wheel extensions (power slider, party-arrow cycling) | 62 |
 | `share6/` | 2026-08-24 → 2026-09-01 | 25 new + 12 updated memory notes + 78 new patch scripts + installer/manual sub-trees + `README.txt` — his v1.37.406→407; the parts relevant to us: the AI-site-search/item-loot Tier-1 candidates, the action-stream architecture finding, the `.mld` bank, `diag_inject_veh.py` | 92 |
 | `Inioch_Share6_Catalogue.md` (root) | n/a — ours | our distillation of share6, written 2026-09-02 | 1 (317 lines) |
+| `share7/` | 2026-09-03 → 2026-09-15 | his 1.37.410 work in progress: 29 memory notes + 36 scripts. Adopted: `build_leadership_others.py` (2026-09-16). Superseded by share8 | 65 |
+| `share8/` | 2026-09-03 → 2026-09-23 | his 1.37.408–410: the whole script folder and all 129 memory notes, plus the 410 changelog and an all-releases changelog | 463 |
+| `Inioch_Share8_Catalogue.md` (root) | n/a — ours | our distillation of share8, written 2026-09-24 | 1 (555 lines) |
 
 Three more directories sit alongside the shares and are not notes at all — see §10.
 

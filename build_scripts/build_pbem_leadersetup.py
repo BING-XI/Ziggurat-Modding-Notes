@@ -425,8 +425,9 @@ X_ANCHORS = [
      "vanilla hides ScenSetupPnl before LeaderPnl"),
     (0x0040175C, "ff25", "thunk CreateForm"),
     (0x00416D9C, "53568bd88bc3e8edecffff8bb3d8020000c6461c0233c08983d802000033d28b83cc020000"
-                 "8b08ff516c8b46148b5060a154a445008b00e8b4d8ffff8bc68b10ff524c8bc68b10ff522c",
-     "TLeaderSetupWin.Finish (-> Done vmt+0x4C, Release)"),
+                 "8b08ff516c8b46148b5060a154a445008b00e8b4d8ffff",
+     "TLeaderSetupWin.Finish up to the Done call (0x416DD8 is build_customize_name.py's hook)"),
+    (0x00416DDF, "8bc68b10ff522c", "TLeaderSetupWin.Finish: Release"),
     (0x004280E5, "a18ca245008b008b404433d28b08ff516c", "vanilla TitleWin.SetVisible(False)"),
     # stage 2
     (0x004161AF, "0f849c000000a178df45008b008b80800000008bd3e80bc2feff",

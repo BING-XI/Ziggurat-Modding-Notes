@@ -527,7 +527,7 @@
     "M1/clamps-hero",
     "M2/skillpoints"
    ],
-   "what": "THero.ExecuteUpgradeHeroAI — five per-stat TARGET LEVELS the AI levels toward (ATK/DEF/DAM/RES and HP-or-MV), NOT skill-point affordability gates. RESOLVED 2026-09-08 by the owner; the old 'affordability gates / DECISION REQUIRED' reading was wrong. Live 4/16/8/8/3 vs vanilla 5/5/5/10/5. See Zig notes/01-combat-maths.md §5.",
+   "what": "THero.ExecuteUpgradeHeroAI — five per-stat SKILL-POINT GATES (offer the stat only while unspent points >= N), not target levels. Owner ruling 2026-09-24: N = the live price; build_ai_levelup_gates.py owns all five (hand-edit 4/16/8/8/3 -> prices 3/6/2/4/2). See Zig notes/01-combat-maths.md §5.",
    "nsrc": 2
   },
   {

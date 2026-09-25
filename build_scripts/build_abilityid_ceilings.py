@@ -172,7 +172,7 @@ BACKUP_DIR = os.path.join(GAME, "backups")      # ⚠ backups/, never the game r
 # accepts any of them as a starting state, which is what makes a bump an in-place rewrite rather
 # than a revert-and-re-apply. APPEND to this, never replace -- and keep it equal to
 # build_tcablist_ceiling.py's LADDER.
-LADDER = (0xAA, 0xB1, 0xB2, 0xB3)
+LADDER = (0xAA, 0xB1, 0xB2, 0xB3, 0xBA, 0xBB, 0xBD)
 VANILLA, TARGET = LADDER[0], LADDER[-1]
 
 # ⚠ the mod exes were renamed AoWz*/AoWzEd on 2026-09-09; a list that stops at AoW/AoWCompat/

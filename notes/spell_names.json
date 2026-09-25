@@ -618,7 +618,7 @@
  },
  "120": {
   "class": "TSlow",
-  "name": "Slow",
+  "name": "Lethargy",
   "spell_id": 110,
   "unit": "CombatSpells",
   "vanilla": "Slow"

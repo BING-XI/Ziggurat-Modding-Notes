@@ -37,6 +37,9 @@ MECHANISM
   0x5580DB16), so it coexists with build_firefeed.py in either apply order.
 
 PATCH 2 -- per-proc skip gate (cave_iceroll @0x5580DB40), skip chance = 1/SKIP_DENOM
+  ⚠ Since 2026-09-25 build_icestorm_gate25.py flips this cave's `je` at 0x5580DB4E to `jne`: a proc
+  now TAKES EFFECT with chance 1/SKIP_DENOM (25%) instead of skipping with it. The text below
+  describes the original sense.
   (currently SKIP_DENOM=4 -> 25% skip; was 2 -> 50%).
   Ice Storm inherits TBlastStorm.UpdateStorm, which re-applies ChangeStormTerrain over
   a GROWING radius at 4 frames (r1/r2/r3/r4 @ frames 8/12/18/22): a center hex is hit

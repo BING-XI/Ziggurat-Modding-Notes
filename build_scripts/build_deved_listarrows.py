@@ -158,6 +158,11 @@ the cave uses none beyond the two absolute `jmp rel32` back into CODE.
 nothing else may claim that window.  See the cave-ownership table in
 `Zig notes/12-re-toolchain.md`.
 
+⚠⚠ FORWARD HAZARD (2026-09-25): `build_deved_casterfamily.py` owns the rest of the slack,
+`0x0052D6A0..0x0052D7FF`, and its cave RELIES on the `.mtb` VirtualSize 0x4C800 and
+MEM_EXECUTE that this script's `--apply` sets.  `--undo` here puts them back and leaves
+that cave past VirtualSize in a non-executable section.  Undo casterfamily FIRST.
+
 --------------------------------------------------------------------------------------
 UNDO
 --------------------------------------------------------------------------------------

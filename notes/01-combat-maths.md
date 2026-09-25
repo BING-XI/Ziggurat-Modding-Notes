@@ -306,13 +306,30 @@ still zero), and **terminator preservation** — a cave's exit `jmp` is a chain 
 detail; regenerating with the stock destination silently deletes everything downstream. Owners now
 keep whatever exit target is installed and log `[chain] <cave> exit kept at <target>`.
 
-**Marksmanship, current state:** ranged ATK bonus **2/4/6/8** by level (cave `0x5580C240` does
-`add al,al` then `add bl,al` on the raw level — the doubling insert shifted the whole 72→74-byte body
-+2, fixed up the one external `call GetLocation` rel32, verified safe by enumerating every internal
-jump/rel32/memory operand in the cave). Ranged DAM **1/2/3/4** (H9: the pre-existing `shr eax,1` was
-dropped rather than doubling 0/1/1/2 to 0/2/2/4 — a Leadership-style flat ramp; odd levels gain
-slightly over strict ×2). The Cave/Depths ranged malus rides the same cave (gated on Night Vision
+**Marksmanship, current state:** ranged ATK **+level** (1–8). `GetAttackRA` passes the raw level
+from `GetAbilityLevel(0x20)` to the cave `0x5580C240`, whose `add bl,al` adds it. Ranged DAM is
+**+level** too: `GetDamageRA`'s `add ebx,eax`, with the pre-existing `shr eax,1` dropped (H9, a
+Leadership-style flat ramp). `build_marksmanship_atk2.py` would double the ATK by inserting
+`add al,al` and shifting the 72-byte body +2. It is **not applied, and must not be**: owner ruling
+2026-09-24, Marksmanship stays +1 ATK per level. The Cave/Depths ranged malus rides the same cave (gated on Night Vision
 `0x27`), already at `sub bl,4` (doubled, stage 12) and untouched by the relocation.
+
+**The malus skips the Firmament** — `build_firmament_rangedmalus.py`, 🔨 APPLIED, UNTESTED
+(2026-09-24).
+- **The defect:** the cave's level test was `cmp al,0 / je` (malus whenever level ≠ 0). It was
+  written before the Firmament existed, so level 3 counted as underground. Owner ruling 2026-09-24:
+  exclude the Firmament.
+- **The fix:** `0x5580C27F` is now `test al,al / jp 0x5580C286` (`84 C0 7A 03`, same length and
+  target). PF is set for levels 0 and 3, so the malus applies on Caverns and Depths only — the
+  surface-or-Firmament split `build_maplevel4.py` uses for vision.
+- **Coupling:** the site moves to `0x5580C281` if `build_marksmanship_atk2.py` is ever applied, and
+  the script finds it in either layout. Surgical `--undo`.
+
+In-game checklist:
+1. A ranged unit **without** Night Vision on the Firmament attacks at its surface ranged ATK (combat
+   log).
+2. The same unit on Caverns and on Depths still attacks at −4.
+3. A unit **with** Night Vision takes no malus on any level.
 
 ### A later balance change layers on stage 2 — hero chassis
 
@@ -938,6 +955,9 @@ trip, skipped when `TSetupSettings[+0x20] != 0`, which `hPickMap` reads from the
 | HP | `+0x6D` | **2** | `0x55786CF5 6B C0 02` |
 | MOV | `+0x6E` | **3** | cave `0x5580C800`, called from `0x55786CFA` |
 
+⚠ The AI level-up chooser's five gates must equal these prices; `build_ai_levelup_gates.py` checks
+and re-syncs them, so re-run it after any re-price.
+
 Then, per ability id the hero has: `+ Ability.GetSkillPoints(hero)`, and if the **chassis** has it
 too, `- Ability.GetSkillPoints(chassisOwner)`. ⚠ The entry point is VMT **`+0x80` `GetSkillPoints`**,
 not `+0xC8 ExpandCost`. The chassis's own ability owner is `[[hero+0x40]+0x2C]` = `HERORES.PFS`
@@ -993,15 +1013,37 @@ are not inverses up there and must not share one implementation. ⭐ Below that 
 inverses, and the `jg` is strictly-greater, so `ExperienceToLevel(LevelToExperience(L)) == L` with no
 off-by-one — verified for L = 3, 5 and 8 against the live table.
 
-**The five `ExecuteUpgradeHeroAI` constants are per-stat TARGET LEVELS, not prices.** Owner ruling
-2026-09-08. `THero.ExecuteUpgradeHeroAI @0x55787A24` carries five `cmp` immediates — live **4 / 16 /
-8 / 8 / 3** against vanilla 5/5/5/10/5, first at `0x55787A52` (`cmp esi,4`) — and they are the stat
-levels the AI levels a hero *toward*: ATK, DEF, DAM, RES and HP (or MV; the owner was not certain
-which of the last two, and the order has not been byte-checked against the field offsets). They are
-**not** skill-point affordability gates.
+**The five `ExecuteUpgradeHeroAI` constants are skill-point gates, set equal to the prices** —
+`build_ai_levelup_gates.py`, 🔨 APPLIED, UNTESTED (2026-09-24).
+- **How the routine works:** `THero.ExecuteUpgradeHeroAI @0x55787A24` sets
+  `esi = GetSkillPoints` (`0x55787A49`). It offers a stat only when `cmp esi,N / jl` passes and
+  `bought + chassis` is under the cap (`cmp eax,M / jge`; live caps 20/20/20/20/60). So N means
+  "unspent points on hand", not a level.
+- **History:** vanilla's N values, 5/5/5/10/5, are exactly vanilla's prices. Ziggurat carried a
+  hand-edit 4/16/8/8/3, which a 2026-09-08 ruling read as target levels. Under it, DEF was offered
+  only while the AI held 16+ unspent points.
+- **Owner ruling 2026-09-24:** match the prices.
 
-⚠ Anyone re-pricing attribute purchases must not assume these move with the prices — they are a
-different quantity in different units.
+| gate imm | field | stat | was | now = price |
+|---|---|---|---|---|
+| `0x55787A52` | `+0x6A` | ATK | 4 | 3 |
+| `0x55787A77` | `+0x6B` | DEF | 16 | 6 |
+| `0x55787A9F` | `+0x6F` | RES | 8 | 2 |
+| `0x55787AC7` | `+0x6C` | DAM | 8 | 4 |
+| `0x55787AEF` | `+0x6D` | HP | 3 | 2 |
+
+⚠ The gates must move with the prices. The script reads the prices from `UsedSkillPoints` rather
+than hard-coding them, so after any re-price its dry run says DRIFT and `--apply` re-syncs. Surgical
+`--undo` restores 4/16/8/8/3.
+
+In-game checklist:
+1. Follow an AI hero over several level-ups: DEF and RES now rise too, not only ATK and HP.
+2. AI heroes still stop at the caps (20; HP 60).
+3. No AI hero ends a level-up with negative unspent points.
+
+The same routine's three ability offers at `0x55787B72`, `0x55787B93` and `0x55787CE6` are **Frost
+Bolts `0x7A`** where vanilla offers **Archery `0x16`**. That is a deliberate owner hand-edit, confirmed
+2026-09-24, with no owning script.
 
 **Caps** (`SetUnitAttack @0x557877BC`, `SetUnitHits @0x557878A0`): ATK `cmp edx,28h` at `0x557877D6`
 = **40**, HP `cmp edx,64h` at `0x557878BA` = **100**, both against `chassis + bought`.
@@ -1503,8 +1545,33 @@ literally flies over the obstruction check, which is why Archery lobs and Doom G
 | no path at all | — | — | Flame Throwing, Call Flames, the five Breaths |
 | per-spell | jump table | | Spell Casting (only ids 100/103/107/117/119 get a bespoke path) |
 
-"No path at all" emits one point at the shooter's own hex and clears the obstruction list — those
-abilities are **structurally unblockable**, by construction, not by a high roll.
+"No path at all" emits one point at the shooter's own hex and clears the obstruction list. ⚠ That
+does **not** make those abilities unblockable in manual combat. Category 5 (Flame Throwing `0x1E`,
+the five Breaths `0x56`–`0x5A`) has its own `NextStrike` case, which builds each strike's line with
+`MakeRangedPath` (`0x40D65F`) and zeroes a blocked strike (`0x40F06F`).
+
+**Breath and Flame Throwing aim each strike at its own hex** — `build_breath_line.py`, 🔨 APPLIED,
+UNTESTED (2026-09-24), ported from Inioch's `patch_breath_line_v1.py` with his range-check defect
+fixed.
+- **The defect:** vanilla tests each of the 12 damaging strikes (of 20; strikes 12–19 are a cosmetic
+  return sweep) along the fan's spray angle, not toward the hex it damages. Side walls ate strikes
+  in corridors, and obstacles beyond the target cancelled hits.
+- **The fix:** hook `0x40D5F1` (`6A 32 8B 45 FC`) → PIC cave `0x439400` (164 B, reservation to
+  `0x4397FF`). For strikes 0–11 the cave centres the line on the damage hex, taken from the same
+  tables vanilla uses at `0x40D671`–`0x40D72A` (`dHXtoHN` result bounded 1–60, table index 0–71),
+  and zeroes the fan offsets. On any failed check it runs vanilla untouched.
+- **Animation:** the damaging flames are now drawn to the hexes they hit; keeping the old fan would
+  need a second path call.
+- **Multiplayer:** no draw of its own. It changes how many synced `Random(100)` block rolls happen
+  at `0x40EE5B`, identically on every peer. Auto-resolve has no obstruction step.
+- Surgical `--undo`.
+
+In-game checklist:
+1. A dragon breathing down a one-hex corridor hits enemies in range along it.
+2. An obstacle beyond the target no longer cancels hits.
+3. An obstacle between breather and target still blocks.
+4. Flame Throwing behaves the same way.
+5. The flame animation looks acceptable.
 
 ### The obstruction scan
 

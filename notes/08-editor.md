@@ -1831,6 +1831,220 @@ Run `Ziggurat\AoWzEd.exe` (not `AoWDevEd.exe`) with a map loaded.
 
 ---
 
+## 14. Settings > Spells gains a "Caster:" drop-down (`build_deved_casterfamily.py`)
+
+🔨 **APPLIED, UNTESTED (2026-09-25)** — `AoWDevEd.exe`, rebuilt to `AoWzEd.exe`.
+
+Authors the per-spell **caster family** byte at spell field `+0x23` (0 None, 1 Evoker, 2 Conjurer,
+3 Enchanter, 4 Ritualist). The AoWEPACK half — `TSpell.ReadWrite` streaming it as `Spells.pfs`
+tag `0x12` — is a separate script; the editor loads the same patched `AoWEPACK.dpl`, so this
+script only has to put the byte in the object. It works like the vanilla Sphere combo (`SphereEdit`,
+`[spell+0x20]`): filled on selection, written back on change.
+
+### 14.1 One call retarget, one cave, two globals
+
+- **Hook `0x0042C0B8`** — the tier row's `call TSpin.SetValue` (`E8 2B 70 FD FF`) in
+  `SpellListBoxClick @0x0042BF60`, retargeted to `cave_load 0x0052D711`. The cave runs the displaced
+  SetValue first. At that point `EBX` = `TMainForm` and `ESI` = the spell id, both callee-saved.
+- **Cave `0x0052D6A0..0x0052D7FF`**, 341 of 352 B, in `.mtb` page slack directly above
+  `build_deved_listarrows.py`'s cave: the `'Caster:'` AnsiString, `getsp 0x0052D6B0`,
+  `cave_change 0x0052D6C2`, `mk 0x0052D6FC`, `cave_load 0x0052D711`, then the item list.
+- **`G_COMBO 0x004E0700` / `G_ID 0x004E0704`** in `.dlgd` page slack. They are loader-zeroed and
+  writable and have no file bytes. The main form lives for the whole process, so building **once**
+  behind a stored pointer is safe here, unlike on Item Properties (§12.3).
+- `cave_change` (OnChange, `EAX` = Data = form, `EDX` = Sender) keeps vanilla `SphereEditChange`'s
+  two guards: map loaded, and SpellListBox `ItemIndex <> -1`. It then takes the spell from `G_ID`
+  rather than re-deriving it from the listbox. That id is the one `cave_load` was given: every
+  selection change runs `SpellListBoxClick` first, and a refilled list still blocks the write
+  through the index guard.
+- A stored value above 4 shows as blank (`ItemIndex -1`). CB_SETCURSEL sends no CBN_SELCHANGE, so
+  populating never writes back.
+
+### 14.2 VCL mechanics
+
+- Item list: **one** `Items.SetTextStr` call (TStrings VMT `+0x2C`) on
+  `"None\nEvoker\nConjurer\nEnchanter\nRitualist\0"`. It is a bare NUL-terminated run with no
+  StrRec, because `TStrings.SetTextStr @0x4131F9B8` scans for `#0` and never reads the length. The
+  caption goes through `TControl.SetText`, which compares with `LStrCmp`, so the caption does need a
+  proper AnsiString literal.
+- `TComboBox` fields, from its own vcl30 RTTI: `Items +0x118`, `Style +0x121` (setter = VMT `+0x88`
+  `SetStyle`), `OnChange +0x150/+0x154`. SetStyle runs after SetParent, so it may trigger
+  `RecreateWnd`, which is harmless before the items are added.
+- `SetBounds` is called directly: the `TControl.SetBounds` thunk `0x004014F0` for the label and
+  `call [0x00432300]` (`TWinControl.SetBounds`) for the combo. The script asserts on every run that
+  those are exactly what vcl30's `TLabel`/`TComboBox` VMT slot `+0x4C` holds, and does the same for
+  the Create/SetParent/SetStyle/SetTextStr/GetObject slots and the three RTTI fields.
+
+### 14.3 Layout — four Int16 values in the live DFM, not runtime moves
+
+GroupBox3 "Settings" (L120 T176 W217 H185) was full: five rows on a 32 px pitch, with GroupBox4
+7 px below it. The new row is the sixth on the same pitch:
+
+| control | parent | geometry |
+|---|---|---|
+| Label "Caster:" | GroupBox3 | L16 T184, AutoSize (37×13) |
+| Caster combo | GroupBox3 | L80 T176 W121 H21 — SphereEdit's column and width |
+| GroupBox3 | Panel9 | H 185 → **217** |
+| GroupBox4 (SFX) | Panel9 | T 368 → **400** |
+| GroupBox5 (GFX) | Panel9 | T 440 → **472** |
+| SpellInfoGroup | Panel9 | T 512 → **544** (bottom 745) |
+
+- **Rejected: moving the four controls at runtime.** It is four setter calls, 57 B, and `.mtb`'s
+  352 B was the last unowned file-backed executable space in `AoWDevEd.exe`. The controls, the
+  handler and the literals already take 341 B of it.
+- The four values are vaInt16 before and after, so the change is length-neutral. They are written
+  into the **live** TMAINFORM in `.ctp` (rva `0x12ECF4`), located through the resource directory
+  and a full DFM walk on every run.
+- `build_deved_toolbar_trim.py` and `build_deved_heroprune.py` edit that same copy in place and keep
+  unrelated bytes.
+- SpellInfoGroup already reached past the 696 px design client height; it now reaches 32 px
+  further.
+
+### 14.4 Forward hazards
+
+- ⚠⚠ **The cave depends on `.mtb` header state owned by `build_deved_listarrows.py`**: VirtualSize
+  `0x4C800` and Characteristics `0x60000040`. This script never writes either and refuses to apply
+  without them. `build_deved_listarrows.py --undo` restores `0x4C63B` / `0x40000040`, which puts
+  this cave past VirtualSize in a non-executable section. Undo this script first.
+- ⚠ Only `build_deved_terrainpal.py` rebuilds the live TMAINFORM from a master, and it does so only
+  after `.ctp` has been deleted. A rebuild reverts the four values and leaves the combo clipped at
+  the bottom of a 185 px group. The dry run reports this and `--apply` repairs it.
+- `.mtb` now has no free file-backed slack (5 B at `0x0052D63B`).
+- The new combo can only be driven with the mouse. listarrows' `OnMessage` gate lets arrow keys
+  through only to the two listboxes, and the vanilla Sphere combo behaves the same way.
+- `--undo` restores the operand and the four DFM values and zeroes the cave. The undo/re-apply
+  round trip was byte-exact on 2026-09-25: the undo matched the pre-apply snapshot and the
+  re-apply matched the first apply's MD5.
+- ⚠⚠ Every editor patch is two steps: `build_deved_casterfamily.py --apply` (or `--undo`), then
+  **`build_zigeditor.py --apply`**.
+
+Launch-tested 2026-09-25: `AoWzEd.exe` starts and stays up and responsive, with no dialog. That
+proves the edited DFM still streams. Nothing was clicked.
+
+### 14.5 In-editor checklist — needs the user
+
+Run `Ziggurat\AoWzEd.exe`. ⚠⚠ Open the **Ziggurat** mapset, `<game dir>\Release\Release.hss`
+(where `<game dir>` is the `Ziggurat` folder). **Picking the vanilla `<root>\Release\Release.hss`
+writes the `.pfs` files into VANILLA.** The mapset you open decides where they are saved.
+
+1. **Settings > Spells layout**: a "Caster:" label and a drop-down appear below "Upkeep:" inside
+   the Settings group. The Spell SFX Library, Spell GFX and Combat Info groups sit 32 px lower
+   than before and nothing overlaps.
+2. Click several spells: the combo shows each spell's family, blank for an out-of-range value. With
+   the AoWEPACK half's data loaded, this checks the stored values.
+3. Change a spell's family, click another spell, then click back: the new value is still shown.
+4. **Save** the mapset, then check that `Spells.pfs` carries tag `0x12` with the new value for that
+   spell's record (`re_tools/pfs.py`).
+5. Close and reopen the editor and the mapset: the value persists.
+6. Until the first spell click the Settings group shows an empty sixth row; the label and combo
+   are built on that click. The Sphere combo and the tier spinner still read and write as before.
+
+---
+
+## 15. Go-to finds items and heroes inside exploration sites (`build_deved_goto_sites.py`)
+
+🔨 **APPLIED, UNTESTED (2026-09-25)** — `AoWDevEd.exe`. The script runs `build_zigeditor.py --apply`
+itself after `--apply` and `--undo`. It takes part 4 of Inioch's share8
+`patch_devx_prune_unused_v2.py` and nothing else.
+
+- **Vanilla:** `GotoItemClick` / `GoToHeroClick` take the object's hex from `TItem.GetLocation` /
+  `TAbstractUnit.GetLocation`, then `cmp byte [esp],0FFh / je exit` (`0x0042CD44`, `0x0042CDE0`).
+  An item in a site's treasure or a hero in a site's defender party has no hex, so Go-to did nothing
+  for exactly the objects hardest to find by eye.
+- **The fix:** both 6-byte tests become `call` + `nop` into `cave_goto_sites 0x0059BB00` (247 B;
+  `goto_item` at `+0`, `goto_hero` at `+0x17`).
+  - When x = 0FFh, `find_site` walks the map's structures (map `+0x100` → `[+8]` → TList).
+  - It looks for an exploration site whose treasure list (`TItemExplorationSite +0x3C`, items) or
+    defender army (`TExplorationSite +0x34`, heroes; only that field, since a plain site is 0x38 B)
+    is the object's owner `[obj+4]`.
+  - On a match it writes the site's `GetXhx`/`GetYhx`/`GetLhx` (VMT `+0x74/+0x78/+0x7C`) into the
+    caller's location bytes, so vanilla's CenterView + PlayCenterAnimation follow.
+  - No match takes vanilla's exit (`0x0042CD86` / `0x0042CE22`).
+  - Class tests walk the VMT parent chain against AoWEPACK VMTs rebased through the AoWHSMap import
+    slot `[0x0043289C] − 0x558FA040`.
+- **Space:** slot `0x0059BB00..0x0059BBFF` in `.nmg`'s top slack, above `build_deved_itemhpmv.py`'s
+  relocated TITEMEDITFORM. `.nmg` is RWX and file-backed to `0x0059BC00`. That leaves
+  `0x0059BAE6..0x0059BAFF` (26 B) as the editor's last known free code bytes.
+- ⚠ **FORWARD HAZARD:** `build_deved_newmapgen.py` rebuilds `.nmg` and zeroes everything above its
+  body, this cave included. That hazard is latent, because the script refuses `--apply` while
+  installed. After any rebuild, re-run this `--apply`; until then Go-to calls into zeroes and the
+  editor crashes.
+
+In-editor checklist (run `Ziggurat\AoWzEd.exe` with a map that has a treasure site and a guarded
+site):
+1. Items tab: select an item that sits in an exploration site's treasure and press Go-to. The view
+   centres on the site, with the shrinking-circle animation.
+2. Heroes tab: select a hero in a site's defender party and press Go-to. The view centres on the
+   site.
+3. An item or hero on the map still centres on its own hex. One that is in no site and nowhere on the
+   map still does nothing.
+
+---
+
+## 16. Delete Unused Items, several editors, negative item stats, validation circle — 🔨 APPLIED, UNTESTED (2026-09-25)
+
+Four editor conveniences from Inioch's share8, on `AoWDevEd.exe`, with `AoWzEd.exe` rebuilt by
+`build_zigeditor.py --apply`.
+
+### 16.1 Developer > Delete Unused Items (`build_deved_heroprune.py`)
+
+- **Menu:** a second menu item beside Delete Unused Heroes, `PruneFreeItemsItem` →
+  `PruneFreeItemsClick`. The shape is the same: count, confirm, delete, `SetModified`.
+- **Predicate:** `item[+0x04]` (Owner) is nil, walked over `TItemControl` = `map+0xF4`.
+- **Deletion:** `TItemControl.UnRegisterItem 0x55794F08`. It is not imported, so it is reached as
+  RegisterItem's import (`0x4326E0`) + `0x8C`, behind a 10-byte prologue check.
+- ⚠ The unplaced items are also the random-treasure pool: after a prune, sites and hotspots that
+  roll random treasure find nothing.
+- **Layout change in the same edit:**
+  - Both handlers now live in terrainpal's dead 134-entry method table at `.ctp 0x0052E060`, which
+    `strip()` re-emits before pointing VMT−0x28 back at it.
+  - The 136-entry table follows the grown DFM (`0x0058E3F0`).
+  - The script's tail now ends at `ZONE_CEIL 0x0058F100`, so neither `--apply` nor `--undo` wipes
+    `build_deved_gamesettings_tab.py` (`0x0058F280`) any more. Verified by a round trip.
+
+### 16.2 Several editors at once (`build_deved_multi_instance.py`)
+
+- `je 0x42EF96` at `0x42EE04` becomes 6× `nop`. That branch is the "already running" refusal
+  after `CreateFileMappingA("AOWED")`.
+- ⚠ It was the only guard against two editors saving the same `Release\*.pfs` or map. The last
+  save wins, silently.
+
+### 16.3 Negative item stats (`build_deved_itemneg.py` + `build_deved_itemhpmv.py`)
+
+- **Attack/Defence/Resistance/Damage:** the four `TSpin` `MinValue 0 → −60` (`02 C4`), mirroring
+  the ceiling 60. Both `TITEMEDITFORM` copies are patched: the `.rsrc` master (`0x000697A8`) and
+  the live `.nmg` copy.
+- **Hit Points / Movement:** the runtime spinners get `HP_MIN −60` and `MV_MIN −50` in
+  `build_deved_itemhpmv.py`.
+- **Engine:** it already reads item stats signed, and hero totals sum signed under
+  `build_hero_clamps.py`'s floors (HP 2, MV 1).
+- ⚠⚠ **Re-applying `build_deved_itemhpmv.py` zeroes `build_deved_goto_sites.py`'s cave**
+  (`0x0059BB00`, in the slack above its DFM copy); it happened in this edit. Re-apply
+  goto_sites after itemhpmv, then `build_zigeditor.py --apply`.
+
+### 16.4 Map Validation double-click plays the shrinking circle (`build_deved_valcircle.py`)
+
+- The `.vgo` cave's `call THSMEdit.CenterView` at `0x5900E4` is retargeted to `cave_circle`
+  `0x0058F100` (37 B).
+- The cave replays CenterView, then calls `TAbstractAoWHSMap.PlayCenterAnimation` (thunk
+  `0x401CF8`) with the same x/y/level, as Go-to does at `0x42CD6E`.
+- `.vgo` is full, so the cave sits in `.ctp` above heroprune's `ZONE_CEIL`.
+
+### 16.5 In-editor checklist
+
+1. The editor opens at all: a bad method table fails at form load.
+2. **Developer menu:**
+   - Delete Unused Items lists a count and deletes only items that are not on a hex, a hero, an
+     army or a site.
+   - The map saves and reloads.
+   - Delete Unused Heroes still works.
+3. **Two editors:** open a second editor while one is running; both work.
+4. **Item Properties:**
+   - Attack etc. go down to −60, Hit Points to −60, Movement to −50.
+   - A hero wearing a −4 ATK item shows the lower total in game.
+5. **Validation:** double-clicking a Map Validation entry centres and plays the circle.
+6. **Unchanged neighbours:** Game Settings tab, and Go-to into sites.
+
 ## Open items
 
 Technical opens — investigation gaps, not "please test this in-game" (each feature above that isn't yet `✅ CONFIRMED` already carries its own checklist inline).

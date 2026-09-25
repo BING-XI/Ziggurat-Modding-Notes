@@ -819,6 +819,10 @@ def apply_to(exe, verbose=True):
 
 def undo(exe, drop=True, verbose=True):
     """Surgical: repoint the resource, restore the VMT pair and both hooks, drop the section."""
+    hit = exe.sec(SECNAME.rstrip(b"\0").decode("latin1"))
+    if hit and hit[3] > SEC_SIZE:
+        sys.exit("ABORT: .ibnr is %#x B, larger than this script's %#x -- build_taskbar_coords.py "
+                 "lives above it.  Run build_taskbar_coords.py --undo first." % (hit[3], SEC_SIZE))
     de, _rva, _size = exe.dfm_entry("TITEMBANNER")
     struct.pack_into("<II", exe.d, de, exe.orig_item_dfm_rva(), ITEM_DFM_SIZE)
     exe.w32(VMT_FIELDTABLE, ORIG_FIELDTABLE)

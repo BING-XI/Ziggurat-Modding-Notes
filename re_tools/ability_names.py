@@ -82,7 +82,19 @@ MODDED = {0x9F: "Path of Sand", 0x38: "Assassin", 0xAB: "Drillmaster",
           # 0x89 was "Turned" until the user ruled it collides with vanilla 0x22
           # "Turned Undead" (Turn Undead's own panic status), which can sit in the same
           # unit's list in the same battle.
-          0x88: "Can Command Undead", 0x89: "Commanded Undead"}
+          0x88: "Can Command Undead", 0x89: "Commanded Undead",
+          # build_weakness.py, applied 2026-09-25 -- the inverse of the Protections: x1.5
+          # damage and -4 on the effect Resistance check. UNTESTED in game.
+          0xB3: "Fire Weakness", 0xB4: "Cold Weakness", 0xB5: "Lightning Weakness",
+          0xB6: "Magic Weakness", 0xB7: "Poison Weakness", 0xB8: "Death Weakness",
+          0xB9: "Holy Weakness",
+          # build_liquidbody.py, applied 2026-09-25 -- Swimming + Physical Protection + no
+          # Burning, as a plain passive for units. UNTESTED in game.
+          0xBA: "Liquid Body",
+          # build_command_bond.py, applied 2026-09-25 -- the bond on a seized unit and the
+          # commander's per-thrall Resistance cost. UNTESTED in game.
+          0xBB: "Bound",
+          0xBC: "Commanding"}
 
 # Vanilla ids the constructor scan cannot reach cleanly (set via movement-type tables or a
 # shared enhancement path, not a T<Name>Ability.Create). Sourced from Investigation_Combat.md

@@ -33,7 +33,9 @@ USAGE
     python veh_capture.py                      # launch AoWz.exe, wait for the first access violation
     python veh_capture.py --exe AoWzEd.exe     # the editor instead
     python veh_capture.py --attach 1234        # inject into an ALREADY-RUNNING process (never kills it)
-    python veh_capture.py --census             # arm nothing; just list the exceptions the game raises
+    python veh_capture.py --census             # arm nothing; log every exception the game raises:
+                                               # registers, stack return addresses, and for a
+                                               # Delphi raise its class, message and raise site
     python veh_capture.py --at AoWEPACK.dpl+0x7B24E      # freeze only on a fault at that instruction
     python veh_capture.py --fault-range 0-0x100000       # only near-null dereferences
     python veh_capture.py --code 0xC000001D              # illegal instruction instead of an AV
@@ -228,12 +230,29 @@ class WOW64_CONTEXT(C.Structure):
 # Injected region layout.  All offsets are from the base VirtualAllocEx handed us.
 # ---------------------------------------------------------------------------------------------
 OFF_HANDLER = 0x0000        # the vectored exception handler
-OFF_STUB = 0x0200           # the CreateRemoteThread entry that installs it
-OFF_CTL = 0x0300            # control block, below
-OFF_CTX = 0x0400            # CONTEXT copy (0x2CC bytes)
-OFF_ER = 0x0700             # EXCEPTION_RECORD copy (0x50 bytes)
-OFF_RING = 0x1000           # census ring: 64 entries x (code, address, info)
-REGION_SIZE = 0x4000
+OFF_STUB = 0x0600           # the CreateRemoteThread entry that installs it
+OFF_CTL = 0x0700            # control block, below
+OFF_CTX = 0x0800            # CONTEXT copy (0x2CC bytes)
+OFF_ER = 0x0B00             # EXCEPTION_RECORD copy (0x50 bytes)
+OFF_RING = 0x1000           # census ring: RING_ENTRIES x ENTRY_SIZE, layout below
+REGION_SIZE = 0x10000
+
+# One census entry (2026-09-25, from Inioch's diag_veh_logger.py): the registers, a copy of the
+# faulting thread's stack, and -- for a Delphi raise -- the exception's class name and message.
+# Class and message are copied IN THE HANDLER: by the time this side polls, the except block has
+# usually freed the exception object, so reading it afterwards returns garbage.
+E_CODE, E_ADDR, E_NPARAMS, E_INFO0, E_INFO1 = 0x00, 0x04, 0x08, 0x0C, 0x10
+E_REGS = 0x14               # Eip Esp Ebp Eax Ebx Ecx Edx Esi Edi, one dword each
+E_REG_ORDER = ["Eip", "Esp", "Ebp", "Eax", "Ebx", "Ecx", "Edx", "Esi", "Edi"]
+E_VMT = 0x38                # Delphi exception object's VMT, or 0
+E_STACKLEN = 0x3C           # bytes of stack copied (bounded by the thread's StackBase)
+E_SEQ = 0x40                # census index + 1, written LAST: an entry is complete iff it matches
+E_MSGLEN = 0x44             # Delphi Exception.Message: length copied (<= 60) ...
+E_MSG = 0x48                # ... and its characters
+E_CLASS = 0x84              # the class name as a shortstring (<= 31 chars)
+E_STACK = 0xC0
+STACK_COPY = 0x400
+ENTRY_SIZE = E_STACK + STACK_COPY
 
 # control block, offsets from OFF_CTL
 CTL_ARMED = 0x00      # 0 = record only, never freeze
@@ -249,12 +268,14 @@ CTL_VEHRES = 0x24     # return value of RtlAddVectoredExceptionHandler
 CTL_SEEN = 0x28       # every exception the handler was offered
 CTL_PASSED = 0x2C     # ...of which this many were passed on
 CTL_RINGIDX = 0x30    # monotonic census counter
+CTL_BUSY = 0x34       # census recursion guard: 1 while a thread is filling an entry
 CTL_NAMES = [(CTL_ARMED, "ARMED"), (CTL_CODE, "CODE"), (CTL_EIP_LO, "EIP_LO"),
              (CTL_EIP_HI, "EIP_HI"), (CTL_FLT_LO, "FLT_LO"), (CTL_FLT_HI, "FLT_HI"),
              (CTL_SKIP, "SKIP"), (CTL_CLAIM, "CLAIM"), (CTL_DONE, "DONE"),
              (CTL_VEHRES, "VEHRES"), (CTL_SEEN, "SEEN"), (CTL_PASSED, "PASSED"),
-             (CTL_RINGIDX, "RINGIDX")]
-RING_ENTRIES = 64
+             (CTL_RINGIDX, "RINGIDX"), (CTL_BUSY, "BUSY")]
+RING_ENTRIES = 32
+assert OFF_RING + RING_ENTRIES * ENTRY_SIZE <= REGION_SIZE
 
 CONTEXT_SIZE = 0x2CC
 ER_SIZE = 0x50
@@ -335,7 +356,7 @@ class Asm:
         return bytes(self.buf)
 
 
-CC_B, CC_AE, CC_E, CC_NE = 0x02, 0x03, 0x04, 0x05
+CC_B, CC_AE, CC_E, CC_NE, CC_BE, CC_A = 0x02, 0x03, 0x04, 0x05, 0x06, 0x07
 
 
 def u32(v):
@@ -353,18 +374,102 @@ def build_handler(region):
     a.raw(b"\x8B\x08")                               # mov ecx,[eax]          ExceptionRecord
     a.raw(b"\xF0\xFF\x05" + u32(ctl + CTL_SEEN))     # lock inc dword [SEEN]
 
-    # --- census: record (code, ExceptionAddress, ExceptionInformation[1]) in the ring ---------
-    a.raw(b"\xA1" + u32(ctl + CTL_RINGIDX))          # mov eax,[RINGIDX]
-    a.raw(b"\x83\xE0" + bytes((RING_ENTRIES - 1,)))  # and eax,63
-    a.raw(b"\x8D\x04\x40")                           # lea eax,[eax+eax*2]    (x3)
-    a.raw(b"\xC1\xE0\x02")                           # shl eax,2              (x12 = entry size)
-    a.raw(b"\x8B\x11")                               # mov edx,[ecx]          code
-    a.raw(b"\x89\x90" + u32(ring + 0))               # mov [eax+RING+0],edx
-    a.raw(b"\x8B\x51\x0C")                           # mov edx,[ecx+0Ch]      ExceptionAddress
-    a.raw(b"\x89\x90" + u32(ring + 4))               # mov [eax+RING+4],edx
-    a.raw(b"\x8B\x51\x18")                           # mov edx,[ecx+18h]      ExcInfo[1]
-    a.raw(b"\x89\x90" + u32(ring + 8))               # mov [eax+RING+8],edx
-    a.raw(b"\xF0\xFF\x05" + u32(ctl + CTL_RINGIDX))  # lock inc dword [RINGIDX]
+    # --- census: one full entry per exception (layout E_* above) -----------------------------
+    busy = ctl + CTL_BUSY
+    a.raw(b"\xFC")                                   # cld
+    a.raw(b"\x53\x56\x57")                           # push ebx/esi/edi  (pointers now at [esp+10h])
+    a.raw(b"\xB8" + u32(1))                          # mov eax,1
+    a.raw(b"\x87\x05" + u32(busy))                   # xchg eax,[BUSY]     (implicitly locked)
+    a.raw(b"\x85\xC0")                               # test eax,eax
+    a.jcc(CC_NE, "c_out")                            # nested or concurrent: record nothing
+    a.raw(b"\xB8" + u32(1))                          # mov eax,1
+    a.raw(b"\xF0\x0F\xC1\x05" + u32(ctl + CTL_RINGIDX))  # lock xadd [RINGIDX],eax  -> my index
+    a.raw(b"\x8B\xD8")                               # mov ebx,eax
+    a.raw(b"\x83\xE0" + bytes((RING_ENTRIES - 1,)))  # and eax,RING_ENTRIES-1
+    a.raw(b"\x69\xC0" + u32(ENTRY_SIZE))             # imul eax,eax,ENTRY_SIZE
+    a.raw(b"\x05" + u32(ring))                       # add eax,RING
+    a.raw(b"\x8B\xF8")                               # mov edi,eax         entry
+    a.raw(b"\x8B\x54\x24\x10")                       # mov edx,[esp+10h]   ExceptionPointers
+    a.raw(b"\x8B\x72\x04")                           # mov esi,[edx+4]     ContextRecord
+    a.raw(b"\x8B\x12")                               # mov edx,[edx]       ExceptionRecord
+    for src, dst in ((0x00, E_CODE), (0x0C, E_ADDR), (0x10, E_NPARAMS), (0x14, E_INFO0),
+                     (0x18, E_INFO1)):
+        a.raw(b"\x8B\x42" + bytes((src,)))            # mov eax,[edx+src]
+        a.raw(b"\x89\x47" + bytes((dst,)))            # mov [edi+dst],eax
+    for k, reg in enumerate(E_REG_ORDER):
+        a.raw(b"\x8B\x86" + u32(CTX_OFF[reg]))        # mov eax,[esi+ctx.reg]
+        a.raw(b"\x89\x47" + bytes((E_REGS + 4 * k,)))  # mov [edi+slot],eax
+    a.raw(b"\x33\xC0")                               # xor eax,eax
+    for off in (E_VMT, E_STACKLEN, E_MSGLEN):
+        a.raw(b"\x89\x47" + bytes((off,)))            # mov [edi+off],eax
+    a.raw(b"\x88\x87" + u32(E_CLASS))                # mov [edi+E_CLASS],al   (empty shortstring)
+    # A Delphi raise: ExceptionInformation[0] = raise address, [1] = the exception object.
+    a.raw(b"\x81\x3A" + u32(0x0EEDFADE))             # cmp dword [edx],0EEDFADEh
+    a.jcc(CC_NE, "no_delphi")
+    a.raw(b"\x83\x7A\x10\x02")                       # cmp dword [edx+10h],2
+    a.jcc(CC_B, "no_delphi")
+    a.raw(b"\x8B\x42\x18")                           # mov eax,[edx+18h]   object
+    a.raw(b"\x85\xC0")                               # test eax,eax
+    a.jcc(CC_E, "no_delphi")
+    a.raw(b"\x8B\x08")                               # mov ecx,[eax]       VMT
+    a.raw(b"\x89\x4F" + bytes((E_VMT,)))              # mov [edi+E_VMT],ecx
+    a.raw(b"\x8B\x50\x04")                           # mov edx,[eax+4]     FMessage (AnsiString)
+    a.raw(b"\x85\xD2")                               # test edx,edx
+    a.jcc(CC_E, "no_msg")
+    a.raw(b"\x8B\x42\xFC")                           # mov eax,[edx-4]     its length
+    a.raw(b"\x83\xF8\x3C")                           # cmp eax,60
+    a.jcc(CC_BE, "m_len")
+    a.raw(b"\xB8" + u32(60))                         # mov eax,60
+    a.label("m_len")
+    a.raw(b"\x89\x47" + bytes((E_MSGLEN,)))           # mov [edi+E_MSGLEN],eax
+    a.raw(b"\x56\x57")                               # push esi/edi
+    a.raw(b"\x8B\xF2")                               # mov esi,edx
+    a.raw(b"\x8D\x7F" + bytes((E_MSG,)))              # lea edi,[edi+E_MSG]
+    a.raw(b"\x8B\xC8")                               # mov ecx,eax
+    a.raw(b"\xF3\xA4")                               # rep movsb
+    a.raw(b"\x5F\x5E")                               # pop edi/esi
+    a.label("no_msg")
+    a.raw(b"\x8B\x4F" + bytes((E_VMT,)))              # mov ecx,[edi+E_VMT]
+    a.raw(b"\x39\x49\xC0")                           # cmp [ecx-40h],ecx   vmtSelfPtr sanity
+    a.jcc(CC_NE, "no_delphi")
+    a.raw(b"\x8B\x51\xE0")                           # mov edx,[ecx-20h]   vmtClassName
+    a.raw(b"\x85\xD2")                               # test edx,edx
+    a.jcc(CC_E, "no_delphi")
+    a.raw(b"\x0F\xB6\x0A")                           # movzx ecx,byte [edx]
+    a.raw(b"\x83\xF9\x1F")                           # cmp ecx,31
+    a.jcc(CC_A, "no_delphi")
+    a.raw(b"\x41")                                   # inc ecx             length byte too
+    a.raw(b"\x56\x57")                               # push esi/edi
+    a.raw(b"\x8B\xF2")                               # mov esi,edx
+    a.raw(b"\x8D\xBF" + u32(E_CLASS))                # lea edi,[edi+E_CLASS]
+    a.raw(b"\xF3\xA4")                               # rep movsb
+    a.raw(b"\x5F\x5E")                               # pop edi/esi
+    a.label("no_delphi")
+    # The stack above the faulting ESP, never past this thread's StackBase (fs:[4]). A VEH runs
+    # on the faulting thread, and reading past the base would fault inside the handler.
+    a.raw(b"\x8B\x86" + u32(CTX_OFF["Esp"]))         # mov eax,[esi+ctx.Esp]
+    a.raw(b"\x64\x8B\x15" + u32(4))                  # mov edx,fs:[4]      StackBase
+    a.raw(b"\x2B\xD0")                               # sub edx,eax
+    a.jcc(CC_BE, "no_stack")
+    a.raw(b"\x81\xFA" + u32(STACK_COPY))             # cmp edx,STACK_COPY
+    a.jcc(CC_BE, "s_len")
+    a.raw(b"\xBA" + u32(STACK_COPY))                 # mov edx,STACK_COPY
+    a.label("s_len")
+    a.raw(b"\x89\x57" + bytes((E_STACKLEN,)))         # mov [edi+E_STACKLEN],edx
+    a.raw(b"\x56\x57")                               # push esi/edi
+    a.raw(b"\x8B\xF0")                               # mov esi,eax
+    a.raw(b"\x8D\xBF" + u32(E_STACK))                # lea edi,[edi+E_STACK]
+    a.raw(b"\x8B\xCA")                               # mov ecx,edx
+    a.raw(b"\xF3\xA4")                               # rep movsb
+    a.raw(b"\x5F\x5E")                               # pop edi/esi
+    a.label("no_stack")
+    a.raw(b"\x8D\x43\x01")                           # lea eax,[ebx+1]
+    a.raw(b"\x89\x47" + bytes((E_SEQ,)))              # mov [edi+E_SEQ],eax -- publishes the entry
+    a.raw(b"\xC7\x05" + u32(busy) + u32(0))          # mov dword [BUSY],0
+    a.label("c_out")
+    a.raw(b"\x5F\x5E\x5B")                           # pop edi/esi/ebx
+    a.raw(b"\x8B\x44\x24\x04")                       # mov eax,[esp+4]
+    a.raw(b"\x8B\x08")                               # mov ecx,[eax]       ExceptionRecord again
 
     # --- filters -----------------------------------------------------------------------------
     a.raw(b"\x83\x3D" + u32(ctl + CTL_ARMED) + b"\x00")   # cmp dword [ARMED],0
@@ -727,7 +832,7 @@ class Capture:
         # counters and the census have to be cached while it is alive or the post-mortem report
         # is empty exactly when it matters most.
         self._ctl_cache = b"\x00" * 0x100
-        self._ring_cache = b"\x00" * (RING_ENTRIES * 12)
+        self._ring_cache = b"\x00" * (RING_ENTRIES * ENTRY_SIZE)
         self._mods_cache = []
         self._mods_at = 0.0
 
@@ -872,8 +977,8 @@ class Capture:
         if len(blk) != 0x100:
             return False
         self._ctl_cache = blk
-        ring = rpm(self.hp, self.region + OFF_RING, RING_ENTRIES * 12)
-        if len(ring) == RING_ENTRIES * 12:
+        ring = rpm(self.hp, self.region + OFF_RING, RING_ENTRIES * ENTRY_SIZE)
+        if len(ring) == RING_ENTRIES * ENTRY_SIZE:
             self._ring_cache = ring
         now = time.time()
         if now - self._mods_at > 1.0:
@@ -947,15 +1052,26 @@ class Capture:
 
     # -- reading the capture ------------------------------------------------------------------
     def read_census(self):
+        """Complete entries only, oldest first: an entry counts once its E_SEQ equals index + 1.
+        Returns a list of dicts: code addr nparams info0 info1 regs vmt cls msg stack."""
         self.snapshot()
         idx = self.ctl(CTL_RINGIDX)
         raw = self._ring_cache
         out = []
-        n = min(idx, RING_ENTRIES)
-        for k in range(n):
-            slot = (idx - n + k) % RING_ENTRIES
-            code, addr, info = struct.unpack_from("<III", raw, slot * 12)
-            out.append((code, addr, info))
+        for i in range(max(0, idx - RING_ENTRIES), idx):
+            e = raw[(i % RING_ENTRIES) * ENTRY_SIZE:(i % RING_ENTRIES + 1) * ENTRY_SIZE]
+            if struct.unpack_from("<I", e, E_SEQ)[0] != i + 1:
+                continue
+            code, addr, npar, i0, i1 = struct.unpack_from("<5I", e, 0)
+            regs = dict(zip(E_REG_ORDER, struct.unpack_from("<9I", e, E_REGS)))
+            vmt, slen = struct.unpack_from("<II", e, E_VMT)
+            mlen = min(struct.unpack_from("<I", e, E_MSGLEN)[0], 60)
+            clen = min(e[E_CLASS], 31)
+            out.append({"seq": i + 1, "code": code, "addr": addr, "nparams": npar,
+                        "info0": i0, "info1": i1, "regs": regs, "vmt": vmt,
+                        "cls": e[E_CLASS + 1:E_CLASS + 1 + clen].decode("latin-1"),
+                        "msg": e[E_MSG:E_MSG + mlen].decode("cp1252", "replace"),
+                        "stack": e[E_STACK:E_STACK + min(slen, STACK_COPY)]})
         return out
 
 
@@ -1154,22 +1270,63 @@ def build_report(cap, mm, ctx, er):
     census = cap.read_census()
     if census:
         L.append("")
-        L.append("EXCEPTION CENSUS (last %d seen, oldest first)" % len(census))
-        for c, ad, info in census:
-            L.append("  0x%08X %-42s at %s" % (c, exc_name(c), mm.describe(ad)))
+        L.append("EXCEPTION CENSUS (last %d recorded, oldest first)" % len(census))
+        for r in census:
+            L.append("  " + census_line(r, mm))
     return "\n".join(L), regs
 
 
+def census_line(r, mm):
+    s = "#%-3d 0x%08X %-24s at %s" % (r["seq"], r["code"], exc_name(r["code"])[:24],
+                                      mm.describe(r["addr"]))
+    if r["code"] in (0xC0000005, 0xC0000006) and r["nparams"] >= 2:
+        s += "  %s 0x%08X" % (AV_KIND.get(r["info0"], "op %d" % r["info0"]), r["info1"])
+    if r["cls"] or r["msg"]:
+        s += "  %s: %r" % (r["cls"] or "?", r["msg"])
+    return s
+
+
+def census_returns(hp, mm, stack, limit=10):
+    """Module-resident dwords in a census stack copy that follow a CALL.  The call test reads the
+    target's code, so it needs the process alive; after its death every module-resident dword is
+    listed instead, marked unverified."""
+    rows = []
+    for i in range(0, max(0, len(stack) - 3), 4):
+        v = struct.unpack_from("<I", stack, i)[0]
+        hit = mm.find(v)
+        if not hit or not hit[0].lower().endswith((".exe", ".dpl")):
+            continue
+        pre = rpm(hp, v - 8, 8) if hp else b""
+        if len(pre) == 8:
+            if not (pre[3] == 0xE8 or any(pre[k] == 0xFF and (pre[k + 1] & 0x38) == 0x10
+                                          for k in (1, 2, 4, 5, 6))):
+                continue
+            tag = ""
+        else:
+            tag = "  (unverified)"
+        rows.append("      [esp+0x%03X] %s%s" % (i, mm.describe(v), tag))
+        if len(rows) >= limit:
+            break
+    return rows
+
+
 def census_report(cap, mm):
-    L = ["=== AoW VEH exception census ===",
-         "pid %d, %d exceptions seen, %d passed on" % (cap.pid, cap.ctl(CTL_SEEN),
-                                                       cap.ctl(CTL_PASSED)), ""]
     rows = cap.read_census()
+    L = ["=== AoW VEH exception census ===",
+         "pid %d, %d exceptions seen, %d passed on, %d recorded (last %d kept)"
+         % (cap.pid, cap.ctl(CTL_SEEN), cap.ctl(CTL_PASSED), cap.ctl(CTL_RINGIDX),
+            RING_ENTRIES), ""]
     if not rows:
         L.append("  (no exception reached the handler)")
-    for c, ad, info in rows:
-        extra = "  fault addr 0x%08X" % info if c in (0xC0000005, 0xC0000006) else ""
-        L.append("  0x%08X %-42s at %s%s" % (c, exc_name(c), mm.describe(ad), extra))
+    alive, _ = cap.alive() if cap.hp else (False, 0)
+    for r in rows:
+        g = r["regs"]
+        L.append(census_line(r, mm))
+        if r["code"] == 0x0EEDFADE and r["nparams"] >= 1:
+            L.append("      raised at %s" % mm.describe(r["info0"]))
+        L.append("      EIP %08X ESP %08X EBP %08X EAX %08X EBX %08X ECX %08X EDX %08X "
+                 "ESI %08X EDI %08X" % tuple(g[k] for k in E_REG_ORDER))
+        L.extend(census_returns(cap.hp if alive else None, mm, r["stack"]))
     return "\n".join(L)
 
 
@@ -1182,6 +1339,10 @@ TEST_SEH_RVA = 0x1100
 TEST_IAT_RVA = 0x1260
 FAULT1_ADDR = 0x00000064
 FAULT2_ADDR = 0x000000C8
+TEST_DELPHI_ARGS = 0x13F0
+TEST_DELPHI_RAISE = 0x00401234
+TEST_DELPHI_CLASS = b"ETestCensus"
+TEST_DELPHI_MSG = b"census message"
 
 
 def build_test_exe(path, mode="fault", delay_ms=0):
@@ -1195,17 +1356,19 @@ def build_test_exe(path, mode="fault", delay_ms=0):
                   different register signature.  This is the shape of the real problem: Delphi
                   handles access violations inside `try..except`, so the FIRST one is often not
                   the fatal one.
+      'delphi' -- RaiseException(0EEDFADEh) with a Delphi-shaped object, continued by the SEH
+                  handler, then exit 0.  Proves the census's class/message capture.
       'clean'  -- exit 0 without faulting at all.
 
     Returns {'fault1': VA or None, 'fault2': VA or None}."""
     iat = TEST_IMAGE_BASE + TEST_IAT_RVA
-    set_error_mode, sleep_fn, exit_process = iat, iat + 4, iat + 8
+    set_error_mode, sleep_fn, exit_process, raise_exc = iat, iat + 4, iat + 8, iat + 12
     vas = {"fault1": None, "fault2": None}
 
     code = bytearray()
     code += b"\x68" + u32(0x8003)                    # push SEM_FAILCRITICALERRORS|NOGPFAULTERRORBOX
     code += b"\xFF\x15" + u32(set_error_mode)        # call [SetErrorMode]   -- no WER dialog
-    if mode == "fault2":
+    if mode in ("fault2", "delphi"):
         code += b"\x68" + u32(TEST_IMAGE_BASE + TEST_SEH_RVA)   # push seh_handler
         code += b"\x64\xFF\x35" + u32(0)             # push dword fs:[0]
         code += b"\x64\x89\x25" + u32(0)             # mov fs:[0],esp
@@ -1230,6 +1393,14 @@ def build_test_exe(path, mode="fault", delay_ms=0):
         code += b"\xBA" + u32(FAULT2_ADDR)           # mov edx,0C8h
         vas["fault2"] = TEST_IMAGE_BASE + TEST_CODE_RVA + len(code)
         code += b"\x8B\x0A"                          # mov ecx,[edx]     <-- deliberate fault #2
+    if mode == "delphi":
+        code += b"\x68" + u32(TEST_IMAGE_BASE + TEST_DELPHI_ARGS)   # push args
+        code += b"\x6A\x02"                          # push 2          NumberOfArguments
+        code += b"\x6A\x00"                          # push 0          continuable
+        code += b"\x68" + u32(0x0EEDFADE)            # push 0EEDFADEh
+        code += b"\xFF\x15" + u32(raise_exc)         # call [RaiseException] -- SEH continues it
+        code += b"\x68" + u32(800)                   # push 800
+        code += b"\xFF\x15" + u32(sleep_fn)          # call [Sleep]    let the observer poll
     code += b"\x6A\x00"                              # push 0
     code += b"\xFF\x15" + u32(exit_process)          # call [ExitProcess]
     code += b"\xCC"
@@ -1239,6 +1410,9 @@ def build_test_exe(path, mode="fault", delay_ms=0):
     # 2-byte `mov ecx,[edx]` and continue.  The image declares no load config, so SafeSEH does not
     # apply and the chain stays well-formed for SEHOP.
     seh = bytearray()
+    seh += b"\x8B\x44\x24\x04"                       # mov eax,[esp+4]       ExceptionRecord
+    seh += b"\x81\x38" + u32(0x0EEDFADE)             # cmp dword [eax],0EEDFADEh
+    seh += b"\x74\x0B"                               # je +11: RaiseException returns normally
     seh += b"\x8B\x44\x24\x0C"                       # mov eax,[esp+12]      ContextRecord
     seh += b"\x83\x80" + u32(CTX_OFF["Eip"]) + b"\x02"   # add dword [eax+0B8h],2
     seh += b"\x33\xC0"                               # xor eax,eax   ExceptionContinueExecution
@@ -1247,16 +1421,28 @@ def build_test_exe(path, mode="fault", delay_ms=0):
     sec = bytearray(b"\x00" * 0x400)                 # one 0x400-byte section: code + imports
     sec[0:len(code)] = code
     sec[TEST_SEH_RVA - 0x1000:TEST_SEH_RVA - 0x1000 + len(seh)] = seh
-    thunks = [0x1280, 0x1290, 0x12A0, 0]
+    thunks = [0x1280, 0x1290, 0x12A0, 0x12C0, 0]
     struct.pack_into("<IIIII", sec, 0x1200 - 0x1000, 0x1240, 0, 0, 0x1300, TEST_IAT_RVA)
     for i, t in enumerate(thunks):
         struct.pack_into("<I", sec, 0x1240 - 0x1000 + i * 4, t)
         struct.pack_into("<I", sec, TEST_IAT_RVA - 0x1000 + i * 4, t)
-    for rva, nm in ((0x1280, b"SetErrorMode"), (0x1290, b"Sleep"), (0x12A0, b"ExitProcess")):
+    for rva, nm in ((0x1280, b"SetErrorMode"), (0x1290, b"Sleep"), (0x12A0, b"ExitProcess"),
+                    (0x12C0, b"RaiseException")):
         o = rva - 0x1000
         struct.pack_into("<H", sec, o, 0)
         sec[o + 2:o + 2 + len(nm)] = nm
     sec[0x300:0x300 + 13] = b"kernel32.dll\x00"
+    # A Delphi-shaped exception object for mode 'delphi': obj -> VMT (self-pointer at VMT-40h,
+    # class-name shortstring pointer at VMT-20h); obj+4 -> an AnsiString with its length at -4.
+    vmt = TEST_IMAGE_BASE + 0x13C0
+    sec[0x320:0x320 + 1 + len(TEST_DELPHI_CLASS)] = bytes((len(TEST_DELPHI_CLASS),)) + TEST_DELPHI_CLASS
+    struct.pack_into("<I", sec, 0x340, len(TEST_DELPHI_MSG))
+    sec[0x344:0x344 + len(TEST_DELPHI_MSG)] = TEST_DELPHI_MSG
+    struct.pack_into("<I", sec, 0x380, vmt)                                  # [VMT-40h] = VMT
+    struct.pack_into("<I", sec, 0x3A0, TEST_IMAGE_BASE + 0x1320)             # [VMT-20h] = name
+    struct.pack_into("<II", sec, 0x3E0, vmt, TEST_IMAGE_BASE + 0x1344)       # the object
+    struct.pack_into("<II", sec, TEST_DELPHI_ARGS - 0x1000, TEST_DELPHI_RAISE,
+                     TEST_IMAGE_BASE + 0x13E0)                               # Info[0], Info[1]
 
     hdr = bytearray(b"\x00" * 0x200)
     hdr[0:2] = b"MZ"
@@ -1275,7 +1461,7 @@ def build_test_exe(path, mode="fault", delay_ms=0):
     struct.pack_into("<IIII", hdr, opt + 0x48, 0x100000, 0x1000, 0x100000, 0x1000)
     struct.pack_into("<II", hdr, opt + 0x58, 0, 16)
     struct.pack_into("<II", hdr, opt + 0x60 + 1 * 8, 0x1200, 40)      # import directory
-    struct.pack_into("<II", hdr, opt + 0x60 + 12 * 8, TEST_IAT_RVA, 16)
+    struct.pack_into("<II", hdr, opt + 0x60 + 12 * 8, TEST_IAT_RVA, 20)
     s = opt + 0xE0
     hdr[s:s + 8] = b".text\x00\x00\x00"
     struct.pack_into("<IIII", hdr, s + 8, 0x400, TEST_CODE_RVA, 0x400, 0x200)
@@ -1334,6 +1520,7 @@ def selftest(base_args):
                 outcome["exit_code"] = cap.exit_code
                 outcome["seen"] = cap.ctl(CTL_SEEN)
                 outcome["passed"] = cap.ctl(CTL_PASSED)
+            outcome["census"] = cap.read_census()
         finally:
             if cap.hp:
                 k32.TerminateProcess(cap.hp, 1)
@@ -1440,6 +1627,43 @@ def selftest(base_args):
 
     scenario("E  --at MODULE+RVA arms once the module is loaded", "fault", 1500, expect_e,
              mutate=mutate_e)
+
+    # F -- census entries carry the registers and a stack copy.  The target survives its first AV
+    #      (its own SEH steps over it), so that entry is read while the process is alive.
+    def mutate_census(args, exe_name, vas):
+        args.census = True
+
+    def expect_f(o):
+        rows = [r for r in o.get("census", []) if r["code"] == 0xC0000005]
+        if not rows:
+            return False, "no access violation in the census"
+        r = rows[0]
+        bad = check(o, [("EAX", r["regs"]["Eax"], 0x00ABCDEF), ("EBX", r["regs"]["Ebx"], 0xDEADBEEF),
+                        ("EIP", r["regs"]["Eip"], o["vas"]["fault1"]),
+                        ("AV address", r["info1"], FAULT1_ADDR)])
+        if bad:
+            return False, "; ".join(bad)
+        if not r["stack"]:
+            return False, "the entry carries no stack copy"
+        return True, "census entry #%d: registers match, %d stack bytes" % (r["seq"], len(r["stack"]))
+
+    scenario("F  census entry carries registers and stack", "fault2", 0, expect_f,
+             mutate=mutate_census)
+
+    # G -- a Delphi raise: class name, message and raise address, all copied inside the handler.
+    def expect_g(o):
+        rows = [r for r in o.get("census", []) if r["code"] == 0x0EEDFADE]
+        if not rows:
+            return False, "no 0EEDFADE in the census"
+        r = rows[0]
+        want_cls, want_msg = TEST_DELPHI_CLASS.decode(), TEST_DELPHI_MSG.decode()
+        if (r["cls"], r["msg"], r["info0"]) != (want_cls, want_msg, TEST_DELPHI_RAISE):
+            return False, "got %r %r raise 0x%08X" % (r["cls"], r["msg"], r["info0"])
+        if o.get("exit_code") != 0:
+            return False, "the target did not continue to a clean exit"
+        return True, "decoded %s: %r, raised at 0x%08X" % (r["cls"], r["msg"], r["info0"])
+
+    scenario("G  census decodes a Delphi exception", "delphi", 0, expect_g, mutate=mutate_census)
 
     for f in made:
         for _ in range(20):

@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
 r"""
-AoW1 EDITOR  "Developer > Delete Unused Heroes"   --  AoWDevEd.exe ONLY.
+AoW1 EDITOR  "Developer > Delete Unused Heroes" and "Delete Unused Items"  --  AoWDevEd.exe ONLY.
+
+DELETE UNUSED ITEMS (added 2026-09-25, from Inioch's share8 patch_devx_prune_unused_v2.py)
+  A second Developer-menu item, PruneFreeItemsItem -> PruneFreeItemsClick, same shape as the
+  heroes one: count, confirm, delete, SetModified, inside the same render pause/resume.
+      delete iff  item[+0x04] (Owner) == nil      -- the item is in no hero, army, site or hex
+  over TItemControl = map+0xF4 (TAoWHSMap.Create 0x557748D4), its TList at [ic+8], walked
+  downward.  Deletion is AoWE.TItemControl.UnRegisterItem 0x55794F08 (Remove from the list,
+  clear the registered flag [item+0x1C]&2, Release -> destroy at refcount 0).  The editor does
+  not import it: the cave takes RegisterItem's import (IAT 0x4326E0, preferred 0x55794E7C) plus
+  the fixed distance 0x8C and compares 10 bytes of UnRegisterItem's prologue before calling;
+  a mismatch shows "AoWEPACK.dpl does not match the expected layout" and deletes nothing.
+  The map selection is dropped first (THSMEdit.DeselectPlaceHS) in case it is a victim.
+  ⚠ Unplaced items are also GenerateItem's random-treasure pool (the refcount-1 test at
+  0x55794F7F): after a prune, sites and hotspots that roll random treasure find nothing.  The
+  same kind of consequence as Delete Unused Heroes emptying the join pool.
 
 WHAT IT DOES
   Adds a Developer-menu item that prunes the open map's hero roster down to
@@ -83,13 +98,17 @@ UI
 CAVE ALLOCATION -- inside .ctp's existing raw data, no new section, no section growth
       .ctp   VA 0x0052E000  file 0x00128E00  VirtualSize 0x61350  SizeOfRawData 0x61400
       0x0052E000..0x0052E05F   build_deved_terrainpal.py's two terrain stubs
-      0x0052E060..0x0052ECF3   TMainForm published method table, 134 entries, 3219 B
-                               -> becomes DEAD SPACE once VMT-0x28 is repointed; it is
-                                  left in place, and --undo points back at it
-      0x0052ECF4..0x0058E337   live TMAINFORM DFM (0x5F644 B) -- grows 92 B in place
-      0x0058E338..0x0058F3FF   4296 zero bytes, already mapped  <<< this patch >>>
-                               new DFM tail, then the cave + literals, then the
-                               relocated 135-entry method table (3246 B)
+      0x0052E060..0x0052ECF2   terrainpal's 134-entry TMainForm method table (3219 B), dead
+                               once VMT-0x28 is repointed.  Since 2026-09-25 BOTH HANDLERS
+                               LIVE HERE (heroes 0x0052E060, items 0x0052E290, ~1.2 KB),
+                               and strip() re-emits the table from the live table's first
+                               134 entries before pointing VMT-0x28 back at it
+      0x0052ECF4..0x0058E3EC   live TMAINFORM DFM (0x5F644 B + 181 B for the two nodes)
+      0x0058E3F0..0x0058F0B7   the relocated 136-entry method table (3272 B)
+      ZONE_CEIL 0x0058F100     this script's tail ends here; strip() zeroes up to it and no
+                               further, so build_deved_valcircle.py (0x0058F100) and
+                               build_deved_gamesettings_tab.py (0x0058F280) above it survive
+                               both --apply and --undo
   AoWDevEd.exe is at a fixed ImageBase 0x400000 with DYNAMIC_BASE clear, so the cave may
   use absolute addresses (CLAUDE.md); no .reloc entries are added and none are displaced.
   SizeOfRawData is NOT changed -- .ctp's raw data ends at file 0x18A200, which is exactly
@@ -114,19 +133,6 @@ ORDERING AND FORWARD HAZARD
   "live blob is not the trimmed output - refusing to undo".  Fail-safe, not a defect --
   its snapshot is 0x6065C bytes and restoring it would write straight through this cave
   and the relocated method table.  Undo order is heroprune FIRST, then toolbar_trim.
-
-  !!!! BOTH --apply AND --undo OF THIS SCRIPT DESTROY build_deved_gamesettings_tab.py.
-  That feature's cave lives at VA 0x0058F280..0x0058F3FF = file 0x18A080..0x18A1FF, inside
-  the .ctp tail this script owns.  strip() zeroes zero_from = dfm_off + ORIG_DFM_SIZE
-  (0x189138) up to zero_to = ctp_raw + ctp_rsz (0x18A200), which swallows it whole -- and
-  --apply on an ALREADY-APPLIED file calls strip() first ("rebuilding IN PLACE"), so this
-  is not an --undo-only hazard.  Worse, build()'s "the .ctp tail is not all zero" guard
-  then PASSES, because strip() just erased the evidence, and the bytes == before
-  short-circuit does not fire because the file genuinely changed.
-  Symptom: four call rel32 sites left pointing at zeroed memory, one of them inside
-  TMainForm.FormCreate, so AoWzEd.exe AVs at STARTUP rather than on first use.
-  Recovery: re-run build_deved_gamesettings_tab.py --apply, then build_zigeditor.py
-  --apply, behind whatever you did here.
 
 RNG
   This feature rolls no dice.  rng_audit.py --functions reports
@@ -169,6 +175,8 @@ VMT = 0x00425D00                # TMainForm
 VMT_METHODTABLE = VMT - 0x28    # 0x00425CD8
 OLD_MT_VA = 0x0052E060          # build_deved_terrainpal.py's relocated table
 OLD_MT_COUNT = 134
+ZONE_CEIL = 0x0058F100          # this script owns .ctp's tail only up to here (2026-09-25)
+OLD_MT_LEN = 3219               # 0x0052E060..0x0052ECF2; the DFM starts one pad byte later
 ORIG_DFM_SIZE = 0x0005F644
 CTP_NAME = b".ctp"
 CTP_VSIZE_OLD = 0x61350
@@ -202,12 +210,27 @@ ANCHOR_ITEM = "RemoveLeadersItem"
 NEW_ITEM = "PruneFreeHeroesItem"
 NEW_CAPTION = "Delete Unused Heroes"
 NEW_HANDLER = "PruneFreeHeroesClick"
+ITEM_ITEM = "PruneFreeItemsItem"
+ITEM_CAPTION = "Delete Unused Items"
+ITEM_HANDLER = "PruneFreeItemsClick"
 
 S_PRE = b"Delete \x00"
 S_ONE = b" unused hero?\x00"
 S_MANY = b" unused heroes?\x00"
 S_NONE = b"No unused heroes to delete.\x00"
 S_CAP = b"Delete Unused Heroes\x00"
+SI_ONE = b" unused item?\x00"
+SI_MANY = b" unused items?\x00"
+SI_NONE = b"No unused items to delete.\x00"
+SI_CAP = b"Delete Unused Items\x00"
+SI_BAD = b"AoWEPACK.dpl does not match the expected layout; no items were deleted.\x00"
+
+IC_OFF = 0xF4                   # TAoWHSMap -> TItemControl ([ic+8] = TList of TItem)
+T_DESELECT = 0x00402DE8         # HSMEdit.THSMEdit.DeselectPlaceHS (eax=edit)
+IAT_REGISTERITEM = 0x004326E0   # IAT: AoWE.TItemControl.RegisterItem (preferred 0x55794E7C)
+UNREG_DELTA = 0x55794F08 - 0x55794E7C   # -> TItemControl.UnRegisterItem, not imported
+UNREG_SIG = bytes.fromhex("53568bda8bf0f6431c02")
+MB_OK_WARN = 0x30
 
 
 # ---- PE ---------------------------------------------------------------------------
@@ -405,10 +428,12 @@ def all_names(node, out=None):
 
 
 def new_menu_node():
-    return (ss('TMenuItem') + ss(NEW_ITEM)
-            + ss('Caption') + b'\x06' + ss(NEW_CAPTION)
-            + ss('OnClick') + b'\x07' + ss(NEW_HANDLER)
-            + b'\x00' + b'\x00')
+    return b''.join(ss('TMenuItem') + ss(item)
+                    + ss('Caption') + b'\x06' + ss(cap)
+                    + ss('OnClick') + b'\x07' + ss(handler)
+                    + b'\x00' + b'\x00'
+                    for item, cap, handler in ((NEW_ITEM, NEW_CAPTION, NEW_HANDLER),
+                                               (ITEM_ITEM, ITEM_CAPTION, ITEM_HANDLER)))
 
 
 def dfm_insert(blob):
@@ -424,10 +449,14 @@ def dfm_insert(blob):
 
 
 def dfm_remove(blob):
-    root = DfmParser(blob).obj(4)
-    node = find_node(root, NEW_ITEM)
-    assert node is not None, '%s is not in the DFM' % NEW_ITEM
-    return blob[:node['start']] + blob[node['end']:], node['start']
+    """Remove whichever of the two nodes are present (an older install has only the heroes one)."""
+    at = None
+    for name in (ITEM_ITEM, NEW_ITEM):
+        node = find_node(DfmParser(blob).obj(4), name)
+        if node is not None:
+            blob, at = blob[:node['start']] + blob[node['end']:], node['start']
+    assert at is not None, '%s is not in the DFM' % NEW_ITEM
+    return blob, at
 
 
 def dfm_check(blob, expect_new):
@@ -446,8 +475,8 @@ def dfm_check(blob, expect_new):
         assert node['start'] == anchor['end'], 'the new item is not the next sibling'
         for parent in (find_node(root, 'DeveloperItems'),):
             kids = [c['name'] for c in parent['children']]
-            assert kids[-2:] == [ANCHOR_ITEM, NEW_ITEM], (
-                'DeveloperItems tail is %s' % kids[-3:])
+            assert kids[-3:] == [ANCHOR_ITEM, NEW_ITEM, ITEM_ITEM], (
+                'DeveloperItems tail is %s' % kids[-4:])
     return root
 
 
@@ -691,12 +720,230 @@ def assemble(cave_va):
     return body, text, marks
 
 
-def check_immediates(code, cave_va):
+def assemble_items(cave_va):
+    """PruneFreeItemsClick.  eax = TMainForm.  Same frame, dialogs and render bracket as the
+    heroes handler; the predicate is item[+0x04] (Owner) == nil, the deletion
+    TItemControl.UnRegisterItem (removes it from the list, clears the registered flag,
+    Release).  Returns (body, marks)."""
+    from keystone import Ks, KS_ARCH_X86, KS_MODE_32
+    ks = Ks(KS_ARCH_X86, KS_MODE_32)
+    sig0, sig1 = struct.unpack_from('<II', UNREG_SIG, 0)
+    sig2 = struct.unpack_from('<H', UNREG_SIG, 8)[0]
+
+    def build(lit):
+        src = """
+            push ebp
+            mov  ebp, esp
+            sub  esp, 0x50
+            push ebx
+            push esi
+            push edi
+            mov  esi, eax
+            mov  eax, [MAP_SLOT]
+            mov  eax, [eax]
+            test eax, eax
+            je   L_exit
+            mov  edi, [esi + HSMEDIT_OFF]
+            test edi, edi
+            je   L_nopause
+            cmp  byte ptr [edi + HSMEDIT_GUARD], 0
+            je   L_nopause
+            mov  eax, edi
+            mov  edx, [eax]
+            call dword ptr [edx + DISPLAY_PAUSE]
+        L_nopause:
+            mov  dword ptr [ebp - 4], 0
+            call L_getic
+            test eax, eax
+            je   L_counted
+            mov  eax, [eax + 8]
+            mov  ebx, [eax + 8]
+            dec  ebx
+            js   L_counted
+        L_cloop:
+            call L_getic
+            mov  eax, [eax + 8]
+            mov  eax, [eax + 4]
+            mov  eax, [eax + ebx*4]
+            test eax, eax
+            je   L_cnext
+            cmp  dword ptr [eax + OWNER_OFF], 0
+            jne  L_cnext
+            inc  dword ptr [ebp - 4]
+        L_cnext:
+            dec  ebx
+            jns  L_cloop
+        L_counted:
+            lea  edi, [ebp - 0x48]
+            mov  edx, LIT_PRE
+            call L_copyz
+            mov  eax, [ebp - 4]
+            xor  ecx, ecx
+            mov  ebx, 10
+        L_dig:
+            xor  edx, edx
+            div  ebx
+            add  dl, 0x30
+            push edx
+            inc  ecx
+            test eax, eax
+            jne  L_dig
+        L_emit:
+            pop  eax
+            mov  [edi], al
+            inc  edi
+            dec  ecx
+            jne  L_emit
+            mov  edx, LIT_MANY
+            cmp  dword ptr [ebp - 4], 1
+            jne  L_plural
+            mov  edx, LIT_ONE
+        L_plural:
+            call L_copyz
+            mov  byte ptr [edi], 0
+            lea  eax, [ebp - 0x48]
+            sub  edi, eax
+            mov  [ebp - 0x4C], edi
+            mov  dword ptr [ebp - 0x50], -1
+            cmp  dword ptr [ebp - 4], 0
+            jne  L_confirm
+            push MB_OK_INFO
+            mov  ecx, LIT_CAP
+            mov  edx, LIT_NONE
+            mov  eax, [APP_SLOT]
+            mov  eax, [eax]
+            call T_MSGBOX
+            jmp  L_resume
+        L_confirm:
+            push MB_YESNOCANCEL_BUTTONS
+            push 0
+            lea  edx, [ebp - 0x48]
+            mov  cl, MT_CONFIRMATION
+            mov  eax, esi
+            call MSGDLG
+            cmp  ax, MR_YES
+            jne  L_resume
+            mov  edi, [IAT_REGISTERITEM]
+            add  edi, UNREG_DELTA
+            cmp  dword ptr [edi], SIG0
+            jne  L_bad
+            cmp  dword ptr [edi + 4], SIG1
+            jne  L_bad
+            cmp  word ptr [edi + 8], SIG2
+            jne  L_bad
+            mov  eax, [esi + HSMEDIT_OFF]
+            test eax, eax
+            je   L_nodesel
+            call T_DESELECT
+        L_nodesel:
+            call L_getic
+            test eax, eax
+            je   L_resume
+            mov  eax, [eax + 8]
+            mov  ebx, [eax + 8]
+            dec  ebx
+            js   L_modified
+        L_dloop:
+            call L_getic
+            mov  edx, [eax + 8]
+            mov  edx, [edx + 4]
+            mov  edx, [edx + ebx*4]
+            test edx, edx
+            je   L_dnext
+            cmp  dword ptr [edx + OWNER_OFF], 0
+            jne  L_dnext
+            call edi
+        L_dnext:
+            dec  ebx
+            jns  L_dloop
+        L_modified:
+            mov  eax, [MAP_SLOT]
+            mov  eax, [eax]
+            test eax, eax
+            je   L_resume
+            call T_SETMODIFIED
+            jmp  L_resume
+        L_bad:
+            push MB_OK_WARN
+            mov  ecx, LIT_CAP
+            mov  edx, LIT_BAD
+            mov  eax, [APP_SLOT]
+            mov  eax, [eax]
+            call T_MSGBOX
+        L_resume:
+            mov  edi, [esi + HSMEDIT_OFF]
+            test edi, edi
+            je   L_exit
+            cmp  byte ptr [edi + HSMEDIT_GUARD], 0
+            je   L_exit
+            mov  eax, edi
+            mov  edx, [eax]
+            call dword ptr [edx + DISPLAY_RESUME]
+        L_exit:
+            lea  esp, [ebp - 0x5C]
+            pop  edi
+            pop  esi
+            pop  ebx
+            mov  esp, ebp
+            pop  ebp
+            ret
+        L_getic:
+            mov  eax, [MAP_SLOT]
+            mov  eax, [eax]
+            test eax, eax
+            je   L_getic_out
+            mov  eax, [eax + IC_OFF]
+        L_getic_out:
+            ret
+        L_copyz:
+            mov  al, [edx]
+            test al, al
+            je   L_copyz_out
+            mov  [edi], al
+            inc  edi
+            inc  edx
+            jmp  L_copyz
+        L_copyz_out:
+            ret
+        """
+        names = dict(MAP_SLOT=MAP_SLOT, HSMEDIT_OFF=HSMEDIT_OFF, HSMEDIT_GUARD=HSMEDIT_GUARD,
+                     DISPLAY_PAUSE=DISPLAY_PAUSE, DISPLAY_RESUME=DISPLAY_RESUME,
+                     OWNER_OFF=OWNER_OFF, MB_OK_INFO=MB_OK_INFO, MB_OK_WARN=MB_OK_WARN,
+                     APP_SLOT=APP_SLOT, T_MSGBOX=T_MSGBOX,
+                     MB_YESNOCANCEL_BUTTONS=MB_YESNOCANCEL_BUTTONS,
+                     MT_CONFIRMATION=MT_CONFIRMATION, MSGDLG=MSGDLG, MR_YES=MR_YES,
+                     IAT_REGISTERITEM=IAT_REGISTERITEM, UNREG_DELTA=UNREG_DELTA,
+                     SIG0=sig0, SIG1=sig1, SIG2=sig2, T_DESELECT=T_DESELECT,
+                     T_SETMODIFIED=T_SETMODIFIED, IC_OFF=IC_OFF,
+                     LIT_PRE=lit['pre'], LIT_ONE=lit['one'], LIT_MANY=lit['many'],
+                     LIT_NONE=lit['none'], LIT_CAP=lit['cap'], LIT_BAD=lit['bad'])
+        for k in sorted(names, key=len, reverse=True):
+            src = src.replace(k, '0x%X' % names[k])
+        return src
+
+    zero = dict(pre=0, one=0, many=0, none=0, cap=0, bad=0)
+    enc, _ = ks.asm(build(zero), cave_va)
+    code_len = (len(enc) + 15) // 16 * 16
+    at = cave_va + code_len
+    lit, blobs = {}, b''
+    for key, st in (('pre', S_PRE), ('one', SI_ONE), ('many', SI_MANY),
+                    ('none', SI_NONE), ('cap', SI_CAP), ('bad', SI_BAD)):
+        lit[key] = at + len(blobs)
+        blobs += st
+        while len(blobs) % 4:
+            blobs += b'\x00'
+    enc, _ = ks.asm(build(lit), cave_va)
+    assert len(enc) <= code_len, 'code grew between passes (%d > %d)' % (len(enc), code_len)
+    body = bytes(enc) + b'\x90' * (code_len - len(enc)) + blobs
+    return body, dict(code_len=len(enc), lit=lit)
+
+
+def check_immediates(code, cave_va, want=None):
     """keystone assembles `push 0xFFFF` as 6A FF = -1, silently.  Read every push
     immediate back out of the ENCODING and compare with what the source asked for."""
     from capstone import Cs, CS_ARCH_X86, CS_MODE_32
     cs = Cs(CS_ARCH_X86, CS_MODE_32)
-    want = [MB_OK_INFO, MB_YESNOCANCEL_BUTTONS, 0]
+    want = want or [MB_OK_INFO, MB_YESNOCANCEL_BUTTONS, 0]
     got = []
     for i in cs.disasm(code, cave_va):
         if i.mnemonic == 'push' and i.op_str.startswith('0x'):
@@ -757,19 +1004,26 @@ def strip(d, F, S, quiet=False):
         'stripped DFM is %#x B, expected %#x' % (len(new_dfm), ORIG_DFM_SIZE))
     dfm_check(new_dfm, expect_new=False)
 
-    # the 134-entry table terrainpal left behind must still be intact to point back at
+    # terrainpal's 134-entry table at OLD_MT_VA is where the two handlers live while this
+    # feature is applied (2026-09-25).  Re-emit it from the live table's first 134 entries,
+    # which are those same entries, before pointing VMT-0x28 back at it.
+    assert [n for _c, n in S['mt'][:OLD_MT_COUNT]][-2:] == ['SkyBtnClick', 'ChasmBtnClick'] \
+        or len(S['mt']) == OLD_MT_COUNT, 'live table does not start with terrainpal\'s 134'
+    old_bytes = emit_method_table(S['mt'][:OLD_MT_COUNT])
+    assert len(old_bytes) == OLD_MT_LEN, (
+        're-emitted table is %d B, expected %d' % (len(old_bytes), OLD_MT_LEN))
+    mo = va2off(F['secs'], OLD_MT_VA)
+    d[mo:mo + OLD_MT_LEN] = old_bytes
     old_mt, _o, _l = read_method_table(d, F['secs'], OLD_MT_VA)
-    assert len(old_mt) == OLD_MT_COUNT, (
-        'the table at %#x has %d entries, expected %d'
-        % (OLD_MT_VA, len(old_mt), OLD_MT_COUNT))
-    assert [n for _c, n in old_mt] == [n for _c, n in S['mt'][:OLD_MT_COUNT]], (
-        'the table at %#x does not match the relocated one -- refusing to repoint'
-        % OLD_MT_VA)
+    assert len(old_mt) == OLD_MT_COUNT
 
     d[S['dfm_off']:S['dfm_off'] + len(S['blob'])] = new_dfm + bytes(
         len(S['blob']) - len(new_dfm))
     zero_from = S['dfm_off'] + ORIG_DFM_SIZE
-    zero_to = ctp_raw + ctp_rsz
+    zero_to = va2off(F['secs'], ZONE_CEIL)
+    if zero_from <= S['mt_off'] < zero_to:
+        # a pre-2026-09-25 install kept its table past the ceiling (it ended at 0x0058F27A)
+        zero_to = max(zero_to, S['mt_off'] + S['mt_len'])
     d[zero_from:zero_to] = bytes(zero_to - zero_from)
     struct.pack_into('<II', d, S['entry_off'], S['dfm_rva'], ORIG_DFM_SIZE)
     struct.pack_into('<I', d, va2off(F['secs'], VMT_METHODTABLE), OLD_MT_VA)
@@ -786,8 +1040,8 @@ def strip(d, F, S, quiet=False):
 def build(d, F, S, args):
     """Grow the DFM in place, then lay the cave and the relocated table after it."""
     _nm, ctp_va, _vsz, ctp_raw, ctp_rsz, ctp_hdr = S['ctp']
-    ctp_end_off = ctp_raw + ctp_rsz
-    ctp_end_va = BASE + ctp_va + ctp_rsz
+    ctp_end_off = va2off(F['secs'], ZONE_CEIL)
+    ctp_end_va = ZONE_CEIL
 
     assert S['dfm_size'] == ORIG_DFM_SIZE, (
         'DFM is %#x B, expected the vanilla-plus-terrainpal %#x -- another patch has'
@@ -798,6 +1052,7 @@ def build(d, F, S, args):
     assert len(S['mt']) == OLD_MT_COUNT, (
         'method table has %d entries, expected %d' % (len(S['mt']), OLD_MT_COUNT))
     assert NEW_HANDLER not in [n for _c, n in S['mt']], '%s already published' % NEW_HANDLER
+    assert ITEM_HANDLER not in [n for _c, n in S['mt']], '%s already published' % ITEM_HANDLER
     tail_off = S['dfm_off'] + S['dfm_size']
     assert all(x == 0 for x in d[tail_off:ctp_end_off]), (
         '.ctp tail file %#x..%#x is not all zero -- something else owns it'
@@ -807,12 +1062,22 @@ def build(d, F, S, args):
     dfm_check(new_dfm, expect_new=True)
     grow = len(new_dfm) - len(S['blob'])
 
-    cave_va = (BASE + S['dfm_rva'] + len(new_dfm) + 15) // 16 * 16
+    # both handlers go where terrainpal's (now dead) 134-entry table sat; strip() re-emits it
+    cave_va = OLD_MT_VA
     body, text, marks = assemble(cave_va)
     check_immediates(body[:marks['code_len']], cave_va)
+    icave_va = (cave_va + len(body) + 15) // 16 * 16
+    ibody, imarks = assemble_items(icave_va)
+    check_immediates(ibody[:imarks['code_len']], icave_va,
+                     [MB_OK_INFO, MB_YESNOCANCEL_BUTTONS, 0, MB_OK_WARN])
+    hbody = body
+    body = body + bytes(icave_va - cave_va - len(body)) + ibody
 
-    mt_va = (cave_va + len(body) + 3) // 4 * 4
-    new_mt = S['mt'] + [(cave_va, NEW_HANDLER)]
+    assert cave_va + len(body) <= OLD_MT_VA + OLD_MT_LEN, (
+        'handlers are %d B, the dead table is %d B' % (len(body), OLD_MT_LEN))
+    body = body + bytes(OLD_MT_LEN - len(body))
+    mt_va = (BASE + S['dfm_rva'] + len(new_dfm) + 3) // 4 * 4
+    new_mt = S['mt'] + [(cave_va, NEW_HANDLER), (icave_va, ITEM_HANDLER)]
     mtb = emit_method_table(new_mt)
 
     end_va = mt_va + len(mtb)
@@ -828,20 +1093,24 @@ def build(d, F, S, args):
         assert size == 7 + nl, 'method entry size %d != 7+%d' % (size, nl)
         probe.append((code, mtb[p + 7:p + 7 + nl].decode('latin1')))
         p += size
-    assert p == len(mtb) and len(probe) == OLD_MT_COUNT + 1, \
+    assert p == len(mtb) and len(probe) == OLD_MT_COUNT + 2, \
         'relocated method table does not round-trip'
     assert [n for _c, n in probe[:OLD_MT_COUNT]] == [n for _c, n in S['mt']], \
         'method table reordered'
-    assert probe[-1] == (cave_va, NEW_HANDLER), 'the new entry is not last'
+    assert probe[-2:] == [(cave_va, NEW_HANDLER), (icave_va, ITEM_HANDLER)], \
+        'the new entries are not last'
 
     print('      DFM  %#x -> %#x B (+%d) | node spliced at blob %#x (after %s)'
           % (S['dfm_size'], len(new_dfm), grow, at, ANCHOR_ITEM))
     # the pad between the ret and the first literal is alignment, not literal bytes --
     # folding it into the literal count is what put a wrong "97 B" into the notes once.
     _lit0 = min(marks['lit'].values()) - cave_va
-    print('      cave %#x..%#x (%d B code, %d B pad, %d B literals)'
-          % (cave_va, cave_va + len(body) - 1, marks['code_len'],
-             _lit0 - marks['code_len'], len(body) - _lit0))
+    print('      %s %#x..%#x (%d B code, %d B pad, %d B literals)'
+          % (NEW_HANDLER, cave_va, cave_va + len(hbody) - 1, marks['code_len'],
+             _lit0 - marks['code_len'], len(hbody) - _lit0))
+    print('      %s %#x..%#x (%d B code + literals) | dead-table zone %#x..%#x'
+          % (ITEM_HANDLER, icave_va, icave_va + len(ibody) - 1, len(ibody),
+             OLD_MT_VA, OLD_MT_VA + OLD_MT_LEN - 1))
     print('      literals: ' + ', '.join('%s@%#x' % (k, v)
                                          for k, v in sorted(marks['lit'].items(),
                                                             key=lambda kv: kv[1])))
@@ -854,7 +1123,9 @@ def build(d, F, S, args):
 
     if args.dis:
         print('      --- %s @ %#x ---' % (NEW_HANDLER, cave_va))
-        disassemble(body, cave_va, marks)
+        disassemble(hbody, cave_va, marks)
+        print('      --- %s @ %#x ---' % (ITEM_HANDLER, icave_va))
+        disassemble(ibody, icave_va, imarks)
 
     def write(dd):
         off = S['dfm_off']
@@ -871,7 +1142,7 @@ def build(d, F, S, args):
         struct.pack_into('<I', dd, ctp_hdr + 8, CTP_VSIZE_NEW)
         return dd
 
-    return write, dict(cave_va=cave_va, mt_va=mt_va, end_va=end_va,
+    return write, dict(cave_va=cave_va, icave_va=icave_va, mt_va=mt_va, end_va=end_va,
                        dfm_len=len(new_dfm), body=body, marks=marks)
 
 
@@ -940,12 +1211,9 @@ def main():
         except PermissionError:
             print('      LOCKED -- close the editor and retry')
             return 1
-        print('      REVERTED.  The 3219-byte table at %#x is live again; the .ctp tail'
-              ' is all zero.' % OLD_MT_VA)
-        print('      !! "all zero" INCLUDES 0x18A080..0x18A1FF, build_deved_gamesettings_tab.py\'s')
-        print('         cave.  If that feature was applied it is GONE and AoWzEd.exe will AV at')
-        print('         STARTUP.  Re-run build_deved_gamesettings_tab.py --apply, then')
-        print('         build_zigeditor.py --apply.')
+        print('      REVERTED.  The 3219-byte table at %#x is re-emitted and live again; the'
+              ' .ctp tail is zero up to %#x.' % (OLD_MT_VA, ZONE_CEIL))
+        print('      Now run build_zigeditor.py --apply.')
         return 0
 
     if applied and not pristine:
@@ -992,13 +1260,14 @@ def main():
         assert s2[3] == s[3], '%s PointerToRawData moved' % s[0].decode()
         assert s2[1] == s[1] and s2[4] == s[4], '%s moved' % s[0].decode()
     S2 = read_state(d, F2)
-    assert S2['mt_va'] == info['mt_va'] and len(S2['mt']) == OLD_MT_COUNT + 1
-    assert S2['mt'][-1] == (info['cave_va'], NEW_HANDLER)
+    assert S2['mt_va'] == info['mt_va'] and len(S2['mt']) == OLD_MT_COUNT + 2
+    assert S2['mt'][-2:] == [(info['cave_va'], NEW_HANDLER), (info['icave_va'], ITEM_HANDLER)]
     assert S2['dfm_size'] == info['dfm_len']
     root = dfm_check(S2['blob'], expect_new=True)
     methods = {n for _c, n in S2['mt']}
-    for node in (find_node(root, NEW_ITEM),):
-        assert NEW_HANDLER in methods, 'OnClick would not resolve at load'
+    for node, handler in ((find_node(root, NEW_ITEM), NEW_HANDLER),
+                          (find_node(root, ITEM_ITEM), ITEM_HANDLER)):
+        assert node is not None and handler in methods, 'OnClick would not resolve at load'
     if before is not None and bytes(d) == before:
         print('\n      already applied and byte-identical -- nothing written.')
         return 0
@@ -1009,19 +1278,16 @@ def main():
         print('      LOCKED -- close the editor and retry')
         return 1
 
-    print('\n      APPLIED.  %s @ %#x; method table %#x (135); DFM %#x B.'
-          % (NEW_HANDLER, info['cave_va'], info['mt_va'], info['dfm_len']))
+    print('\n      APPLIED.  %s @ %#x, %s @ %#x; method table %#x (136); DFM %#x B.'
+          % (NEW_HANDLER, info['cave_va'], ITEM_HANDLER, info['icave_va'], info['mt_va'],
+             info['dfm_len']))
     print('      !! APPLIED, UNTESTED.  Launch AoWDevEd.exe and open the Developer menu:')
     print('         a bad method table or a malformed DFM fails at FORM LOAD and every')
     print('         check above still passes.  Revert with --undo.')
     print('      !! DELETING .ctp to re-run build_deved_terrainpal.py destroys this feature')
     print('         and build_deved_toolbar_trim.py too (terrainpal --apply itself is a')
     print('         safe no-op while .ctp exists).  Undo order: heroprune, then toolbar_trim.')
-    print('      !! THIS RUN ZEROED file 0x189138..0x18A200, which is where')
-    print('         build_deved_gamesettings_tab.py keeps its cave (0x18A080..0x18A1FF).')
-    print('         If that feature was applied, it is GONE and AoWzEd.exe will AV at')
-    print('         STARTUP.  Re-run build_deved_gamesettings_tab.py --apply, then')
-    print('         build_zigeditor.py --apply.')
+    print('      Now run build_zigeditor.py --apply.')
     return 0
 
 

@@ -653,13 +653,17 @@ traps — is in `Zig notes/12-re-toolchain.md`.
 
 Three subagents in `.claude/agents/`, invoked by name; the main session orchestrates.
 
-⭐⭐ **Use it for BIG, NOVEL features only — owner's ruling, 2026-09-13.** Default to doing the work
-in the main session. The loop earns its cost on genuinely new ground: a new cave, a new ability or
-spell, a multi-stage design, an unknown hook site, a binary nobody has traced. ⚠ **Do not run it for
-a re-tune, a value change, a doc fix, or an edit to a script that already owns the site** — touching
-a live binary is not by itself a reason. It is three serial ~20-minute agents and the user is waiting
-through all of it; raising one enchantment's stats (4 immediates + 4 text records, both scripts
-already owning them) was called overkill and killed mid-run.
+⭐⭐ **Do not use it by default — owner's ruling, 2026-09-24, on cost.** It replaces the 2026-09-13
+rule ("big, novel features only").
+- Do the work in the main session, however big the feature.
+- Run a loop stage only when the owner asks for one.
+- ⚠ **No QA pass by default, even then.** The owner tests in-game; QA happens only after a change
+  fails there.
+- If the owner asks for subagents, give each one only the essential steps: dry run, apply, one
+  `--undo` round trip, the relocation audit, and the records.
+
+Background, 2026-09-13: it is three serial ~20-minute agents, and raising one enchantment's stats
+through it was called overkill and killed mid-run.
 
 ⚠ **QA finding something real on a small job is not a counter-argument.** On that same change it
 caught two `Spells.pfs` spellbook rows left at the old numbers. The fix is to **check the couplings

@@ -78,7 +78,7 @@ DISPLAY = {
     "TCosmeticSurgeryAbility": "Cosmetic Surgery", "TFireAuraEnchantment": "Fire Halo",
     "TFreeMovementAbility": "Free Movement", "THolyChampionEnchantment": "Holy Champion",
     "TUnholyChampionEnchantment": "Unholy Champion", "TLiquidFormEnchantment": "Liquid Form",
-    "TSlowEnchantmentAbility": "Slow", "TTurnedUndeadAbility": "Turned Undead",
+    "TSlowEnchantmentAbility": "Lethargy", "TTurnedUndeadAbility": "Turned Undead",
     "TWaterWalkingEnchantment": "Water Walking", "TWindWalkingEnchantment": "Wind Walking",
     "TFireProtectionEnchantment": "Fire Protection", "TConcealmentEnchantment": "Concealment",
     "TSummonedAbility": "Summoned", "THasteAbility": "Haste", "THolyFear": "Holy Fear",

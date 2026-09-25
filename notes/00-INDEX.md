@@ -142,8 +142,43 @@ file carries the specific checklist for its own rows.
   5. Level one up in-game and confirm the new point is spendable and the budget advances by 10.
   6. Save and reload a game containing a recruited library hero — stats and level must survive.
   ⚠ Nothing may be running when it is applied: the game and the editor rewrite this file on exit.
+- **The Firmament is exempt from the underground ranged malus** (`build_firmament_rangedmalus.py`)
+  — 🔨 APPLIED, UNTESTED (2026-09-24). The −4 ranged ATK without Night Vision fired on every level
+  ≠ 0, the Firmament included. The fix is 4 bytes in the unowned cave `0x5580C240`: at
+  `0x5580C27F`, `cmp al,0 / je` → `test al,al / jp`, so the malus applies on levels 1–2 only.
+  Surgical `--undo`. Checklist: `01-combat-maths.md`, "The malus skips the Firmament".
+- **Breath and Flame Throwing aim each strike at its own hex** (`build_breath_line.py`) — 🔨 APPLIED,
+  UNTESTED (2026-09-24). Each damaging strike's obstruction line now runs to the hex it damages, not
+  along the spray angle, so corridors no longer eat strikes. Hook `0x40D5F1` → cave `0x439400`
+  (164 B, AoWTCPCK). Surgical `--undo`. Checklist: `01-combat-maths.md`, "Breath and Flame Throwing
+  aim each strike at its own hex".
+- **The AI hero level-up offers a stat whenever it can afford it** (`build_ai_levelup_gates.py`) —
+  🔨 APPLIED, UNTESTED (2026-09-24). `ExecuteUpgradeHeroAI`'s five `cmp esi,N` constants are gates
+  on unspent points, not the target levels a 2026-09-08 ruling took them for. They go from the
+  hand-edit 4/16/8/8/3 to the live prices ATK 3 / DEF 6 / RES 2 / DAM 4 / HP 2, which the script
+  reads from `UsedSkillPoints`; its dry run reports DRIFT after any re-price. Surgical `--undo`.
+  Checklist: `01-combat-maths.md` §5.
 
 ### Abilities — `02-abilities-modded.md`, `03-abilities-added.md`
+- **Command abilities limited** — 🔨 APPLIED, UNTESTED (2026-09-25): seized units stay **Bound**
+  (`0xBB`) to their commander and turn independent when it dies, is disbanded or changes sides
+  (at once if in the same battle); the commander carries **Commanding N** (`0xBC`), −1 RES per thrall;
+  Seduce/Charm/Dominate roll the commander's RES against the target's; Dispel Magic can take a
+  thrall. `build_command_bond.py`, `build_command_resroll.py`, `build_command_bond_pfs.py`, rows in
+  `build_pfs_typos.py`. Checklist: `02-abilities-modded.md`, "Command abilities — bound thralls".
+- **Liquid Body** (`0xBA`, `build_liquidbody.py` + `build_liquidbody_pfs.py`) — 🔨 APPLIED, UNTESTED
+  (2026-09-25). Swimming + Physical Protection + can't be set Burning, as a plain passive for units
+  (Water Elementals). Package-init registration proved by launching the exe. Caves `0x5584E200`–
+  `0x5584E28F`. Checklist: `03-abilities-added.md`, "Liquid Body".
+- **Seven Weakness abilities** — Fire, Cold, Lightning, Magic, Poison, Death, Holy (`0xB3`–`0xB9`;
+  no Physical by ruling) — 🔨 APPLIED, UNTESTED (2026-09-25): `build_weakness.py` +
+  `build_weakness_pfs.py`. ×1.5 damage (rounded up, cap 126) and −4 on the effect Resistance check;
+  the matching Protection cancels it, Immunity wins. Editor-assignable (mask `0x027F`), never offered
+  at level-up. AoWEPACK zone `0x5584DB00`–`0x5584DEFF`; ceiling LADDERs now `0xBA`. Checklist:
+  `03-abilities-added.md`, "Weakness abilities".
+- **An aura whose owner is missing no longer freezes its army** (`build_formation_guard.py`) — 🔨
+  APPLIED, UNTESTED (2026-09-25). `TArmy.UpdateFormation` skips a unit whose ability `0x2E` owner is
+  nil (hook `0x5578D0DE`, cave `0x5584D8C0`). Checklist: `02-abilities-modded.md`.
 - **Dark Gift — lifesteal heal 4 → 3, both texts rewritten to the owner's sentence** 🔨 APPLIED,
   UNTESTED (2026-09-14): `build_lifesteal_roundattack.py` (`DG_HEAL=3`, cave `0x5580DC80` imm byte
   `0x5580DCB1`, in-place rewrite — `LS_HEAL` stays **4**, `0x76` is a different ability) and
@@ -317,6 +352,43 @@ file carries the specific checklist for its own rows.
 - Item-granted HP / MV bonuses — 2026-08-31
 
 ### Spells — `04-spells-modded.md`, `05-spells-added.md`
+- **Lethargy (ex Slow)** (`build_lethargy.py`) — 🔨 APPLIED, UNTESTED (2026-09-25). Movement halved
+  (rounded up) for the rest of combat, remaining movement halved on landing, one melee strike fewer
+  attacking and defending (never below one); the +2 hex cost is gone. The AI now casts Lethargy and
+  Embrittle, in auto-combat and by hand. Haste is the mirror: one melee strike more attacking and
+  defending. Caves `0x5584DF00`–`0x5584E1B5`. Surgical `--undo`. Checklist:
+  `04-spells-modded.md`, "Lethargy".
+- **Inioch's share8 spell changes** — 🔨 APPLIED, UNTESTED (2026-09-25), `04-spells-modded.md`
+  "Inioch's share8 spell changes":
+  - Holy Woods → Vertigo, Evil Woods → Cursed (`build_ground_debuffs.py`).
+  - Ooze puts out fires and Burning (`build_ooze_extinguish.py`, AoWTCPCK).
+  - Level Terrain leaves rocks (`build_levelterrain_rocks.py`).
+  - Town Quake by wall type and level (`build_townquake_retune.py`).
+  - Vortex ATK 20, 14/10/4, movement drain (`build_vortex_rebalance.py`).
+  - Spellbook texts in `build_pfs_typos.py`; manual lines in `SPELL_BEHAVIOUR`.
+- **Ice Storm's terrain change takes effect 25% of the time**, was 75% (`build_icestorm_gate25.py`,
+  one byte at `0x5580DB4E`) — 🔨 APPLIED, UNTESTED (2026-09-25). `09-terrain-movement.md`.
+- **Instant casts charge and gate on the real cost** (`build_caster_wallet.py`) — 🔨 APPLIED,
+  UNTESTED (2026-09-25). A cost equal to the raw `[spell+0x14]` becomes `CastingMana` at
+  `CanCastSpellInstantly`, `TSpell.CastingDone` and `TSpell.CombatCastingDone`: an own-sphere
+  Mastery spell no longer starts and does nothing, and the opposed ×1.5 is now charged on instant
+  casts. Caves `0x5584D300`/`D360`/`D3A0`. Surgical `--undo`. Checklist: `03-abilities-added.md`,
+  "Families are data, and the wallet".
+- **Caster family is data: `Spells.pfs` tag `0x12`** (`build_spell_family.py`, then
+  `build_caster_cost.py`'s data classifier) — 🔨 APPLIED, UNTESTED (2026-09-25). Evoker /
+  Conjurer / Enchanter / Ritualist membership now reads spell byte `+0x23`, seeded from the class
+  rule (31 / 13 / 18 / 12, 35 none). Hook `0x557792BB`, cave `0x5584D2C0`. ⚠ Order:
+  `build_caster_cost.py --classic --apply` before `build_spell_family.py --undo`.
+- **Defeat can no longer freeze the game on an enchantment whose unit can't be found**
+  (`build_defeat_enchant_guard.py`) — 🔨 APPLIED, UNTESTED (2026-09-24). A vanilla livelock:
+  `RemoveEnchantments` spun forever when `Dispel` could not find the unit. Its loop now
+  force-unregisters a stuck entry, and `Dispel` unregisters an orphan from its caster. Caves
+  `0x5584D100`/`0x5584D180`. Surgical `--undo`. Checklist: `04-spells-modded.md`, "The backstop is
+  in".
+- **Vortex: each cast rolls fresh damage** (`build_vortex_reseed.py`) — 🔨 APPLIED, UNTESTED
+  (2026-09-24). The animation pinned the raw seed, so every cast repeated its rolls. The damage pass
+  now re-anchors `System.RandSeed` from one synced draw, as the other storms do. Cave `0x5584D240`.
+  Surgical `--undo`. Checklist: `04-spells-modded.md`, "Vortex".
 - **Power Leech (ex Power Leak)** — the halving is gone; the caster steals 25% of the power of every magic node owned by another player, and that owner loses the same. 🔨 APPLIED, UNTESTED (2026-09-07): `build_powerleech.py` on `AoWEPACK.dpl` (4 B at `0x5577CEC5`, 1 B at `0x5577CED8`, `cave_powerleech @0x55848000`), plus the rename, the `Spells.pfs` record 58 description and `NEWMECH_POWERLEECH` in the manual. One-at-a-time is **already vanilla** and was verified, not built. The **income row** is a separate patch: `build_powerleech_ui.py` on `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe` (7 B at `0x0042CFD9`, `cave_powerleech_ui @0x0062D100`) adds a "Power Leech (gained)" / "Power Leech (lost)" row to the Magic window's power breakdown — 🔨 APPLIED, UNTESTED (2026-09-09)
 - **Terror — spell ATK 16 → 12** — 🔨 APPLIED, UNTESTED (2026-09-09): `build_terror_atk12.py` on `AoWEPACK.dpl`, pure immediate rewrite, no cave/hook (`0x557F9A81` w1, `0x557F9887`/`0x557F9A0B`/`0x557F9CA6`/`0x557F9D8F` w4; snapshot `backups\AoWEPACK.dpl.pre-terroratk12`; surgical `--undo` restores **16**, not vanilla 6). ⚠ **Terror's power is encoded FIVE times — a partial edit is silent** (different powers in tactical vs auto-resolve vs the AI estimate). ⚠ Vanilla was **6**: the recorded "8 → 16" doubled an undocumented pre-convention Ziggurat value, so **`live / 2` is not the vanilla number** — see the trap in `01-combat-maths.md` §3
 - Embrittle — the whole spell — 2026-09-01 ⚠ **v1 broke startup; a cave that runs at package init must be proved by launching the exe**
@@ -332,6 +404,33 @@ file carries the specific checklist for its own rows.
 - Scroll as a permanent per-hero spellbook grant — cave extended 2026-09-03
 
 ### UI — `07-ui.md`
+- **The taskbar shows the hex under the cursor** (`build_taskbar_coords.py`, both exes) — 🔨 APPLIED,
+  UNTESTED (2026-09-25). "X,Y,Z" at the right end of the message box. Grows `.ibnr` to `0xD000` as a
+  tenant above `build_itembanner_hpmv.py`, whose `--undo` now refuses while it is there. §16.
+- **The name typed at leader customisation becomes the player name** in network games
+  (`build_customize_name.py`, both exes) — 🔨 APPLIED, UNTESTED (2026-09-25). Cave `0x0062A480`. §15.
+- **The mouse wheel scrolls an open lobby dropdown** (`build_wheel_combo.py`, aowInt) — 🔨 APPLIED,
+  UNTESTED (2026-09-25). Wheel helper slot 3, latch 7. §17.
+- **The event tab stays put while the cursor is over it** (`build_eventlog_hover.py`, `AoWz.exe` +
+  `AoWzCompat.exe`) — 🔨 APPLIED, UNTESTED (2026-09-25). Retargets the scroll-to-newest call at
+  `0x0042336A` to a 22 B cave at `0x0062A400` that skips it when `build_wheel_aowint.py`'s hover
+  latch holds this list. Checklist: `07-ui.md` §13.
+- **The Magic tab's research line refreshes mid-turn** (`build_magictab_refresh.py`, `AoWz.exe` +
+  `AoWzCompat.exe`) — 🔨 APPLIED, UNTESTED (2026-09-25). The refresh at `0x0042D2CC` also rebuilds
+  the research overview (cave `0x0062A440`), and `0x0042D497`'s current-player gate is NOPed.
+  Checklist: `07-ui.md` §14.
+- **Resuming a multiplayer save with Customize Leaders ticked no longer hangs**
+  (`build_mpresume_customize.py`) — 🔨 APPLIED, UNTESTED (2026-09-24). A vanilla barrier bug: the
+  host waited for leader customisations that a resumed game never asks for. Hook `0x557E11AA` → cave
+  `0x5584D200`. Surgical `--undo`. Checklist: `07-ui.md` §12.
+- **Event log: right-clicking a hero level-up event centres on the level-up hex, not the hero** —
+  🔨 APPLIED, UNTESTED (2026-09-24). Closes an MP/PBEM leak (vanilla `ViewLocation @0x557857E0`
+  followed the hero). Ported from Inioch with two deviations: ⚠ `[event+0x20]` is **not** spare (it is
+  the owner's turn stamp that `Execute @0x55785757` compares), so the class grows `0x24 → 0x28` with a
+  new property `0x1D`; and the capture retargets `call DistributeLocationEventLog @0x55787F93` in
+  `ValidateHeroUpgrade`, not `AddEvent`. VMT slots `+0x18`/`+0x74` repointed, `.reloc` kept; caves
+  `0x5584D000` (85 B). `07-ui.md` §11 (checklist there). `build_levelup_eventloc.py` on
+  `Ziggurat/AoWEPACK.dpl`.
 - **Taskbar button icon** — 🔨 APPLIED, UNTESTED (2026-09-13). Win11 drew the grey placeholder on the
   button, which belongs to Delphi 3's hidden `TApplication` owner window. ⭐ **The defect is narrower
   than "no icon": a live probe found `ICON_BIG` already set and byte-identical to `MAINICON`, while
@@ -373,6 +472,17 @@ file carries the specific checklist for its own rows.
 - 12 added hero faces moved into the right resolution set (`H_Faces` 79 @103×128, `_H_Faces` 79 @52×64) — 2026-09-04
 
 ### Editor — `08-editor.md`, `Map_Generator.md`
+- **Developer > Delete Unused Items; several editors at once; negative item stats; the validation
+  circle** — 🔨 APPLIED, UNTESTED (2026-09-25): `build_deved_heroprune.py` (now both prune items),
+  `build_deved_multi_instance.py`, `build_deved_itemneg.py` + `build_deved_itemhpmv.py` minima,
+  `build_deved_valcircle.py`; `AoWzEd.exe` rebuilt. §16. ⚠ Heroprune's strip now stops at
+  `0x0058F100` and no longer wipes the Game Settings tab. ⚠ A `build_deved_itemhpmv.py` re-apply zeroes
+  `build_deved_goto_sites.py`'s cave: re-apply that after it.
+- Editor **Go-to (Items / Heroes tabs) finds an item or hero inside an exploration site** and
+  centres on the site. 🔨 APPLIED, UNTESTED (2026-09-25): `build_deved_goto_sites.py` on
+  `AoWDevEd.exe`, which derives `AoWzEd.exe` itself, §15. The two "no location" tests (`0x0042CD44`,
+  `0x0042CDE0`) become calls into a 247 B cave at `0x0059BB00` in `.nmg`'s top slack. ⚠ A
+  `build_deved_newmapgen.py` rebuild would zero that cave: re-apply after one.
 - Editor **Open/Save Mapset defaults to the engine's own data root** instead of the Windows folder
   MRU when `AoWEd_LastDirs.ini` has no `Set=` line. 🔨 APPLIED, UNTESTED (2026-09-11):
   `build_dlgdirs.py` v3 on `Ziggurat/HSEPack.dpl`, §2.2. ⚠⚠ **This closes a real data-loss route**:
@@ -481,6 +591,16 @@ file carries the specific checklist for its own rows.
   listbox (`0x0042BF92` read `[ebx+0x4a0]` then worked off `[ebx+0x4dc]`), so the Spells panel stayed
   blank until an ability had been selected — one byte at `0x0042BF94`, `A0 → DC`.
   ⚠⚠ Two-step: `build_deved_listarrows.py --apply` then **`build_zigeditor.py --apply`**.
+- Editor **Settings > Spells gains a "Caster:" drop-down** (None / Evoker / Conjurer / Enchanter /
+  Ritualist) authoring spell byte `+0x23`, the caster family that the AoWEPACK half streams as
+  `Spells.pfs` tag `0x12`. 🔨 APPLIED, UNTESTED (2026-09-25): `build_deved_casterfamily.py` on
+  `AoWDevEd.exe`, §14. The label and combo are runtime controls, built once on the first spell click.
+  Hook `0x0042C0B8` (the tier `SetValue` `call rel32` in `SpellListBoxClick`) goes to a 341 B cave at
+  `0x0052D6A0` in `.mtb` page slack. `G_COMBO`/`G_ID` sit at `0x004E0700`/`0x004E0704` in `.dlgd`
+  page slack. The layout is four length-neutral Int16 values in the live TMAINFORM: GroupBox3
+  H185→217, and GroupBox4 / GroupBox5 / SpellInfoGroup each down 32. ⚠⚠ The cave needs listarrows'
+  `.mtb` VirtualSize and MEM_EXECUTE, so `build_deved_listarrows.py --undo` breaks it; undo this
+  first. ⚠⚠ Two-step: `--apply` / `--undo`, then **`build_zigeditor.py --apply`**.
 - In-game **item banner shows Hits / Moves bonuses** beside the four combat ones. 🔨 APPLIED,
   UNTESTED (2026-09-13): `build_itembanner_hpmv.py` on `AoWz.exe` + `AoWzCompat.exe`, `07-ui.md` §9.
   `TItemBanner` lives **only in the exe pair** — not in any `.dpl`, not in the editor.
@@ -533,6 +653,24 @@ file carries the specific checklist for its own rows.
   Never opened in the editor.
 
 ### Terrain & movement — `09-terrain-movement.md`
+- **World-map group move: plan front-first, pass over parties that are leaving**
+  (`build_group_move_map.py`) — 🔨 APPLIED, UNTESTED (2026-09-25). Parties are planned in route-length
+  order, and a later party may route through an earlier one that leaves its hex this turn. Merging
+  on arrival and partial moves were already vanilla. Inioch's 1-byte "dropped-party" patch is the
+  road-building check and was not applied. Checklist: `09-terrain-movement.md`.
+- **Tactical group move: plan front-first, queue behind the leader** (`build_group_move_tc.py`) —
+  🔨 APPLIED, UNTESTED (2026-09-24). Box-selected units are planned one after another in the order
+  they will move, so a column goes down a one-hex corridor instead of detouring. Later units take the
+  first free hex behind the previous mover, and a unit short of movement stops at its reach. Includes
+  Inioch's walk-through-vacated-hexes and starting-hex-cost fixes. AoWTCPCK zone
+  `0x439800`–`0x43A3FF`, six sites, surgical `--undo`. Checklist: `09-terrain-movement.md`, "Tactical
+  group move".
+- **Path of Frost leaves lava alone** (`build_pathoffrost_nolava.py`) — 🔨 APPLIED, UNTESTED
+  (2026-09-24). An unowned hand-edit (`call 0x5580BFA0` at `0x55780231`) made the ability turn lava
+  into wasteland on every level. The owner ruled that only spells and altars do that, so the script
+  restores the vanilla land arm; `PathOfFrostTerrainChange` is byte-identical to vanilla again. The
+  cave is dead but kept for `--undo`. Checklist: `09-terrain-movement.md`, "Path of Frost leaves
+  lava alone".
 - Chasm & Sky — movement rows, spell/ability guards, tile art v2
 - ⭐ **Structures on Chasm & Sky — the PAD is the gate and the mound** (`09-terrain-movement.md`
   §"Chasm & Sky" step 6). Every structure resource carries `res[0x44]=1`, so `TStructure.CanPlace`
@@ -571,6 +709,35 @@ file carries the specific checklist for its own rows.
 - Terrain rolls draw from the synced RNG (3 sites) — 2026-08-31
 
 ### AI & structures — `10-ai-and-structures.md`
+- **Trampled crops cost 5 relation everywhere; city farmland charges the city's race** — 🔨 APPLIED,
+  UNTESTED (2026-09-25): `build_crop_trample.py`, two instructions (`0x557A6157`, `0x557AA79F`).
+  §12 also tabulates every city-action race-relation write site, vanilla vs live.
+- **Migrate / Loot / Raze relation changes scale with the city** — 🔨 APPLIED, UNTESTED
+  (2026-09-25): `build_cityrel_scale.py`, baselines −5 / −20 / −20 plus 10 per extra hex, 15 per
+  upgrade, 5 per wall level; refunds and Migrate's new-race gain scale the same way. §12.2.
+- **Tactical AI considers heroes every cycle, heals itself; the strategic AI re-plans at most 20
+  times** — 🔨 APPLIED, UNTESTED (2026-09-25): `build_ai_hero_gate.py` (three NOPs),
+  `build_ai_selfheal.py` (AoWTCPCK `0x43A500`), `build_ai_replan_cap.py` (AoWEPACK `0x5584D880`). §11.
+- **Tactical AI: hero/leader touch moves valued ×1 → ×50** (§10.1). 🔨 APPLIED, UNTESTED
+  (2026-09-24): `build_ai_touch_herovalue.py`, one byte `0x4171F5` `01`→`32` in
+  `Ziggurat\AoWTCPCK.dpl`, the `MultDEV` multiplier of an adjacent hero/leader touch (units 100, hero
+  melee 50). Ported from Inioch's share8. **In-game:** an AI hero/leader healer next to a wounded
+  friend heals at least sometimes; Turn Undead next to an undead enemy likewise.
+- **Tactical AI: rams stop being the favourite target once a wall falls** (§10.2). 🔨 APPLIED,
+  UNTESTED (2026-09-24): `build_ai_ram_breach.py`, hook `0x413673` (target-value fetch in
+  `tcDVtoDEV`) → PIC cave `0x438800` (204 B). After the breach flag `[TCombatData+0x4D]`, an enemy
+  with Wall Crushing and no unit DV in its own target list is valued −100 %. Side test uses the AI's
+  `[cai+4]`, not SELF's, so the AI's own rams' AoO pricing is untouched (his version inverted it).
+  **In-game:** siege with rams — before a breach the AI hits rams as before; after a section falls it
+  switches to real units and only finishes rams when nothing else is in reach.
+- **Tactical AI: archers stop forfeiting a shot for a marginally clearer hex** (§10.3). 🔨 APPLIED,
+  UNTESTED (2026-09-24): `build_ai_ranged_walkvalue.py` — H2 hook `0x4179CE` → PIC caves
+  `0x438C00`/`0x438C40`/`0x438C80` (39/63/370 B): the walk is valued at DEV_best × 65/45/30 %
+  (unit/hero/leader target; ×50 % in mortal danger, 0 when also low-value) instead of as a clean
+  shot; H5 `0x417D1D` `03 45`→`EB 0D` and H6 `0x417E27` `E8`→`A8` in place make shoot = pct·DEV_cur
+  and walk = pct·(X+pos). Vanilla bug fix only; Inioch's (b)-search, else-branch, walk-margin and
+  heal hooks not ported. **In-game:** a partly obstructed archer shoots from where it stands; a
+  fully blocked or out-of-range one still moves.
 - ⭐ **The tactical-combat AI's pause between moves — half the AI turn, and it is not thinking time**
   (`10-ai-and-structures.md` §9). Measured live: 32 × **692 ms** stalls with the token queue empty and
   nothing animating = 50 % of a 42.6 s AI turn. `TCAI.EvalBattle`'s state-1 scan evaluates **one unit

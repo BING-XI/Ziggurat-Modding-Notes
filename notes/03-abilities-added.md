@@ -26,7 +26,14 @@ canonical cross-project cave-ownership map is `12-re-toolchain.md`.
 | Drillmaster — per-stack XP aura (`0xAB`) | ✅ CONFIRMED WORKING (2026-08-08, v4) | `build_drillmaster.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Magebane — enchantment-scaling ATK/DMG (`0xAA`) | 🔨 APPLIED, UNTESTED (2026-08-29 re-tune) | `build_magebane.py` | AoWEPACK.dpl |
 | Magebane description text (record 180) | 🔨 APPLIED, UNTESTED (2026-08-29) | `build_magebane_desc.py` | `Release/Ability.pfs` |
-| Evoker / Conjurer / Enchanter / Ritualist — cost halving (`0xAC`–`0xAF`) | ✅ CONFIRMED WORKING (2026-08-27) | `build_caster_cost.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Evoker / Conjurer / Enchanter / Ritualist — casting-cost discount (`0xAC`–`0xAF`) | ✅ CONFIRMED WORKING (2026-08-27, at 50%) | `build_caster_cost.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Caster Cost discount 50% → 40% (`DISCOUNT_MUL = 0x999A`, ×0.6 truncating) | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_caster_cost.py` | AoWEPACK.dpl |
+| Manual: "Caster" row on every spell card (from tag `0x12`), ability texts at 40% | 🔨 BUILT, NOT PUBLISHED (2026-09-25) | `build_ziggurat_manual.py` | manual |
+| Caster Cost — family as data (`Spells.pfs` tag `0x12` → `[spell+0x23]`), data classifier | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_spell_family.py` + `build_caster_cost.py` | AoWEPACK.dpl + `Release/Spells.pfs` |
+| Caster wallet — instant gate and every hero charge use `CastingMana` | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_caster_wallet.py` | AoWEPACK.dpl |
+| Seven Weakness abilities — Fire/Cold/Lightning/Magic/Poison/Death/Holy (`0xB3`–`0xB9`) | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_weakness.py` + `build_weakness_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Liquid Body — Swimming + Physical Protection + no Burning (`0xBA`) | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_liquidbody.py` + `build_liquidbody_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Bound (`0xBB`) and Commanding (`0xBC`) — the command-ability bond and its RES cost; design and checklist in `02-abilities-modded.md` "Command abilities — bound thralls" | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_command_bond.py` + `build_command_bond_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Copper Medal — rank ladder, stat bonus, icon | ✅ CONFIRMED WORKING (2026-07-30) | `build_copper_medal.py` | AoWEPACK.dpl + `Images/*Combat.ILB` |
 | Copper Medal — 4th ability-owner slot (copper bonus abilities) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_copper_medal.py` (`COPPER_GRANTS_ABILITIES=True`) | AoWEPACK.dpl + `AoWDevEd.exe` |
 | Ability-id ceiling — 4× `TCAI.EvalBattle` scans + item/hover banner popups | 🔨 APPLIED, UNTESTED (ladder at `0xB3`, 2026-09-01) | `build_abilityid_ceilings.py` | AoWTCPCK.dpl + AoWz.exe + AoWzCompat.exe |
@@ -152,12 +159,12 @@ byte pattern but is unrelated city-AI code, not an ability). **The only trustwor
 apparent gap is dynamic** — register it and watch for the `"Ability already registered"` assert.
 `0x38` (Assassin) and `0x9F` (Path of Sand) were claimed exactly this way.
 
-**Measured 2026-09-02, for orientation only — re-derive before trusting it:** highest id in use
-`0xB2`. Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
+**Measured 2026-09-25, for orientation only — re-derive before trusting it:** highest id in use
+`0xBC` (Commanding). Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
 0x66`–`0x69, 0x6E, 0x85`–`0x87, 0x97` (19 gaps; a nil registry slot is necessary but not sufficient —
 per-id verification means scanning both binaries for `mov edx,<id>` / `push <id>` feeding an ability
 call, since cut content can still reference an id that nothing currently registers). Free above the
-current max, under the hard ceiling described next: `0xB3`–`0xCD` (27 ids). Roughly **46 stateful
+current max, under the hard ceiling described next: `0xBD`–`0xCD` (17 ids). Roughly **36 stateful
 slots** and, if the untested bit-only band below turns out to be sound, another **50 passive** slots
 — that is the shape of the budget, not a number to bank on unchanged.
 
@@ -979,8 +986,10 @@ against that ceiling, not truncated; and the record's trailing 4-byte CRC must b
 ## Caster Cost abilities — Evoker / Conjurer / Enchanter / Ritualist (`0xAC`–`0xAF`)
 
 **✅ CONFIRMED WORKING (2026-08-27), validated in-game by the user.**
-`build_scripts/build_caster_cost.py`. Each ability **halves the initial casting cost of one spell
-family** and does nothing else — no damage change, no upkeep change, no research-cost change, no
+`build_scripts/build_caster_cost.py`. Each ability **cuts the initial casting cost of one spell
+family by 40%** (×0.6, `imul ebx,ebx,0x999A / shr ebx,16` = ⌊3x/5⌋ exactly for x < 32768;
+owner ruling 2026-09-25, was `shr ebx,1` = 50%; 🔨 APPLIED, UNTESTED — in-game: a 60-mana
+Conjurer spell costs 36, a 25-mana one 15) and does nothing else — no damage change, no upkeep change, no research-cost change, no
 icon, no level table, no per-owner data record (all four are plain bit-only passives).
 
 | ability | id | family (spell classes) | count | intended cost (cave) | **live cost** (`Ability.pfs` tag 6) |
@@ -990,11 +999,51 @@ icon, no level table, no per-owner data record (all four are plain bit-only pass
 | Enchanter | `0xAE` | `TUnitSpell` | 18 | 40 | **30** ⚠ |
 | Ritualist | `0xAF` | `TGlobalEnchantmentSpell` | 12 | 40 | **30** ⚠ |
 
-35 of 108 spells are deliberately uncovered (storms, terrain, city and target spells). Evoker was
+The family column above is the original class seed. Since 2026-09-25 the family is per-spell data
+authored in AoWzEd (Settings > Spells > Caster), and the owner has assigned every spell. The
+manual's spell cards show it as a "Caster" row. Evoker was
 originally scoped as a spell-*damage* ability; the user rescoped all four to cost-only on
 2026-08-26, before anything but the classification research had been built.
 
-### The classification — a rebase-invariant idiom worth reusing anywhere a spell/ability's class matters
+### Families are data, and the wallet (🔨 APPLIED, UNTESTED 2026-09-25)
+
+**Family = data.** `build_spell_family.py` streams a new `Spells.pfs` byte tag `0x12` into spell
+byte `+0x23` (alignment padding; `TSpell` instance size `0x34`, no method of the 117 classes
+touches it): 0 none, 1 Evoker, 2 Conjurer, 3 Enchanter, 4 Ritualist, ability `0xAB + family`.
+- Hook: `TSpell.ReadWrite` tail `0x557792BB` (8 B, `lea edx,[ebx+0x21]; mov ecx,0x11`) → `cave_rw`
+  `0x5584D2C0` (34 B), which replays tag `0x11` and streams tag `0x12` through the same
+  `[stream+0x30]` = `rwByte` (`TEReadStorageStream` VMT, `0x55510F44`). Shared by game load and
+  editor save. A record without the tag loads **0** (`rwByte`'s not-found arm zeroes the byte).
+- Data: all 109 records seeded from the class rule below — **31 Evoker (incl. Embrittle 109, a
+  `TSlow` instance), 13 Conjurer, 18 Enchanter, 12 Ritualist, 35 none**. Wide entry appended after
+  tag `0x11`, 9 B per record, file 80 475 → 81 456 B. `--apply` only adds a missing tag, never
+  overwrites an authored one. Snapshot `<game dir>\backups\Spells.pfs.pre-spellfamily`.
+- Classifier: `build_caster_cost.py`'s `cave_cost` (`0x55820800`) rewritten in place to
+  `movzx edx,byte [esi+0x23]; dec edx; cmp edx,3; ja skip; add edx,0xAC; call [ecx+0x148]` —
+  51 B inside the pinned 120-B slot, so `cave_floor`..`cave_reg` do not move. `--classic --apply`
+  restores the class test.
+- **Order:** `build_spell_family.py --apply` before the data classifier (the classifier's
+  `--apply` aborts otherwise); `build_caster_cost.py --classic --apply` before
+  `build_spell_family.py --undo` (which aborts otherwise).
+
+**Wallet.** `build_caster_wallet.py` turns a cost equal to `[spell+0x14]` into
+`CastingMana(hero, spell)` at `THero.CanCastSpellInstantly` `0x5578964A`, the hero branch of
+`TSpell.CastingDone` `0x557794D6` and of `TSpell.CombatCastingDone` `0x55779517` (caves
+`0x5584D300` 78 B / `0x5584D360` 28 B / `0x5584D3A0` 30 B). Exact, not `min()`, so the ×1.5
+opposed-sphere surcharge now reaches instant casts. Full table in `04-spells-modded.md` (sphere
+Mastery coupling section).
+
+**In-game checklist:**
+1. Fire Mastery hero, Cloud of Ashes, 4–5 casting points left: the spell now casts (it used to
+   start and do nothing).
+2. Opposed Mastery (e.g. Water Mastery hero casting a Fire spell instantly): the ×1.5 cost is
+   charged, and matches the spellbook.
+3. Evoker hero in tactical combat with casting points below a combat spell's raw cost but at or
+   above the discounted (×0.6) cost: the spell is offered and casts.
+4. Conjurer on a summon and Ritualist on a global enchantment: discount unchanged from before.
+5. Launch `AoWzEd.exe`, save the spell set, and check every spell's family survives the round trip.
+
+### The class rule — the seed of tag `0x12`, and `--classic`; a rebase-invariant idiom worth reusing anywhere a spell/ability's class matters
 
 All four families are identified by a **VMT slot difference**, which needs no PIC anchor at all
 because the load-address delta cancels out of the subtraction: `[VMT+0x6C] − [VMT+0x18]`, where
@@ -1029,7 +1078,7 @@ neither one's verify-before-write touches the other's bytes.
 
 **HOOK 1** — the function's 7-byte entry (`0x557894EC`) — classifies the spell (see above), and, for
 a matching family, queries the item-aware `GetAbilityEnabled` (VMT `+0x148`, per the general
-mechanics section) exactly once and halves the cost with `shr ebx,1`, applying **no floor here on
+mechanics section) exactly once and applies the discount (×0.6 since 2026-09-25), applying **no floor here on
 purpose**. **HOOK 2** — the shared epilogue (`0x55789510`) — enforces the floor: cost 0 stays 0 only
 if the spell's *base* cost was genuinely 0 (`Flaming Arrow`, id 123, is the one spell in the game
 with no `Spells.pfs` mana-cost tag at all — an unconditional floor would turn its intentional free
@@ -1076,15 +1125,8 @@ instantly-cast summons and global enchantments for the first time, which is a re
 the opposed-sphere case as well as a real decrease on the matching-sphere one — a deliberate,
 signed-off side effect, not a bug.
 
-**One remaining gap, deliberately not fixed, recorded so it isn't rediscovered as a surprise:**
-`TWaterMastery.ExecuteTE @0x557F0A88` still reads its raw cost directly and is not covered by the
-three-site fix. Harmless *only* because Water Mastery costs 250 mana, and even after Ritualist and
-an own-sphere Mastery discount (`250 → 125 → 93`) it still exceeds the 90-point casting-points
-ceiling and can never take the instant branch that the bug lives on. If either the ladder or Water
-Mastery's own cost is ever lowered, re-open this. A second, smaller gap: **Cosmagic Scrying** (spell
-59, one of Enchanter's 18) routes through its own caster class and also pushes the raw cost, so at
-Spellcasting level 1 the cast silently does nothing (`7 ≤ 10 < 15`); empty from level 2 up. Not
-fixed — listed as an optional tier-2 item, not shipped.
+Water Mastery's raw charge (`TWaterMastery.ExecuteTE @0x557F0A88`) and Cosmagic Scrying's raw TE
+cost (`0x557E85F9`) are closed by the wallet above (2026-09-25).
 
 ### Verified without the game, and the follow-ups that remain after confirmation
 
@@ -1211,6 +1253,111 @@ nothing currently owns or documents outside this paragraph. If either ladder is 
 whoever does it should claim these addresses with a proper script rather than hand-editing them.
 
 ---
+
+## Weakness abilities — the inverse of the Protections (`0xB3`–`0xB9`)
+
+**🔨 APPLIED, UNTESTED (2026-09-25).** Scripts `build_weakness.py` (mechanics and registration,
+AoWEPACK slot `0x5584DB00`–`0x5584DEFF`) and `build_weakness_pfs.py` (records). The design is
+Inioch's AoWx one (share8 `weakness-abilities-SHELVED.md`, done and confirmed in his game despite
+the file name); every site was re-derived on ours. By owner's ruling there is no Physical
+Weakness: Embrittled `0xB2` already doubles physical damage.
+
+| id | name | damage bit | status effect |
+|---|---|---|---|
+| `0xB3` | Fire Weakness | `0x01` | Burning |
+| `0xB4` | Cold Weakness | `0x02` | Frozen |
+| `0xB5` | Lightning Weakness | `0x04` | Stunned |
+| `0xB6` | Magic Weakness | `0x08` | — (Magic has none, as with its Protection) |
+| `0xB7` | Poison Weakness | `0x10` | Poisoned |
+| `0xB8` | Death Weakness | `0x20` | Cursed |
+| `0xB9` | Holy Weakness | `0x40` | Vertigo |
+
+**Effect.**
+- **Damage:** ×1.5, rounded up ((3d+1)>>1, capped at 126 like Embrittled), when a hit carries a
+  type the unit is weak to and not protected against.
+- **Resistance:** −4 on the Resistance check against that type's status effect and on typed
+  resistance rolls, the mirror of our Protection's +4.
+- **Cancelling:**
+  - Protection and Weakness of one type cancel. The halving is dropped, the ×1.5 is skipped, and
+    the +4 and −4 sum to 0.
+  - Immunity wins, because an immune type is stripped from the hit first.
+  - All protection and immunity sources (items, enchantments, Fire Halo, Blessed, Liquid Form)
+    arrive through the engine's own GetProtectionTypes / GetImmunityTypes, so all of them count.
+
+**Sites.**
+- **Damage, combat:** both `TCombatObject` strike funnels. The hooks are the 6 vanilla bytes right
+  after `build_embrittle.py`'s `call 0x5582D130`, which returns the protection mask:
+  `0x55726A43`, `0x55726AD8`. Abilities are tested through the combat object's GetAbilityEnabled
+  (VMT +0xA8).
+- **Damage, strategic:** `TAbstractUnit.ExecuteDamageRole`'s protection call `0x55781B14`.
+- **Status effects:** the six `mov eax,0xA / sub eax,edi` in `ExecuteDamageEffectsRole`
+  (`0x55781C30/C90/CE2/D34/D86/DE6`).
+- **Typed resistance rolls:** `ExecuteResistanceRole` after its protection `sub edi,4`
+  (`0x55781B84`).
+- Strategic abilities are tested through VMT +0x148.
+
+**Registration.**
+- **Splice:** `0x557BCDFB`, a free `call RegisterAbility` in `RegisterPassiveAbilities`.
+  Registration is seven `CreateEnhancementAbility` calls, one anchor each.
+- **Mask:** `0x027F` = astUnit + item slots + astEditor. Weaknesses are assignable to units, items
+  and heroes in the editor, and never offered at level-up or leader customisation.
+- **Records:** keys 189–195, cloned from the matching Protection's record: SFX and empty image
+  list kept, mask `7F 02`, no tag 6.
+- **Ceiling LADDERs:** `build_abilityid_ceilings.py` / `build_tcablist_ceiling.py` → `0xBA`.
+- **Names:** `re_tools/ability_names.py` `MODDED`.
+
+**MP:** no draw is added or moved; only amounts and thresholds change.
+
+**In-game checklist** (assign weaknesses in the editor, then fight):
+1. A Fire-Weak unit hit by fire takes about half as much again, and is set Burning more often.
+2. With Fire Protection as well: normal damage and normal odds.
+3. With Fire Immunity: no fire damage at all.
+4. A Magic-Weak unit under Magic Bolts takes ×1.5 with no status effect.
+5. The ability shows on the unit card and in the in-combat panel with its description.
+6. It is not offered at hero level-up.
+7. The AI's turn with such units raises no "Error during Create Unit List".
+8. A strategic hit (a storm spell on the world map) on a weak unit is also ×1.5.
+9. A save with weak units reloads with the abilities intact.
+
+## Liquid Body — Swimming, Physical Protection and no Burning (`0xBA`)
+
+**🔨 APPLIED, UNTESTED (2026-09-25).** Scripts `build_liquidbody.py` (AoWEPACK.dpl) and
+`build_liquidbody_pfs.py` (`Release/Ability.pfs` key 196). The script docstring is the full record.
+Owner's design: Water Elementals get Liquid Body in place of Swimming + Physical Protection, so they
+can't be set Burning without the lava walking Fire Immunity brings. The owner assigns it in the editor.
+
+**Why not Liquid Form (`0xA6`).** It already gives Swimming + Physical Protection, but it is a spell
+enchantment: its mask is `0x0000` (the editor never offers it), `TUnitEnchantmentAbility.GetSourceName
+@0x55765784` reads the cast record without a nil check, and a unit that merely starts with the
+enchantment has no cast record. Magebane also counts it as an enchantment.
+
+**What it does.**
+- **Swimming and Physical Protection:** the `0xA6` queries in `GetAbMoveTypesAll` (`0x5574F80B`) and
+  `GetAbProtectionTypesAll` (`0x5574F9A3`) become "`0xA6` or `0xBA`", through one shared cave.
+- **No Burning:** `TAbstractUnit.ExecuteCombatDamageEffects @0x55781ED8` is the only place Burning
+  (`0x7F`) is added: fire bit 0 of the effect mask, after `~immunity & mask`. A unit with `0xBA` skips
+  that block. Fire damage is unchanged, the upstream fire roll still happens (draw count unchanged), and
+  fire no longer thaws a Frozen Liquid Body unit, since vanilla only thaws when Burning lands.
+- **Registration:** `CreateEnhancementAbility` spliced at the vanilla `call RegisterAbility`
+  `0x557BCDC6` (the Crusader registration). Mask `0x0201` = astUnit | astEditor: units only, never
+  items, level-up or leader customisation. **Proved by launching `AoWz.exe` to the main menu with no
+  error dialog, 2026-09-25.**
+- **Record:** cloned from Physical Protection's (key 87): SFX and empty image list kept, mask `01 02`,
+  no tag 6.
+- **Ceiling LADDERs:** `0xBB` in both scripts. **Names:** `re_tools/ability_names.py` `MODDED`
+  (the ceiling scripts read the highest id from there).
+
+Caves `0x5584E200` (`cave_or` 28 B), `0x5584E220` (`cave_burn` 37 B), `0x5584E250` (`cave_reg` 64 B
+with the name). Surgical `--undo` on both scripts.
+
+**In-game checklist** (give a Water Elemental Liquid Body in place of Swimming + Physical Protection):
+1. It swims and enters water exactly as before, and cannot cross lava.
+2. Physical hits do half damage, as with Physical Protection.
+3. Fire hits damage it but never set it Burning (Fire Bolt, a fire-striking melee unit, fire hexes).
+4. The same in auto-combat.
+5. The ability shows on the unit card with its description, and the editor offers it for units but
+   not items.
+6. A save with the unit reloads with the ability intact.
 
 ## Open items
 

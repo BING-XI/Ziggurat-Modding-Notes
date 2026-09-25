@@ -176,8 +176,15 @@ See `../Editor_Lag_CopyPaste_Investigation_2026-07-07.md` for the findings these
   `EXCEPTION_RECORD` and **spins so the thread never unwinds**, and the Python side then reads
   registers, stack and memory out of the frozen process at leisure. Ported from Inioch's
   `Inioch/share6/patch scripts/diag_inject_veh.py`.
-  `--self-test` (5 scenarios, no game involved) · `--dis` (read the shellcode back) ·
+  `--self-test` (7 scenarios, no game involved) · `--dis` (read the shellcode back) ·
   `--census` · `--skip N` · `--at MOD+0xRVA` · `--fault-range LO-HI` · `--code`. Patches nothing.
+  ⭐ **`--census` entries are full records since 2026-09-25** (from Inioch's share8
+  `diag_veh_logger.py`): registers, up to 0x400 B of stack (clamped at the thread's `fs:[4]`
+  StackBase), and for a Delphi raise (`0x0EEDFADE`) the raise site plus the exception's class name
+  and message. Class and message are copied **inside the handler**, because the except block has
+  usually freed the object before this side polls. 32 entries; an entry counts once its sequence
+  word (written last) matches. Names the raise site of a swallowed TE/Draw exception without
+  `build_te_exception_detail.py`'s Network.dpl patch.
 
   ⭐ **Why a VEH and not a debugger:** AoW1 is Delphi with its own memory manager, so attaching a
   debugger changes the heap layout enough that an out-of-bounds read lands on benign memory and the
@@ -213,3 +220,24 @@ See `../Editor_Lag_CopyPaste_Investigation_2026-07-07.md` for the findings these
   it is a description table with its own numbering. The masks live in code, in each `.Create`.
   ⚠ `aowsyms.get_symbols` strips the `@<unit-hash>` Ghidra shows — filter on `.endswith(".Create")`,
   not `".Create@23EDC2EF"`, or you silently match zero symbols.
+
+## Added 2026-09-25 (ported from Inioch's share8)
+
+- **hwbp.py** — hardware **watchpoint**: who writes (or reads, `--access rw`) this address.
+  `DebugActiveProcess`, Dr0/Dr7 on every thread, one report per hit (the instruction after the
+  access, the bytes before it, registers, call chain), then clears Dr7 and detaches; the game keeps
+  running. Address as `0xABS`, `MODULE+0xOFF` or `@0xLINKVA` (rebase-safe). `--len 1|2|4`,
+  `--seconds`, `--max-hits`, `--log PATH` (nothing is written without it). Proven on the live game
+  2026-09-25.
+  ⚠ On x64 the `DEBUG_EVENT` union starts at +16, not +12; his original read every exception code
+  four bytes off. ⚠ A WOW64 debuggee's single-step arrives as `0x4000001E`, not `0x80000004`.
+  ⚠ Attaching to a running process does not switch on the debug heap, so `veh_capture.py`'s
+  Heisenbug does not apply.
+- **ref_probe.py** — who points at this object: scans committed writable memory for the address and
+  names each holder as `Class obj@X +0xOFF` (nearest preceding live VMT, recognised by the Delphi
+  self-pointer `[vmt−0x40] == vmt`, so every module's classes resolve) or `MODULE+0xOFF (global)`.
+  Proven on the live game 2026-09-25 (15 holders of `TAoWHSMap`, incl. the `0x558FA040` global).
+  ⚠ A classref field also looks like a VMT; a TList item array and a stack local have no VMT before
+  them.
+
+Not ported: `diag_veh_attach.py` (= `veh_capture.py --attach`).

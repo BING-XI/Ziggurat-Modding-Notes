@@ -28,6 +28,7 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Astral Ward (ex Spell Ward) — rescoped to block Town Gate + Warp Party only, and renamed | ✅ **CONFIRMED WORKING (2026-09-07)** (rename applied same day, untested) | `build_spellward_rescope.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Power Leech (ex Power Leak) — steal 25% of rival node power | 🔨 APPLIED, UNTESTED (2026-09-07; income row 2026-09-09) | `build_powerleech.py`, `build_powerleech_ui.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `AoWz.exe`+`AoWzCompat.exe`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Terror — spell ATK 16 → 12 (five immediates, all move together) | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_terror_atk12.py` | `AoWEPACK.dpl` |
+| Lethargy (ex Slow) — halved movement, one strike fewer, AI value in both combat modes (Embrittle too); Haste +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe`/`AoWzCompat.exe` |
 | HP/MV casting cost (extra sacrifice on top of points) | SPECULATIVE (85% "in addition", 60% "instead of") | none | `AoWEPACK.dpl` |
 | Unit-enchantment cost/upkeep scaled by target level | SPECULATIVE (85% upkeep, 55% cast-cost) | none | `AoWEPACK.dpl` |
@@ -583,11 +584,20 @@ the dragons (120) are too expensive to cast instantly, so they channel through
 casting level 5 this newly scales 9/13 summons and 2/12 global enchantments, and un-breaks 2
 summons + 4 global enchantments that previously did nothing when cast at a discount.
 
-**Left unfixed by choice** (`03-abilities-added.md` §6.4): Cosmagic Scrying
-(`0x557E85F9`, `.reloc` status flagged unverified there); six Evoker auto-resolve combat spells
-(each a one-line raw store); all three strategic AI cast paths (`AIExecuteCastSpellAction` on
-`TUnitSpell`/`TSummonSpell`/`TGlobalEnchantmentSpell`) — internally raw-consistent throughout, so
-an AI hero never hits the silent-fail band, it just never sees a Mastery discount or penalty.
+**Closed at the wallet, 2026-09-25 (🔨 APPLIED, UNTESTED)** — `build_caster_wallet.py`. The
+remaining raw-cost paths are not fixed site by site; the three places every one of them funnels
+through now turn a cost **equal to** `[spell+0x14]` into `CastingMana(hero, spell)`:
+
+| hook | site | covers |
+|---|---|---|
+| F | `THero.CanCastSpellInstantly` `0x5578964A` → cave `0x5584D300` (78 B) | the `TSpellTE.Validate` re-check, the combat spellbook (`AoWz.exe 0x42EB82`), the TCAI gate (`AoWTCPCK 0x4187BB`), all five AI `AIExecuteCastSpellAction` gates |
+| CD | `TSpell.CastingDone` hero branch `0x557794D6` → cave `0x5584D360` (28 B) | every world-map charge (43 callers), incl. the ~30 own-sphere-Mastery spells, Cosmagic Scrying `0x557E85F9` and the AI paths |
+| CCD | `TSpell.CombatCastingDone` hero branch `0x55779517` → cave `0x5584D3A0` (30 B) | auto-resolve `TCombatSpellCA` / `TExclusiveCombatSpellCA` / `TMultiTargetCombatSpellCA` / `TUnitSpell.ExecuteCA` |
+
+Exact, not `min()`: the ×1.5 opposed-sphere surcharge is now charged on instant casts too. Callers
+that already pass `CastingMana` (tactical `TSpell.CombatSpellCast`, Sites A–C) are unaffected —
+their cost is either ≠ raw or equal to `CastingMana`. Safe because every gate ahead of a charge
+ends in `THero.CanCastSpell`'s mana ≥ `CastingMana` test (`0x5578976E`). `--undo` is surgical.
 
 **⚠ Forward hazard:** `build_caster_cost.py`'s Sites A–C are what makes instantly-cast
 summons/global enchantments visible to `build_mastery_cost.py` at all — **undoing Sites A–C
@@ -994,8 +1004,9 @@ tactical and auto combat) when a player was defeated while still owning a unit s
 Spirits or Animate Dead in an earlier combat ... the Summoned effect ... was not linked to its unit,
 so the engine could never finish removing the defeated player's enchantments."*
 
-The mechanism, verified against our own live and pristine bytes — **all four functions are
-byte-identical vanilla in the live DLL, so this is a vanilla defect, not one of ours**:
+The mechanism, verified against our own live and pristine bytes. **It is a vanilla defect, not one of
+ours**: all four functions were byte-identical vanilla until 2026-09-24, when two gained the guard
+below.
 
 ```
 TPlayer.SetGameOverStatus @0x55751848              ; player status 2 = defeated
@@ -1035,10 +1046,35 @@ failed. Inioch's fix is the same shape: link the effect when the unit joins the 
 affected saves on load, and add a backstop that drops any enchantment it cannot dispel instead of
 spinning.
 
-⚠ Related non-termination in the same file, unfixed and unreached:
+**The backstop is in: `build_defeat_enchant_guard.py`** — 🔨 APPLIED, UNTESTED (2026-09-24),
+ported from Inioch's `build_defeat_enchant_hang.py`.
+- **`RemoveEnchantments`** (its whole 37-byte body) → `cave_rem` `0x5584D100`. It runs the same
+  loop, but when `Count` did not drop it removes that last element through the engine's own
+  `UnregisterEnchantment 0x5577D394`. If even that does not shrink the list, it stops, so
+  termination is guaranteed.
+- **`Dispel`'s not-found test** at `0x55765E2A` (7 B, after the `FindUnit` call) → `cave_dis`
+  `0x5584D180`. An orphan with a caster (`[ench+0xC] >= 0`) is unregistered from that caster's
+  magic control, so it also vanishes when dispelled from the spell screen and stops costing upkeep.
+  A found unit takes the vanilla path.
+- **Unlike Inioch's hook**, ours displaces no relocated bytes: his took `Dispel`'s first 8 bytes,
+  including the `.reloc`-covered `mov eax,[AoWHSMap]` imm32 at `0x55765E18`.
+- Deterministic, no roll. Surgical `--undo`. Our possible trigger is `build_enchant_assert.py`
+  (enchantments on never-activated hidden defenders, id −1); that is unproven, so this is defence
+  in depth.
+
+In-game checklist:
+1. Defeat a player (kill the leader, and separately surrender) in tactical and in auto combat: the
+   defeat processes and nothing freezes.
+2. Casting and dispelling a unit enchantment works as before.
+3. Killing an enchanted unit works as before.
+
+⚠ Related non-termination in the same file, unreached, and now also ended by `cave_dis` (an orphan
+that fails to dispel is removed):
 `TPlayerMagicControl.OutOfMana @0x5577CA34` loops `while (deficit > 0 && Count != 0)`, picking the
-**cheapest** enchantment and subtracting its upkeep. A zero-upkeep entry that also fails to dispel
-makes no progress on either term.
+**most expensive** enchantment and subtracting its upkeep. Vanilla picks the cheapest; Ziggurat flips
+the selection compare at `0x5577CA8A` (`7D` `jge` → `7E` `jle`). That is a deliberate owner hand-edit,
+confirmed 2026-09-24, with no owning script; revert by restoring `7D`. A zero-upkeep entry that also
+fails to dispel makes no progress on either term.
 
 ### ⚠ Second hazard — the unit-type selector reads a POINTER, not a field
 
@@ -1857,6 +1893,168 @@ identically into every peer's DLL.
       side) — sites 4/5 sit inside that feature's functions, so this is the coupling to eyeball.
 - [ ] Confirm **Leadership IV / Fearless** still blocks Terror.
 - [ ] Terror's info card, if it quotes a number, still reads sensibly.
+
+---
+
+## Vortex — each cast rolls fresh damage — 🔨 APPLIED, UNTESTED (2026-09-24)
+
+`build_vortex_reseed.py`, ported from Inioch's `patch_vortex_v1.py` site D. His sites A–C, the
+rebalance, came in on 2026-09-25 as `build_vortex_rebalance.py` (next section).
+- **The vanilla bug:** `TVortexTE.ShowAnimation 0x557A1178`, run every animation frame, sets
+  `System.RandSeed := map[+0x22C]` (`0x557A11EA`), a per-game constant. The damage pass
+  (`TVortexTE.Process` phase `0x50`) then draws raw in `ExecuteDamageRole 0x557A164B` without
+  re-seeding. So every cast replayed the same rolls, and the first unit hit — the transporter, i.e.
+  every ship — always took the same damage.
+- **The fix:** hook `0x557A150C` (`mov ebx,[esi+0x2C] / test ebx,ebx`, 5 B) → cave `0x5584D240`
+  (74 B, PIC). It does `System.RandSeed := TAoWHSMap.Random(map, $FFFFFF)`, then replays the two
+  instructions and resumes at `0x557A1511`.
+- **The guard** is `Random`'s own: raw-mode flag `[map+0x3C]&8` → draw; otherwise `GetSynchronised
+  0x55775608` must allow it, or the re-seed is skipped.
+- **RNG:** P1 synced draw re-anchoring P2 raw — the engine's own bridge (`IncommingStorm` et al.). One
+  extra synced draw per cast on every peer. `rng_audit.py --owners` rates the site `ok`.
+- `System.RandSeed` is reached through AoWEPACK's import slot `0x558FB720`. Surgical `--undo`.
+
+In-game checklist:
+1. Cast Vortex at the same ship several times: the damage varies between casts.
+2. In multiplayer, no desync after a Vortex.
+
+---
+
+## Inioch's share8 spell changes — 🔨 APPLIED, UNTESTED (2026-09-25)
+
+Owner's ruling: adopt his spell changes (catalogue §2.4) except Ice Storm, where ours stays but
+now takes effect 25% of the time (`build_icestorm_gate25.py`, `09-terrain-movement.md`). All
+AoWEPACK caves use `build_scripts/aowepack_patch.py`, and every one round-tripped `--undo` byte-exact.
+The spellbook texts are in `build_pfs_typos.py` (records 23, 24, 28, 80, 81, 134), and the
+manual's `SPELL_BEHAVIOUR` has one line each.
+
+- **Holy Woods → Vertigo, Evil Woods → Cursed** (`build_ground_debuffs.py`; his
+  `patch_storm_debuff_sources_v1.py` sites B/C).
+  - The 6-byte SetHitPoints call in each ground's `TriggerArmyDamage` (`0x557C7F9E` /
+    `0x557C910B`) goes to `cave_holy 0x5584D400` / `cave_unholy 0x5584D440` (36 B each).
+  - The caves replay SetHitPoints, then, if the unit lives, call `ExecuteDamageEffects(unit, 0x40 /
+    0x20)`. That is vanilla's Poison Plant idiom (`0x557C41BB`).
+  - `build_stormeffectroll.py` rolls the effect against Resistance, so it never lands
+    automatically. The draws are raw after each trigger's entry re-anchor.
+- **Ooze puts out fires and Burning** (`build_ooze_extinguish.py`, AoWTCPCK; his
+  `patch_ooze_extinguish_v1.py`).
+  - Hook `0x40C93E` (`cmp byte [eax+0x14],0 / je`, 10 B, relocation-free; EAX = the target hex's
+    field) → `cave_ooze 0x43A400` (134 B, PIC).
+  - It frees every `TCombatFire` (ClassID `0x22054A`) on the hex; a burning wooden wall is one of
+    those. It then calls `RemoveAbility(0x7F)` on a Burning unit there, reached via TCPCK's
+    `TCombatUnit.SetUnit` import slot + a fixed distance.
+  - His hook `0x40C922` sat on a type-3 `.reloc` he had to neutralise; ours is ten bytes later.
+  - It runs in the tactical TE on every client; auto-resolve gives Ooze no strikes.
+- **Level Terrain leaves rocks** (`build_levelterrain_rocks.py`; his
+  `patch_level_terrain_rocks_v1.py`, cave bodies unchanged).
+  - Hook `0x5579F109` (5 B) → `cave_lvl 0x5584D480` (170 B), which replays ClearTerrain and the
+    earth→dirt branch.
+  - For an ex-mountain, hill or earth wall it calls `cave_rocks 0x5584D530` (267 B). That is a
+    `PlaceTerrain` clone picking a single-hex, no-overlay terrain object with decoration byte 1
+    (rocks), or 0 on dirt. P1 synced pick.
+  - ⚠ Shelved `build_raiseterrain_mtn.py` would hook `0x5579F14D`, inside the replayed span.
+- **Town Quake retune** (`build_townquake_retune.py`; his `patch_town_quake_v1.py`, our scale).
+  - Walls fall: wood 80%, stone 50%, +10% underground. The same single synced `Random(10)` is
+    used, via `cave_walls 0x5584D700` (89 B) from `0x557B1E79`.
+  - Underground garrisons with a wooden wall or none are hit at ATK 18 instead of 14, via
+    `cave_atk 0x5584D75C` (32 B) from `0x557B1CE7`, which reads BSS `G_ATK 0x558FAD00`.
+  - "Underground" is levels 1–2 only. His `level != 0` would have counted the Firmament.
+- **Vortex rebalance** (`build_vortex_rebalance.py`; his sites A–C ×2).
+  - ATK 16 → 20 (`0x557A1645`, 1 byte).
+  - Ratings: Sailing 14, Swimming 10, any other non-flier 4 (was 20 / 14 / 0), via
+    `cave_rating 0x5584D780` (62 B) over the 54-byte classifier.
+  - A unit that took damage loses `RandInt` 0–8 / 0–12 / 0–6 movement points, clamped, via
+    `cave_drain 0x5584D7C0` (116 B) at `0x557A168C`. The draws are raw after
+    `build_vortex_reseed.py`'s re-anchor.
+  - ⚠ Overwrites `damhp_manifest.json` `0x557A1619`/`0x557A1633` and `fivepct_manifest.json`
+    `0x557A1645`; those scripts list them as foreign, like their other retunes.
+
+⚠ A trap this batch hit: `cave_walls` first came out 99 B and overran `cave_atk`'s fixed address by
+3 bytes, corrupting the walls cave's final `jmp`. `aowepack_patch.run` and `exe_patch.run` now assert
+that caves do not overlap; `cave_atk` is placed after `cave_walls` by computation.
+
+In-game checklist:
+1. Holy Woods over an evil stack: some burned units get Vertigo (never machines). Evil Woods over
+   a good stack: some get Cursed. High-Resistance units resist more often.
+2. Ooze on burning ground, on a burning wooden wall, and on a Burning unit: the fire goes out, the
+   wall stops burning, and Burning is gone. Mud still spreads as before.
+3. Level Terrain on a mountain or hill: rocks of that terrain appear. Underground on an Earth wall:
+   dirt plus underground rocks. Forest or plain hexes stay bare.
+4. Town Quake: wooden walls fall most of the time, stone ones about half. Underground,
+   unwalled/wooden garrisons take noticeably more hits. The game doesn't crash when the quake
+   lands.
+5. Vortex: ships, swimmers and walkers in the water hex all take damage and lose movement; fliers
+   are untouched.
+6. Multiplayer: no desync after any of them.
+
+---
+
+## Lethargy (ex Slow) — 🔨 APPLIED, UNTESTED (2026-09-25)
+
+Owner's design 2026-09-25. Script `build_lethargy.py` (`AoWEPACK.dpl`); its docstring is the full
+record of sites and cave logic. Text: the `Slow` row in `build_resstr_names.py` (one row renames
+the spell and the status, both read `AoWE.SlowRStr`), `Spells.pfs` record 120 and `Ability.pfs`
+record 142 in `build_pfs_typos.py`, `NEWMECH_LETHARGY` in the manual, two `manual_data.json`
+names (the Earth spell's `z` name and the `lvlup` "Handicaps" row), `enchant_mods.py`'s display
+name. ⚠ A spell rename reaches the manual's spell list only through `manual_data.json`.
+
+**What vanilla Slow did.** One effect: `TAbstractUnit.CreateMovePointTable @0x5577FDC4` added +2
+to every positive hex cost while the unit held `0x84`. Open ground 4 → 6 is ⅔ of the range, not
+the half the text claimed, and the penalty shrinks on dearer terrain. Nothing in auto-combat, and
+the auto-combat AI never cast it: `TCombatSpell.fcGetDamageValueEx` scores a spell through
+`StatisticsToLimitedDV` with the spell's damage, Slow's is 0, and `fcPrefetchCombatCommands`
+drops a zero-value target. Embrittle, a `TSlow` instance, inherited both.
+
+**What Lethargy does.**
+- **Movement halved, rounded up**, for the rest of combat: `TCombatUnit.GetMoves @0x55724FE0`
+  returns `(mv+1)>>1` while the source unit has `0x84`. That getter is what AoWTCPCK's
+  `TTacticalCombatUnit.NewTurn` refills `[cu+0x5C]` from each turn, what the tactical AI reads,
+  and what auto-resolve reads.
+- **Remaining movement halved, rounded up, when the spell lands** (`TSlowCA.Execute`, only on a
+  fresh application). Only a `TTacticalCombatUnit` (instance size `0x68`) keeps movement at
+  `+0x5C`; `TFastCombatUnit`'s `+0x5C` is an auto-resolve weight (8 hero, 4 unit), so the cave
+  requires instance size > `0x5C` and a VMT other than `TFastCombatUnit`'s `0x5571D4BC`.
+  `TTacticalCombatUnit.NewTurn @0x41CF44` refills a unit from the halved getter at the start of its
+  own player's turn (`cmp al,[cu+0x45]`), so this only shows if the unit moves again before then.
+- **One melee strike fewer attacking and defending, never below one** (a side with 0 keeps 0), in
+  `TMeleeRound.Calculate` (the real round, tactical and auto-resolve) and `CalculateUnit` (the
+  prediction twin the AI and predictor use).
+- **The +2 hex cost is gone** (the `je` over the `0x84` block is now a `jmp`).
+- **Haste (`0x98`) is the mirror: one melee strike more attacking and defending** (a side with 0
+  keeps 0), in the same two caves, applied before Lethargy's so the two cancel. Haste keeps its
+  vanilla −1 hex cost. Texts: `Spells.pfs` record 25, `Ability.pfs` record 162 (`build_pfs_typos.py`).
+  Added 2026-09-25 at the owner's request.
+- **An AI value for Lethargy and Embrittle**, in auto-combat and in battles fought by hand:
+  `TSlow`'s VMT slots `+0x98` (auto-resolve, `cave_fcval`) and `+0x84` (the manual-combat AI,
+  reached through `TSpell.tcGetDamageValueEx @0x5577969C`, `cave_tcval`) both use Entangle's formula
+  with a smaller weight:
+  `ROUND(HitRoleProbability(power − RES) × HP × K)`, `K` = 33 Lethargy, 50 Embrittle (Entangle's
+  full disable is 100). Zero, so not cast, when the target already has the status, and for
+  Embrittle on a Physical Immunity target.
+
+Vanilla's `+0x84` was `TSlow.GetCombatDamageValueEx @0x557F8948`, which returns zero, so the AI
+never cast Slow by hand. `TEntangle` overrides the same slot, which is why it did cast Entangle.
+Added the same day at the owner's request.
+
+Caves `0x5584DF00`–`0x5584E1B5` (`cave_moves`, `cave_str`, `cave_stru`, `cave_cur`, `cave_fcval`,
+`cave_tcval`).
+Hooks `0x55724FEE` (5 B jmp), `0x55767DE7` / `0x55767B15` / `0x557F8868` (call retargets),
+`0x5577FF9E` (1 B), VMT slots `0x557F4E98` and `0x557F4E84` (their `.reloc` entries are kept: the
+new values are inside the image). No roll added or moved. Surgical `--undo`, round-tripped to the same hash.
+
+In-game checklist:
+1. The spell book, the unit card and the combat status icon all say Lethargy, with the new text.
+2. Cast it on an enemy with 32 movement in manual combat: on its next turn it moves 16 (open ground,
+   4 hexes, not 8). An odd allowance rounds up.
+3. A lethargic unit that attacks strikes once; with Extra Strike, twice. Attacked, it strikes back
+   once. The combat predictor agrees.
+3a. A hasted unit strikes three times attacking (four with Extra Strike) and three times striking
+   back. Hasted and lethargic together: normal counts.
+4. Auto-combat with a hero who knows Lethargy or Embrittle: the combat log shows it being cast.
+   Neither is cast twice on the same unit, and Embrittle is never cast at a physically immune unit.
+5. A manual battle against an AI hero who knows either spell: the AI casts it, on the same terms.
+6. After combat, the unit's world-map movement is normal.
+7. Multiplayer: no desync in a battle where it is cast.
 
 ---
 

@@ -22,6 +22,9 @@ at length below because it exists nowhere else; the build script itself only sho
 | feature | status | owning script | binary |
 |---|---|---|---|
 | ⭐ Tactical-combat AI per-frame work budget 1 → 16 (the inter-move pause) — §9 | ✅ CONFIRMED WORKING (2026-09-12) — 0.5 s+ of the ~0.7 s stall gone | `build_combat_ai_budget.py` | `AoWTCPCK.dpl` |
+| Tactical AI: hero/leader touch moves (Healing, Turn Undead, Dominate…) valued ×50, was ×1 — §10.1 | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_ai_touch_herovalue.py` | `AoWTCPCK.dpl` |
+| Tactical AI: harmless wall crushers (rams, drills) valued −100 % after a wall breach — §10.2 | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_ai_ram_breach.py` | `AoWTCPCK.dpl` |
+| Tactical AI: archers no longer forfeit a shot to walk to a marginally clearer hex — §10.3 | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_ai_ranged_walkvalue.py` | `AoWTCPCK.dpl` |
 | AI paths to and searches exploration sites | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_ai_sitesearch.py` | `AoWEPACK.dpl` |
 | AI heroes pick up / upgrade-swap ground items; items become AI targets | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_ai_itemloot.py` | `AoWEPACK.dpl` |
 | AI item pickup, empty equip slots only (superseded) | ✅ CONFIRMED WORKING (2026-07-21) — superseded, `--undo`'d 2026-09-02, must stay inert | `build_ai_itempickup.py` | `AoWEPACK.dpl` |
@@ -44,6 +47,8 @@ at length below because it exists nowhere else; the build script itself only sho
 | Combat-type dialog shown to a non-participant + modal freeze (4 defects) | 🔨 APPLIED, UNTESTED (2026-07-21) | `build_razebattle_tower.py` | `AoWEPACK.dpl` |
 | BSS flag collision: `simfly`/`razeok` vs `build_path_outerring.py` | 🔨 APPLIED, awaiting confirmation (2026-07-22) | `build_simfly.py` + `build_razebattle_tower.py` | `AoWEPACK.dpl` |
 | City loot gold multiplier (9×→10×) | 🔨 APPLIED, UNTESTED (2026-07-12) | `build_loot_multiplier.py` | `AoWEPACK.dpl` |
+| Trampled crops: Farms −5 (was +5), city farmland charges the city's race — §12.1 | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_crop_trample.py` | `AoWEPACK.dpl` |
+| Migrate / Loot / Raze relation changes scale with city size, upgrades and walls — §12.2 | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_cityrel_scale.py` | `AoWEPACK.dpl` |
 | Replay assertion on an enchanted off-map (never-activated) unit | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_enchant_assert.py` | `AoWEPACK.dpl` |
 | Arena: persistent state, real battle, flat gold/XP/item rewards (Stages 1–3) | ✅ CONFIRMED WORKING (2026-07-31) | `build_arena.py` | `AoWEPACK.dpl` |
 | Arena: three selectable categories + box art (Stage 4a/4b) | 🔨 APPLIED, UNTESTED (2026-07-31) | `build_arena.py` | `AoWEPACK.dpl` |
@@ -2599,6 +2604,291 @@ by the budget and lockstep is unaffected (`12-re-toolchain.md` §4.10).
   `DisplayC.TDisplayCtrl.NewFrame @0x551045FC`.
 
 ---
+
+## 10. Tactical-combat AI scoring — three fixes ported from Inioch's share8
+
+Owner's request, 2026-09-24. Source: Inioch's AoWx scripts and notes under `Inioch/share8/`, surveyed
+in `Inioch/Inioch_Share8_Catalogue.md` §2.2 (#8–#10) and §4. They were read as RE only and none of
+his scripts was run. Every hook site was re-verified byte-identical to the vanilla root copy before
+writing, and every cave address, BSS pick and frame slot of his was discarded. All three fixes sit in
+`AoWTC.TCAI.CheckUnit @0x4152A8` or the value combiner it calls, in `Ziggurat\AoWTCPCK.dpl`, and none
+draws a random number.
+
+Machinery all three rest on (vanilla bytes, verified 2026-09-24):
+
+- **`TCAI.CheckUnit` frame** (`0xB4` B of locals): `[ebp-4]` cai, `[ebp+0x10]` TARGET, `[ebp+0x14]`
+  SELF (the mover), `[ebp-0x14]` AddMove multiplier, `[ebp-0x5C]` ability id, `[ebp-0x64]` DEV of the
+  option being built, `[ebp-0x68]` terrain path self→target (index 0 = own hex). ⚠ `[ebp-0xA4]`,
+  `[ebp-0xA0]` and `[ebp-0x9C]` are **not** free slots, whatever his notes say: they are fields of the
+  16-byte valuation record at `[ebp-0xA8]`, which the spell arm passes by pointer
+  (`lea eax,[ebp-0xa8]` at `0x415A67`) and the touch arm reads back (`0x416EDD`).
+- **`TCAI.MultDEV @0x414418`** (EAX cai, EDX DEV, ECX multiplier, one stack arg = divisor, `ret 4`):
+  DEV ≥ 0 gives DEV·mult/div, and DEV < 0 gives DEV·div/mult, so a penalty shrinks as the multiplier
+  grows. A multiplier of 1 and a divisor of 0 or 1 are skipped, and the result is clamped to
+  ±1 000 000.
+- **`TCAI.tcDVtoDEV @0x413664`** (EDX ourDV, ECX theirDV, `[ebp+8]` TARGET, `[ebp+0xC]` SELF,
+  `ret 8`) = (targetValue·ourDV·[×2 THero]·[×2 TLeader] − selfValue·theirDV·[×2]·[×2]) / 100. The
+  value is `call [vmt+0x5C]` = `TCombatUnit.GetTargetStrength`, cached, and never re-read after
+  `SetupTargets`. It has 20 callers: every melee, ranged, touch and spell evaluation, `EvalHex`,
+  `EvalAll`, and `MakeTerrainPath`'s attack-of-opportunity term (`0x413E53`), where TARGET is the
+  **AI's own mover** and SELF the adjacent enemy.
+- **Phase 4** (`0x41A3C0`) insertion-sorts the move list by `+0xC` descending and drops nothing, so a
+  negative-valued move still executes when nothing outranks it. **Phase 5** (`0x41A4C1`) runs list[0]
+  through the table at `0x41A4E8`: types 0 and 5 walk, 1 touch, 2 melee, 3 shoot now, 4 dropped.
+  Moving forbids a ranged attack for the rest of the turn, so a type-5 walk is a next-turn shot.
+
+### 10.1 Hero/leader touch moves valued ×1 → ×50 — 🔨 APPLIED, UNTESTED (2026-09-24)
+
+`build_ai_touch_herovalue.py`, one byte: `0x4171F5` `01` → `32`, the imm32 of
+`mov dword [ebp-0x14], 1` at `0x4171F2`. Snapshot `backups\AoWTCPCK.dpl.pre-aitouchhero`. `--undo`
+writes `01` back in place, and `--apply` over any other installed value re-tunes in place
+(`HERO_TOUCH_PCT`).
+
+The adjacent-touch branch of the touch handler (AbilTypes category 4: Healing, Turn Undead, Dominate,
+Web, Seduce, Entangle, Possess, Charm) picks the `MultDEV` multiplier at `0x4171DD`. It is 1 when
+SELF's strategic unit `IsClass THero` (leaders included), 10 against a breached wall after round 1,
+and 100 otherwise. Hero **melee** uses 50 (`0x415729`), and the non-adjacent approach move
+(`0x417276`) has no hero term at all. So an AI hero walked up to a wounded friend or an undead enemy
+and then never used the ability, outranked a hundredfold by every other proposal. The fix uses hero
+melee's own value. His AoWx replaced the block with a heal-tier cave at `0x4171DD`, which is not
+ported.
+
+Nothing is displaced (an immediate inside an existing instruction), no `.reloc` covers the 7 bytes,
+and there is no cave. The script anchors the whole `0x4171DD..0x417253` block with the imm masked
+and checks that its call lands on `MultDEV`.
+
+**In-game checklist:** (1) an AI hero or leader with Healing, standing next to a wounded friend,
+heals it at least sometimes; (2) the same with Turn Undead next to an undead enemy; (3) a hero with a
+hostile touch (Dominate, Web, Seduce) uses it when adjacent; (4) AI heroes do not now spend turns
+healing scratches in place of fighting. ×50 is half a unit's weight, so an attack by a unit should
+still usually win.
+
+### 10.2 Rams stay the AI's favourite target after the breach — 🔨 APPLIED, UNTESTED (2026-09-24)
+
+`build_ai_ram_breach.py`: hook `0x413673` (8 B, `8b4508 8b10 ff525c` → `E9` + 3 NOPs, no `.reloc`)
+into a PIC cave at **`0x438800`–`0x4388CB`** (204 B; zone `0x438800`–`0x438BFF` reserved to this
+script). Snapshot `backups\AoWTCPCK.dpl.pre-airambreach`. `--undo` restores the 8 bytes and zeroes
+the cave, and `--apply` re-tunes `RAM_VALUE_PCT` in place.
+
+Why: `GetTargetStrength` (AoWEPACK `0x55725850` → `0x55726454`) averages DV over the target list
+`[obj+0x10]` (TQuadItemList, 16-byte entries: A object, B CV, C wall CV, D DV). `SetupTargets
+0x557264AC` fills that list once per combat, walls included. Wall Crushing scores 0 against units, so
+a ram's value is all wall potential, it never retaliates, and nothing re-reads it after a breach.
+
+The cave re-runs the fetch, then multiplies the value by −100 % when all of these hold:
+
+- the breach flag `[[[0x46C064]+0xE4]+0xC]+0x4D` is set (`TCombatWall.DestroyObject 0x55725C64` sets
+  it when any section dies);
+- TARGET `IsClass TCombatUnit`;
+- `GetSide(TARGET) ≠ [cai+4]`;
+- TARGET has Wall Crushing `0x75`;
+- no entry of TARGET's own list has an A that `IsClass TCombatUnit` with D > 0.
+
+The last test uses the game's own numbers. It catches rams, drills and transports, and leaves
+Giants, Ents and Elementals alone. Hit last, a ram is still finished off when nothing else is
+proposed (phase 4 keeps negatives).
+
+⚠ **Deviation from his script, deliberate:** he compared TARGET's side with SELF's. At
+`MakeTerrainPath 0x413E53` TARGET is the AI's own mover and SELF the adjacent enemy, so his test
+devalued the AI's **own** ram there and turned its attack-of-opportunity cost into a bonus. Comparing
+with the AI's side byte `[cai+4]` (`EvalAll`'s idiom, `0x41464D`) excludes that case. Accepted side
+effects: an enemy ram standing in a shot line (`EvalHex`) or caught by a mass spell (`EvalAll`) now
+counts against the shot or spell. Pure ratio, no RNG.
+
+**In-game checklist:** (1) siege with enemy rams or drills: before any wall section falls, the AI
+defenders attack the rams as before; (2) after a section falls (catapult, spell or ram), they switch
+to real units; (3) a lone ram with nothing else in reach is still attacked and killed; (4) as the
+**attacker**, the AI still uses its own rams on the walls, and its rams do not now walk past
+defenders to eat free hits.
+
+### 10.3 Archers forfeit a shot for a marginally clearer hex — 🔨 APPLIED, UNTESTED (2026-09-24)
+
+`build_ai_ranged_walkvalue.py`. Snapshot `backups\AoWTCPCK.dpl.pre-airangedwalk`. `--undo` restores
+all three sites and zeroes the slots, and `--apply` rewrites the caves in place when re-tuned.
+
+The vanilla bug, in `CheckUnit`'s ranged handler. `[ebp-0x64]` is DEV_cur, the shot's value from the
+current hex after `EvalPath`, and `[ebp-0x58]` is X, `EvalPath`'s loss. When search (a) finds a
+less-obstructed hex on the path, `0x4179CE` does X += DEV_best, so X = DEV0 and the new hex is valued
+as if clean. The scores are then:
+
+- shoot now (type 3, `0x417D79`) = pct·DEV_cur² / |DEV_cur + X|;
+- walk (type 5, `0x417E62`) = pct·(X + pos)·X / |DEV_cur + X|.
+
+With X = DEV0 > DEV_cur, any strict improvement wins and the unit gives up its shot.
+
+The fix is Inioch's H2/H5/H6 subset (his `patch_ai_ranged_obstacles_v1.py`):
+
+| site | bytes | effect |
+|---|---|---|
+| H2 `0x4179CE` | 13 B → `E9` + 8 NOPs → cave `0x438C00` | X := DEV_best·D/100 |
+| H5 `0x417D1D` | `03 45` → `EB 0D` (jumps the add and the abs) | shoot divisor = max(DEV_cur, 1), so shoot = pct·DEV_cur |
+| H6 `0x417E27` | `E8` → `A8` (`idiv [ebp-0x18]` → `idiv [ebp-0x58]`) | walk = pct·(X + pos); X > 0 is guaranteed there by `0x417D7E` |
+
+D is the chance the shot is still there next turn. It is 65/45/30 % by target class (leader checked
+first), ×50 % when the shooter is in mortal danger (current HP ≤ the summed `GetDamage` of living
+enemies within `GetMoves/4 + 1` hexes), and 0 when the shooter is also low-value (below 40 % of the
+strongest living own unit's `GetTargetStrength`). The danger term is computed inside this script's
+cave from the TCAI lists and reads nothing of his heal package, so it is included. Every constant is
+a percentage, and the danger test compares HP with damage, both doubled in Ziggurat. `HEX_MP = 4`
+matches vanilla's own `R·4` at `0x417B2D`.
+
+Caves (zone `0x438C00`–`0x4393FF` reserved to this script, fixed slots): `0x438C00` h2 (39 B),
+`0x438C40` udist (63 B), `0x438C80` disc (370 B, PIC through a `call`/`pop` delta).
+
+Deliberate deviations from his script:
+
+- H5 and H6 are in-place edits with his exact semantics, where he used 16-byte and 8-byte cave hooks.
+- His `imul ecx / cdq / idiv` threw away the high half of the product; the cave keeps it.
+- If X rounds to 0 while the current shot is **fully** blocked (DEV_cur = 0, reachable only when
+  D = 0), X := 1. That keeps vanilla's routing into the else-branch walk (`0x417C95`) instead of
+  proposing a 0-value shot into the obstacle.
+- Not ported: his H0/H1/H3/H4/H7, the walk-margin script and the heal package. H0/H3/H4/H7 need
+  `[ebp-0xA4]`/`[ebp-0x9C]`, which belong to the valuation record (§10). This subset uses no frame
+  slot vanilla does not already use.
+
+Kept side effect: the out-of-range or already-moved walk (`0x417F3C`) also reads X, so after an (a)
+hit it is valued from the discounted best hex, not from DEV0.
+
+**In-game checklist:** (1) an AI archer whose shot is partly obstructed (a unit or obstacle in the
+line) shoots from where it stands instead of stepping one hex for a slightly clearer line; (2) an
+archer whose shot is fully blocked, or whose target is out of range, still moves; (3) an archer
+still walks when the obstruction is heavy and a clean hex exists (≳35 % blocked against an ordinary
+target); (4) a cheap archer in melee reach of enemies that can kill it shoots rather than
+repositioning.
+
+---
+
+## 11. Hero gate, self-healing and the re-plan cap — three ports from Inioch's share8 (2026-09-25)
+
+### 11.1 Heroes and leaders are considered in every decision cycle — 🔨 APPLIED, UNTESTED
+
+- **Script:** `build_ai_hero_gate.py`, AoWTCPCK, three in-place 2-byte NOPs.
+- **Vanilla:** while `[cai+0x2C]` (attack proposals this cycle) is non-zero, every THero was
+  skipped in three target loops:
+  - `0x418E8D`, the enemy loop (`75 56`);
+  - `0x4191AE`, the friendly loop (`75 56`);
+  - `0x4198D2`, the spell-objective loop (`75 70`).
+- **Effect:** phase 5 executes one move per cycle, so heroes acted only after every ordinary unit
+  ran out of options.
+- **Kept:** the phase-4 regroup gate `0x419F45` and every hero brake, including our ×50 touch
+  value from §10.1.
+
+### 11.2 AI units with Healing heal themselves — 🔨 APPLIED, UNTESTED
+
+- **Script:** `build_ai_selfheal.py`, AoWTCPCK, slot `0x43A500`–`0x43A6FF`.
+- **Vanilla, two gaps:**
+  - `CheckUnit(target = self)` finds no path, so no self-heal is ever proposed.
+  - The phase-5 touch executor drops any one-node path at `0x41ACE4`.
+- **Proposal** (ours; Inioch's lives inside his 1,500-line heal package): hook `0x419212`, after
+  the friendly loop → `cave_prop`. For a mover with movement left and Healing `0x2F` in its
+  friendly-ability list:
+  - `CanTouch(self, self)`, then the ability's valuation. `DV` = our heal amount ×100.
+  - `MultDEV(tcDVtoDEV(DV), maxHP, curHP)` — vanilla's heal line `0x416F4E`.
+  - × pct 50 hero/leader or 100 unit, then `CreateMove` type 1 on its own hex.
+- **Executor** (Inioch's): hook `0x41ACE4` → `cave_exec`. A one-node Healing path onto its own
+  hex, with movement ≥ 1, calls `AbRangedTC(hs, x, y)` `0x423860` and records the result.
+
+### 11.3 An AI group can re-plan at most 20 times per activation — 🔨 APPLIED, UNTESTED
+
+- **Script:** `build_ai_replan_cap.py`, AoWEPACK, slot `0x5584D880`–`0x5584D8BF`. From Inioch's
+  share4 `build_ai_group_restart_cap.py`, which he proved by injecting it into a stuck game.
+- **Vanilla:** `TAIGroupControl.MoveExecuterDone` resets the state machine on move result 5
+  (`0x55738C66`), unconditionally. A target that can never be executed therefore spins the AI turn
+  forever.
+- **Fix:**
+  - The counter is byte `[agc+0x156]`, alignment padding that no AoWEPACK code touches for this
+    class.
+  - At 20, `TAIGroupControl.Done 0x557389B0` is called instead.
+  - Ours also zeroes the counter in `TAIGroupControl.Activate` (`0x55739067`), because the object
+    outlives an activation (Inioch relied on zero-init).
+
+### 11.4 In-game checklist
+
+1. A tactical battle with an AI hero and ordinary units: the hero acts in the same rounds as the
+   units, not only after they are spent.
+2. A wounded AI unit or hero with Healing, with nothing better to do, heals itself; one with no
+   movement left does not.
+3. Long AI turns on large maps still end (no endless "thinking"); ordinary AI armies still move
+   sensibly.
+
+## 12. City race relations — every write site, and trampled crops
+
+`TRace.SetPlayerRelationValue @0x5574CDC4` (EAX race, DL player, ECX value) is the only writer
+besides `TRace.NewDay`'s 1-a-day drift toward the default. Relation base 50. Every city-action
+change is `relation(race, acting player) += k`. `M` = 10 × (hexes − 1) + 15 × upgrades + 5 × wall
+level (§12.2):
+
+| action | when | race | vanilla | live | site (`add`/`sub` imm) |
+|---|---|---|---|---|---|
+| Upgrade | completion | city's | +5 | **+15** | `0x557A8380` |
+| Fortify | completion | city's | +5 | +5 | `0x557A857A` |
+| Migrate | ordered | old | −15 | −5 − M | `0x557A8248` |
+| Migrate | completion | new | +10 | +M | `0x557A8833` |
+| Migrate | cancelled, same turn / later | old | +15 / +10 | +5 + M / +M | `0x557A89D8` / `0x557A8A2D` |
+| Loot | ordered | city's | −30 | −20 − M | `0x557A80F0` |
+| Loot | cancelled, same turn / later | city's | +30 / +20 | +20 + M / +10 + M | `0x557A891D` / `0x557A8975` |
+| Raze | success | city's | −30 | −20 − M | `0x557AB44A` in `TCity.ExecuteRaze @0x557AB414` |
+
+- The "ordered" penalties sit in `City.TCityProductionControl.ExecuteProduction @0x557A7F0C`, which
+  **Ghidra has not made a function** — its two setter calls (`0x557A8117`, `0x557A826F`) are missing
+  from Ghidra's caller list. A raw `E8` scan of the image is what finds all 18 setter calls.
+- Completion sites are `TCityProductionControl.NewTurn @0x557A82A8` (jump table `0x557A8322`: case 2
+  Upgrade `0x557A8346`, 3 Fortify `0x557A8475`, 4 Migrate `0x557A870C`, 5 Loot `0x557A85B9`).
+  Loot completion calls `TCity.SetRazed` (VMT `+0x14C`), not `ExecuteRaze`, so it adds no second
+  penalty. Ghidra's decompile of case 3 loses the `+5`.
+- Cancel refunds are in `ExecuteCancelProduction @0x557A88BC`, keyed on turns-left
+  `[prod+0x10]` == total `[prod+0x1C]`. Any scaling of the ordered penalties must scale these too.
+- **Upgrade +15 has no owning script** — a hand edit, `05`→`0F` at `0x557A8382`, noted only in
+  `build_cityflag.py`'s docstring. `--undo` of anything will not restore it.
+- Capture/occupy writes no relation.
+
+### 12.1 Trampled crops — `build_crop_trample.py` — 🔨 APPLIED, UNTESTED (2026-09-25)
+
+`TCrop.EndTurn @0x557A5CFC`: player P's army ends its turn on a crop whose owner structure has an
+owner > 0, ≠ P, at diplomatic relation 1 → owner VMT `+0x240` `CropTrampled(P)`, then the crop is
+destroyed. Vanilla: `TPlayerCropStructure.CropTrampled @0x557A6108` (Farms inherit it) gave the
+owner player's race **+5** (`sub eax,-5`); `TCity.CropTrampled @0x557AA78C` gave −5 to the owner
+player's race when owned, the city race `[city+0x45]` only when unowned (unreachable from `EndTurn`).
+
+- F `0x557A6157` `83 E8 FB` → `83 C0 FB`: Farms −5.
+- C `0x557AA79F` `7E 21` → `EB 21`: cities always charge the city's race.
+
+No `.reloc`, no draw. Owner ruling 2026-09-25. `--undo` is surgical.
+
+**In-game checklist:**
+1. At war with a player whose city has a different race from its owner, end a turn on that city's
+   farmland: the city's race loses 5 relation with you; the owner's race is unchanged.
+2. End a turn on an enemy Farm's crops: the Farm owner's race loses 5 relation with you.
+
+### 12.2 Migrate, Loot and Raze scale with the city — `build_cityrel_scale.py` — 🔨 APPLIED, UNTESTED (2026-09-25)
+
+Owner's design: new baselines (table above) plus `M` in the direction of each entry.
+- hexes = `TCity.GetSize` = `[[city+8]+0x78]`, the resource's footprint count
+  (`0x557ADEE8` counts `TTerrainList` entries ≥ 0); upgrades = `[city+0x4D]` − 1, floored at 0;
+  wall level = `[city+0x4C]` (0/1/2). 15 and 5 are the live Upgrade/Fortify bonuses.
+  Upgrade and Fortify themselves do not scale (owner ruling).
+- Each site's `call GetPlayerRelationValue` is retargeted to a stub that calls it and adds or
+  subtracts M; the following `add/sub eax,imm8` carries the new baseline. City = `[self+0x28]`,
+  self = ESI in `ExecuteProduction`, EDI in `NewTurn`, EBX in `ExecuteCancelProduction`.
+- Migrate's completion M is measured after `SetRace @0x557AC990`, which touches neither field.
+- Raze: `TStructure.ExecuteRaze` returns BL (1 = razed; Ghidra calls it `void`) and zeroes the walls
+  through `SetRazed`, so `stub_raze` (at the wrapper's base call `0x557AB41F`) measures M first and
+  parks it in byte 1 of the wrapper's `push ecx` slot — byte 0 holds the result flag — clamped to
+  255. `stub_razeadj` (at `0x557AB445`) subtracts it.
+- Slot `0x5584E400`–`0x5584E4FF` (`cave_m` 39 B, `stub_neg_esi` `0x5584E430`, `stub_pos_edi`
+  `0x5584E450`, `stub_pos_ebx` `0x5584E470`, `stub_raze` `0x5584E490`, `stub_razeadj`
+  `0x5584E4B0`). No `.reloc`, no draw. `--undo` surgical.
+- ⚠ Hand-tuning Upgrade's `+15` (`0x557A8382`) does not move M's 15 — change `K_UPG` too.
+
+**In-game checklist** (read relations off the race-relations display before and after):
+1. Loot a 1-hex, unupgraded, unwalled city: −20 with its race. Cancel in the same turn: back
+   to where it was.
+2. Loot a larger or upgraded/walled city: −20 − M, e.g. a 3-hex city upgraded twice with wooden walls
+   = −20 − (20 + 30 + 5) = −75.
+3. Migrate: −5 − M to the old race when ordered; on completion the new race gains M.
+4. Cancel a Migrate after a turn has passed: the old race ends 5 down; a Loot, 10 down.
+5. Raze a walled, upgraded city (fast and manual combat when Ziggurat's raze battle fires):
+   −20 − M, with the walls counted even though razing removes them.
 
 ## Open items
 

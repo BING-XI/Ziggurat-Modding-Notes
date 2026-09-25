@@ -15,6 +15,8 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 
 | Feature | Status | Owning script | Binary |
 |---|---|---|---|
+| Tactical group move — plan front-first, queue behind the leader | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_group_move_tc.py` | AoWTCPCK.dpl |
+| World-map group move — plan front-first, pass over parties that are leaving | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_group_move_map.py` | AoWEPACK.dpl |
 | Chasm & Sky — movement rows + Coast water-filter | 🔨 APPLIED, UNTESTED (v1 2026-07-24) · ✅ **v2 rows CONFIRMED WORKING (2026-09-21)** — Fly row fully open, Bridge column opened in the 5 walking-family tables | `build_chasm_sky_movement.py` | AoWEPACK.dpl |
 | Roads on Dirt; bridges on Chasm and Sky (5 new resources) | ✅ CONFIRMED WORKING (2026-09-21) — 1131 children | `build_hss_addresource.py` | Release/Release.hss |
 | Chasm & Sky — editor palette (brushes + cross-level) | ✅ CONFIRMED WORKING (2026-07-24) | `build_deved_terrainpal.py` | AoWDevEd.exe |
@@ -26,7 +28,7 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Chasm & Sky — structures: no ground under a pad on Water/Lava/CaveWater/Chasm | ✅ CONFIRMED WORKING (2026-09-20) | `build_pad_transparent.py` | Release/Release.hss + 6 ILBs |
 | **Firmament map level** — a 4th map level (index 3) filled with SKY terrain `0x0E`; surface-like vision, global-target spells, storm spells and Bird's View, `TCave.PlaceHX` guarded. Full record in `11-engine-internals.md` §"Firmament map level" | 🔨 APPLIED, UNTESTED (2026-09-06, v2) | `build_maplevel4.py` (+ in-place re-tunes of `build_shipyard_income.py`, `build_waterheal.py` v6; UI half `build_skylevel_ui.py`) | AoWEPACK.dpl + AoWz.exe + AoWzCompat.exe |
 | Terrain rolls draw from the synced RNG (3 sites) | 🔨 APPLIED, UNTESTED (2026-08-31) | `build_rng_lockstep.py` (owned by the RNG/core-engine doc; two of the three sites are caves this file covers) | AoWEPACK.dpl |
-| Ice Storm: Lava → Wasteland + per-proc skip gate | 🔨 APPLIED, UNTESTED — base redirect + 50% skip ✅ confirmed 2026-07-07; current 25% skip (same day) never retested | `build_icestorm_lava.py` — **⚠ never run `--apply` again**, see below | AoWEPACK.dpl |
+| Ice Storm: Lava → Wasteland + per-proc gate | 🔨 APPLIED, UNTESTED — base redirect + 50% skip ✅ confirmed 2026-07-07. Since 2026-09-25 each proc **takes effect** 25% of the time (owner ruling; one byte, `0x5580DB4E` `je`→`jne`) | `build_icestorm_lava.py` — **⚠ never run `--apply` again**, see below; the rate flip is `build_icestorm_gate25.py` | AoWEPACK.dpl |
 | Raise Terrain: lava → 50% dirt, no mountain (surface) | ✅ CONFIRMED WORKING (2026-07-08) | `build_raiseterrain_lavadirt.py` | AoWEPACK.dpl |
 | Raise Terrain: mountain art matches underlying terrain | 🔨 BUILT, NOT APPLIED (2026-07-07) — premise disproved in-game the same day; cave address now foreign, see below | `build_raiseterrain_mtn.py` — shelved, do not apply as written | AoWEPACK.dpl (would-be) |
 | Raise Terrain underground → temporary Earth | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_raiseterrain_ug_earth.py` | AoWEPACK.dpl |
@@ -102,7 +104,8 @@ code cave needed for a pure cost edit; the startup generator propagates it.
 `TAbstractUnit.CreateMovePointTable @0x5577FDC4` is the single authoritative **per-unit** builder:
 it copies `MovePointTables[moveTypes*0x100]` into a stack buffer, then applies enchantment/ability
 modifiers (player road-upgrade flag; Enchanted/Cursed Roads abilities `0x17`/`0x01`/`0xA5`;
-Haste-like ability `0x98`, cost−1 clamped ≥2; ability `0x84`, +2 to positive costs). Both real MP
+Haste-like ability `0x98`, cost−1 clamped ≥2; ability `0x84`, +2 to positive costs — skipped since
+`build_lethargy.py` turned its `je` at `0x5577FF9E` into a `jmp`). Both real MP
 deduction (`TAbstractUnit.MovedTo` → `MovePointCost @0x55780848`, `buf[1+terrain*0x10+road]`) and
 the move-predictor cave (below) call exactly this function — **anything hooked here is consistent
 between executed movement and the on-screen prediction for free**, which is why it is the injection
@@ -487,8 +490,8 @@ ability side of this project. `build_icestorm_lava.py`'s own docstring now carri
 **Audited clean, deliberately not patched** (each tests specific ids and never matches `0xB`/`0xE`,
 byte-diff-verified unchanged after applying): Fire Storm helper (6/D/2 only), Healing Showers
 (2/4/5/9), Rejuvenate/Desiccate (1/3/4/5/C), Blast Storm (empty), Freeze Water (0→6, A→D, plus a
-frozen-marker refresh), Level Terrain (EarthWall 7→Dirt only), Path of Frost (0→6/A→D plus the
-same refresh) and Path of Sand (1/3/4/5/C). **The single distinction that predicted every hit and
+frozen-marker refresh), Level Terrain (EarthWall 7→Dirt only), Path of Frost (0→6/A→D, surface
+1/2/4/5→3, plus the same refresh) and Path of Sand (1/3/4/5/C). **The single distinction that predicted every hit and
 miss in this audit: dangerous spells use a catch-all `else`; safe ones enumerate their source
 terrains explicitly.**
 
@@ -1108,6 +1111,59 @@ Cosmetic, not fixed: `TriggerFireDamage` still logs the (now negative) damage by
 event-log a structure's other messages use, so a map-fire heal can occasionally show a stray garbage
 number elsewhere in that log. Harmless.
 
+## Tactical group move — plan front-first, queue behind the leader
+
+**🔨 APPLIED, UNTESTED (2026-09-24).** Script `build_group_move_tc.py`, AoWTCPCK.dpl. Its docstring
+is the full record: sites, the vanilla mechanism, and the design.
+
+**Owner's complaint:** when several units are box-selected and sent to one hex, each is planned as
+if its group-mates stand still. So three units sent down a one-hex corridor detour, because "the
+guy in front is blocking me".
+
+**Vanilla, and why it does that:**
+- **Shape copy.** The preview sorts the selection by distance to the target and paths the nearest
+  unit to it. Every other unit is sent to the offset it had from that unit at the start, so the
+  group's shape is copied onto the target. A column survives a straight corridor but lands in the
+  walls at a bend.
+- **Markers.** Group-mates' starting hexes are marked "being vacated", but only the may-I-END-here
+  test honours that mark. The walk-THROUGH test ignores it.
+- **0-cost bug.** A vacated starting hex costs 0, which bends routes.
+- **Frozen paths.** The click executes the preview's paths unchanged, in a different order.
+
+**Ours** (owner rulings 2026-09-24):
+- **Order and planning:** the front of the column goes first, and every unit is planned against the
+  state the earlier movers leave behind.
+- **The queue:** the first unit that can reach the target takes it. Each later unit takes the first
+  workable hex walking back along the previous mover's route (at most 8 hexes, skipping taken or
+  still-occupied hexes). The fallback is vanilla's shape-copy slot, and failing that, the unit stays.
+- **Reach:** a unit that can't reach its hex this round is re-planned to the farthest hex it can,
+  using an inline copy of `MovePointsToPos`.
+- **Execution order:** the click reorders the selection to the plan order and skips vanilla's
+  re-sort.
+- **Inioch's two fixes, re-caved:** a hex a group-mate is leaving can be walked through, while a
+  reserved destination blocks transit. A starting hex costs its real terrain cost, within vanilla's
+  bounds (terrain 0–15, overlay −1–14).
+- **Blocked at execution:** "stop where blocked" relies on vanilla's own step code. It was not
+  traced; check it in-game.
+
+**Sites:** hooks `0x41E7F7` (preview) and `0x41E2B0` (click, call-retarget); sort byte `0x40F81C`;
+VMT slots `0x412DDC` and `0x431214` (`.reloc` kept); starting-hex cost `0x42083A`. Zone
+`0x439800`–`0x43A3FF` (core 1,231 B + five small caves). Surgical `--undo` restores all six sites and
+zeroes the zone. Multiplayer-safe: the paths travel inside the tokens. AI pathing is untouched.
+
+In-game checklist:
+1. Three units in single file in a one-hex corridor, sent further down it: all advance in a column —
+   the leader on the clicked hex, the others behind it — with no detours. Repeat with a corridor
+   that bends.
+2. In open ground, the group gathers behind the leader, and no unit's move is refused.
+3. A leader who can't reach the hex this round stops as far as it can; the others queue behind it.
+4. A selected unit that can't move this round stays, and the others plan around it.
+5. The hover preview shows exactly what then executes.
+6. If an earlier mover stops short (e.g. at a hidden enemy), the later ones stop where they are
+   blocked: never two units on one hex, and no error dialog.
+7. No noticeable lag while hovering with 8 units selected.
+8. Multiplayer: the other machine sees the same moves.
+
 ## Movement predictor fix (v1 → v4)
 
 **🔨 APPLIED, UNTESTED (2026-07-05).** Script `build_patch.py`. No in-game confirmation is recorded
@@ -1220,8 +1276,24 @@ the unit is being transported.
 Each Path ability calls map VMT **+0xD4** (`TAoWHSMap.ChangeTerrainEx`, area+callback — see How
 terrain changes propagate above) with **radius hard-coded to 1** at each call site and a leaf
 `changeCb`: Path of Life/Decay `*tPtr = (terrain≠6,0 ∧ field.level==0) ? 1 : unchanged` /
-`...5:unchanged`; Path of Frost turns water→ice and spawns/refreshes a `TFrozenWaterHS` from its
+`...5:unchanged`. Path of Frost's `changeCb` (`PathOfFrostTerrainChange @0x557801E4`) does water→ice
+(0→6), A→D, and on the surface only 1/2/4/5→snow 3. It spawns/refreshes a `TFrozenWaterHS` from its
 separate `changedCb`.
+
+**Path of Frost leaves lava alone** — `build_pathoffrost_nolava.py`, 🔨 APPLIED, UNTESTED
+(2026-09-24).
+- **What was live:** an unowned hand-edit replaced the land arm at `0x55780231` with
+  `call 0x5580BFA0` + 16 NOPs. That cave (31 B) replays the arm and adds lava 9 → wasteland 5 on
+  every level.
+- **Owner ruling 2026-09-24:** only the relevant spells and altars turn lava into wasteland, not
+  Path of Frost.
+- **The fix:** the script restores the 21 vanilla bytes, so the function is byte-identical to the
+  root reference again. The cave is left in place with no caller, so `--undo` can re-link it.
+
+In-game checklist:
+1. A Path of Frost unit walking past lava leaves it lava, on every level.
+2. On the surface it still turns grassland-type terrain to snow, and water to ice.
+3. Ice Storm and the Altar of Ice still turn lava into wasteland.
 
 ### Built: radius +1, 25% proc on the outer ring only — `build_path_outerring.py`
 
@@ -1273,6 +1345,48 @@ race's byte value is a DLL constant** (races are resourcestring names only; the 
 at resource-load time) — read both from a known unit of each race once, or walk the race list via
 `TRaceResource.GetRaceIndex @0x55759CD8` (`[raceRes+0x14]`).
 
+## World-map group move — plan front-first, pass over parties that are leaving
+
+**🔨 APPLIED, UNTESTED (2026-09-25).** Script `build_group_move_map.py`, AoWEPACK.dpl. Its
+docstring is the full record. It is the second half of the owner's 2026-09-24 group-move ruling;
+the tactical half is above.
+
+**What vanilla already did.** Merging on arrival and partial moves were never missing:
+- `CalculateMovePositions` sends each party as far as its movement reaches.
+- The settle callback `0x5574AAA4` merges parties on the target while the stack stays within
+  8 units, and backs the others off one hex at a time.
+- The move TEs are created in move-list order.
+
+**What was wrong.** `TSelectedArmy.SelectPath 0x55792B6C` planned each party with the others
+standing still. `TArmyHS.CanMoveOver 0x55790E48` lets an army pass an own army's hex only if
+`TArmy.CanCombine` says both fit in one stack, so a column in a corridor detoured or found no
+route.
+
+**The fix.**
+- **Order:** a first pass plans every party as vanilla does. The move list is then
+  insertion-sorted by route length (no route last), so the front of the column is index 0 for
+  both the re-plan and the execution.
+- **Pass-over:** while the re-plan loop runs (`G_SEL`/`G_IDX` in BSS `0x558FAD10`/`14`),
+  `CanMoveOver` returns 1 for a selected party of the same player, planned earlier, whose route
+  leaves its hex this turn.
+- **Stop where blocked:** that is vanilla's per-step check at execution.
+- **Scope:** AI pathing is untouched, because `G_SEL` is set only inside the human's multi-party
+  loop.
+
+⚠ **Not Inioch's "dropped-party fix".** His `0x55792A6C` `7D 35 → EB 35` sits in a branch taken
+only when `[sel+0x18] == 1`, which only `TSelectedArmy.SelectBuildRoad` sets. It is the road-building
+check that a road must be finishable this turn; applying it would let a road order run past the
+party's movement.
+
+**In-game checklist:**
+1. Box-select three parties queued in a one-hex corridor, too big to share a hex, and send them
+   down it: they go single file, the front one first, with no detour.
+2. Send two parties to one hex with room for both: they merge. With 8+ units between them, the
+   second stops next to it.
+3. A party with too little movement goes as far as it can and keeps its destination for next turn.
+4. If the front party is stopped short (a hidden enemy), the one behind stops where it is blocked.
+5. Road building still refuses a road the party cannot finish this turn.
+
 ## Open items
 
 - **Sandworm's numeric unit-type id** — not derivable from the DLL. Read `[[unit+0x40]+0x18]`
@@ -1295,8 +1409,9 @@ at resource-load time) — read both from a known unit of each race once, or wal
   nothing in the *code* path ever writes `0xE`; scenario **data** was never scanned.
 - **Chasm/Sky: combat-map rendering and transport/boarding regressions near ex-Coast hexes** — both
   unverified, check in-game.
-- **Ice Storm's current 25% skip rate** — only the mechanism and the earlier 50% value are
-  in-game confirmed; the currently-installed `SKIP_DENOM=4` has never been retested.
+- **Ice Storm's gate now takes effect 25% of the time** (`build_icestorm_gate25.py`, 2026-09-25):
+  a centre hex gets four procs (68% chance of at least one change), an edge hex one (25%). Only the
+  mechanism and the old 50% value are in-game confirmed. Check it still reads as an ice storm.
 - **Movement predictor v4** — the test plan above has never been run once, on any version.
 
 ## Failed approaches — do not retry

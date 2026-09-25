@@ -25,8 +25,8 @@ AUDITED CLEAN -- deliberately NOT patched (they test specific ids, never 0xB/0xE
   Fire Storm (helper 5580BE74: only 6, D, 2), Healing Showers (5580BF2F: 2, 4, 5, 9),
   Rejuvenate/"Desiccate" (5580C001: 1, 3, 4, 5, C), Blast Storm (557CCAB0: empty),
   Freeze Water (5579E884: only 0 and A, plus a 6/D frozen-marker refresh), Level Terrain
-  (5579F068: only EarthWall 7 -> Dirt), **Path of Frost** (557801E4: only 0 -> 6 and A -> D,
-  plus the 6/D refresh) and **Path of Sand** (this mod's own ability, callback cave 5580DF00:
+  (5579F068: only EarthWall 7 -> Dirt), **Path of Frost** (557801E4: only 0 -> 6, A -> D and
+  surface 1/2/4/5 -> 3, plus the 6/D refresh) and **Path of Sand** (this mod's own ability, callback cave 5580DF00:
   only 1, 3, 4, 5, C).  Sand and Frost are safe for the same reason as their spell cousins --
   they enumerate source terrains instead of using a catch-all else.
 

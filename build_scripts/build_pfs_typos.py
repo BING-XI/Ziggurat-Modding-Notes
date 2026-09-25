@@ -105,13 +105,15 @@ FIXES = [
     # `process()` aborts the whole FILE on one row error, so no Ability.pfs fix could be applied.
     ("Ability.pfs",  38,   5,
      ('Allows the unit to force their will upon others, even beasts, elementals and undead. (6 Atk vs Res).\r\n',
-      'Allows the unit to force their will upon others, even beasts, elementals and undead. (12 Atk vs Res).\r\n'),
-     'Allows the unit to force their will upon others, even beasts, elementals and undead. (10 Atk vs Res).\r\n',
-     "record 38 Dominate: text now matches the code (10 ATK), was falsely doubled to 12"),
+      'Allows the unit to force their will upon others, even beasts, elementals and undead. (12 Atk vs Res).\r\n',
+      'Allows the unit to force their will upon others, even beasts, elementals and undead. (10 Atk vs Res).\r\n'),
+     'Allows the unit to force their will upon others, even beasts, elementals and undead. (Res vs Res).\r\n',
+     "record 38 Dominate: the roll is the commander's RES since build_command_resroll.py (2026-09-25)"),
     ("Ability.pfs",  39,   5,
-     'Lets the unit attempt to warmly entice a target to follow them.\r\n(5 Atk vs Res)\r\n',
-     'Lets the unit attempt to warmly entice a target to follow them.\r\n(10 Atk vs Res)\r\n',
-     "record 39 (doubling + 2026-08-24 re-grade, full-text row)"),
+     ('Lets the unit attempt to warmly entice a target to follow them.\r\n(5 Atk vs Res)\r\n',
+      'Lets the unit attempt to warmly entice a target to follow them.\r\n(10 Atk vs Res)\r\n'),
+     'Lets the unit attempt to warmly entice a target to follow them.\r\n(Res vs Res)\r\n',
+     "record 39 Seduce: the roll is the commander's RES since build_command_resroll.py (2026-09-25)"),
     ("Ability.pfs",  40,   5,
      'Afflicts enemies in a conical area with (7/2) lightning, bane curse and poison.\r\n',
      'Afflicts enemies in a conical area with (14/4) lightning, bane curse and poison.\r\n',
@@ -261,9 +263,10 @@ FIXES = [
      'Increases Attack (+5) and Damage (+5) of strikes against the forces of good.\r\n',
      "record 157 (doubling + 2026-08-24 re-grade, full-text row)"),
     ("Ability.pfs", 158,   5,
-     'Persuades a humaoid enemy to switch sides (5 Atk vs Res).\r\n',
-     'Persuades a humanoid enemy to switch sides (10 Atk vs Res).\r\n',
-     "Charm (doubling + 2026-08-24 re-grade, full-text row)"),
+     ('Persuades a humaoid enemy to switch sides (5 Atk vs Res).\r\n',
+      'Persuades a humanoid enemy to switch sides (10 Atk vs Res).\r\n'),
+     'Persuades a humanoid enemy to switch sides (Res vs Res).\r\n',
+     "record 158 Charm: the roll is the commander's RES since build_command_resroll.py (2026-09-25)"),
     ("Ability.pfs", 163,   5,
      "Renders the unit's skin tougher, giving it stronger Defense (+2). \r\n",
      "Renders the unit's skin tougher, giving it stronger Defense (+3). \r\n",
@@ -434,9 +437,8 @@ FIXES = [
     # -- touch attacks whose text never matched the code. The 2026-08-24 pass doubled the
     #    STRING's number instead of reading the binary, so both are now off by the same
     #    factor. The convention is set by the five siblings that do agree exactly:
-    #    Web 14, Entangle 14, Invoke Death 18, Charm 10, Seduce 10.
-    ("Ability.pfs",  38,   5, '(12 Atk vs Res)', '(10 Atk vs Res)',
-     "Dominate: TDominateAbility.GetTouchAttack @0x55770664 = 10 (vanilla 6, unhooked)"),
+    #    Web 14, Entangle 14, Invoke Death 18. (Dominate's row went into its full-text row when
+    #    the command roll became RES vs RES, build_command_resroll.py.)
     ("Ability.pfs", 116,   5, '(16 Atk vs Res)', '(14 Atk vs Res)',
      "Possess: TPossessAbility.GetTouchAttack @0x55769BE8 = 14 (vanilla 5, unhooked); "
      "shared with TPossessedAbility via both VMT+0x10c slots"),
@@ -543,6 +545,86 @@ FIXES = [
      'active at a time.\r\n',
      "record 58 = spell id 48 (Power Leak -> Power Leech) + 10. Length-changing write: "
      "108 -> 195 chars"),
+
+    # Inioch's share8 spell changes, adopted 2026-09-25. Old texts carry a trailing space before
+    # the CRLF where vanilla had one; it is part of the field.
+    ("Spells.pfs",  23,  10,
+     'Sprouts trees that radiate holy power. All evil units passing through the woods suffer '
+     'holy damage. \r\n',
+     'Sprouts trees that radiate holy power. All evil units passing through the woods suffer '
+     'holy damage and may be struck with Vertigo.\r\n',
+     "record 23 = Holy Woods (spell 13); build_ground_debuffs.py adds the Vertigo roll"),
+    ("Spells.pfs",  24,  10,
+     'Sprouts a barrier of evil trees that radiate death. Good units passing through the woods '
+     'suffer damage. \r\n',
+     'Sprouts a barrier of evil trees that radiate death. Good units passing through the woods '
+     'suffer damage and may be Cursed.\r\n',
+     "record 24 = Evil Woods (spell 14); build_ground_debuffs.py adds the Cursed roll"),
+    ("Spells.pfs",  28,  10,
+     'Levels the earth to plains, removing all earth-based obstacles, such as, mountains and '
+     'hills. \r\n',
+     'Levels the earth to plains, removing all earth-based obstacles such as mountains and '
+     'hills, and leaves rocks where they stood.\r\n',
+     "record 28 = Level Terrain (spell 18); build_levelterrain_rocks.py"),
+    ("Spells.pfs",  80,  10,
+     'Churns a whirling vortex in the water, damaging all water-based units caught therein.\r\n',
+     'Churns a whirling vortex in the water, damaging every unit caught therein that cannot fly '
+     'and draining its movement. Ships and swimmers suffer most.\r\n',
+     "record 80 = Vortex (spell 70); build_vortex_rebalance.py"),
+    ("Spells.pfs",  81,  10,
+     'Triggers an earthquake underneath the target town, damaging the city and any garrisoned '
+     'units.\r\n',
+     'Triggers an earthquake underneath the target town, damaging the city and any garrisoned '
+     'units. Wooden walls crumble more easily than stone, and quakes strike harder '
+     'underground.\r\n',
+     "record 81 = Town Quake (spell 71); build_townquake_retune.py"),
+    ("Spells.pfs", 134,  10,
+     'Changes a battlefield area into sticky mud. Movement speed on ooze-covered terrain is '
+     'halved. \r\n',
+     'Turns a battlefield area to sticky mud that halves movement and puts out fires and '
+     'burning units.\r\n',
+     "record 134 = Ooze (spell 124); build_ooze_extinguish.py. NB u8 directory: tag 12 sits at "
+     "offset 247, so this field may grow by at most 8 B (96 -> 99 here)"),
+
+    # Slow -> Lethargy, 2026-09-25 (build_lethargy.py; the name is build_resstr_names.py's).
+    ("Spells.pfs", 120,  10,
+     "Halves the target's mobility for the duration of combat.\r\n",
+     "Saps the target's vigour for the rest of combat: its movement is halved, rounded up, and "
+     "it loses one melee strike when attacking and one when defending, never below one.\r\n",
+     "record 120 = Slow -> Lethargy (spell 110)"),
+    ("Ability.pfs", 142,  5,
+     "Halves the target's mobility for the duration of combat.\r\n",
+     "Movement is halved, rounded up, and one melee strike is lost when attacking and when "
+     "defending, never below one.\r\n",
+     "record 142 = status 0x84 (Slow -> Lethargy). NB u8 directory: tag 9 must stay at offset "
+     "<= 255, so this field may grow by at most 56 B -- this text uses all of it"),
+
+    # Haste gains a melee strike each way, 2026-09-25 (build_lethargy.py's strike caves).
+    # The owner reworded "and when defending" to "or defending" in the editor, 2026-09-25.
+    ("Spells.pfs",  25,  10,
+     ("Allows the target unit to move at great speed.\r\n",
+      "Allows the target unit to move at great speed, and to strike once more in melee when "
+      "attacking and when defending.\r\n"),
+     "Allows the target unit to move at great speed, and to strike once more in melee when "
+     "attacking or defending.\r\n",
+     "record 25 = Haste (spell 15)"),
+    ("Ability.pfs", 162,  5,
+     "Reduces movement cost per hex by 1.\r\n",
+     "Reduces movement cost per hex by 1. One extra melee strike when attacking and when "
+     "defending.\r\n",
+     "record 162 = status 0x98 (Haste)"),
+
+    # Dispel Magic wrests a bound unit from an enemy master, 2026-09-25 (build_command_bond.py).
+    ("Ability.pfs",  70,  5,
+     "Dispels magical enchantments.\r\n",
+     "Dispels magic; wrests bound units.\r\n",
+     "record 70 = Dispel Magic (ability 0x3C). NB u8 directory: tag 9 sits at offset 249, so "
+     "this field may grow by at most 6 B -- this text uses 5"),
+    ("Spells.pfs",  18,  10,
+     "Attempts to remove enchantments from a selected unit.\r\n",
+     "Attempts to remove enchantments from a selected unit, and to wrest a unit bound to an "
+     "enemy from its master (Res vs Res).\r\n",
+     "record 18 = Dispel Magic (spell 8)"),
 ]
 
 

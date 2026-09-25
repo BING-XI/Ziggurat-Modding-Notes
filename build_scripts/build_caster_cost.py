@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-r"""AoW1 mod -- "caster_cost": four bit-only hero abilities that halve the INITIAL CASTING COST
-of one spell family each, plus the vanilla instant-cast raw-charge fix they depend on.
+r"""AoW1 mod -- "caster_cost": four bit-only hero abilities that cut the INITIAL CASTING COST
+by 40% (x0.6, was x0.5 until 2026-09-25) for one spell family each, plus the vanilla instant-cast raw-charge fix they depend on.
 
     Evoker    0xAC  -> the 30 registered TCombatSpell spells            (32 VMTs match)
     Conjurer  0xAD  -> the 13 registered TSummonSpell spells             (14 VMTs match)
@@ -19,7 +19,7 @@ Spec: Modding Resources/Zig notes/Caster_Cost_Abilities_SPEC.md
 ================================================================================
 ARCHITECTURE -- SIX SITES, FIVE CAVES
 ================================================================================
-1. HOOK1  0x557894EC  THero.CastingMana ENTRY (7B)     -> cave_cost    classify + halve
+1. HOOK1  0x557894EC  THero.CastingMana ENTRY (7B)     -> cave_cost    classify + x0.6
 2. HOOK2  0x55789510  the shared vanilla epilogue (5B) -> cave_floor   floor of 1, at the EXIT
 3. HOOK3  0x557BCF04  a spare `call RegisterAbility`   -> cave_reg     register the four abilities
 4. SITE A 0x557EFA7C  TGlobalEnchantmentSpell.Activate -> cave_gench   wallet fix
@@ -62,7 +62,18 @@ enchantments doing nothing, and only 1 of 13 summons honouring the discount.
   cave_floor likewise repairs a live mastery_cost defect: Slow (1) and Ooze (1) cast with the
   matching Mastery currently return 0 mana -- free, and consuming no casting points either.
 
-CLASSIFICATION -- rebase-invariant, needs NO PIC anchor. [VMT+0x6C] - [VMT+0x18] is a DIFFERENCE of
+CLASSIFICATION IS DATA (since 2026-09-25). cave_cost reads the byte [spell+0x23], streamed from
+Spells.pfs tag 0x12 by build_spell_family.py: 0 none, 1 Evoker, 2 Conjurer, 3 Enchanter,
+4 Ritualist; ability = 0xAB + family; anything outside 1..4 is no discount. build_spell_family.py
+seeded tag 0x12 from the CLASS rule below, so the four families are unchanged until someone edits
+the data. cave_cost keeps a fixed 120-byte slot (v1's length) so cave_floor..cave_reg never move;
+v2 is 51 bytes + zero pad. The run rewrites the classifier IN PLACE, recognising either version:
+    --apply             data classifier (v2)   -- aborts unless build_spell_family.py is in place
+    --classic --apply   class classifier (v1)  -- required before build_spell_family.py --undo
+The three raw-cost sites the wallet fix below missed (instant gate, world-map and auto-resolve
+charges) are build_caster_wallet.py's.
+
+CLASS RULE (v1, --classic; also the seed of tag 0x12) -- rebase-invariant, needs NO PIC anchor. [VMT+0x6C] - [VMT+0x18] is a DIFFERENCE of
 two slots, so the runtime load delta cancels. [VMT+0x18] is AoWE.TSpell.ReadWrite @0x55779234 for
 all 117 classes in the subtree (exactly one distinct value), which independently proves no derived
 class reads extra pfs tags. Combat needs a second test because its +0x6C constant (0x120) is shared
@@ -70,21 +81,16 @@ with the abstract TSpell itself. [VMT+0x80] - [VMT+0x18] == 0x7E034 occurs on 31
 TCombatSpell base plus its 30 subclasses -- and, the property that actually matters, ZERO times
 outside the spell subtree anywhere in the file.
 
-ORDER OF OPERATIONS: base -> our halving -> mastery multiplier -> floor. Both truncate.
+ORDER OF OPERATIONS: base -> our x0.6 -> mastery multiplier -> floor. All truncate.
 
-  TRIPWIRE, Water Mastery (spell 45, cost 250): it is the one global enchantment whose ExecuteTE
-  @0x557F0A88 reads the RAW cost (`8b 4b 14`) instead of [TE+0x1C], so SITE A does not cover it.
-  It is currently harmless only because 250 -> Ritualist 125 -> own-sphere Mastery 93 still exceeds
-  the 90-point casting ceiling (0x5580BF2B `imul eax,eax,0x12`), so it can never take the instant
-  branch. Lower its cost, raise the casting-points ladder, or add a second discount and the
-  exemption flips into a 250-mana charge against a 93-mana preview. Re-check this if any of those
-  three numbers changes.
+DISCOUNT (owner ruling 2026-09-25: 50% -> 40%). x0.6 is `imul ebx,ebx,0x999A / shr ebx,16`, which
+equals floor(3x/5) exactly for every x < 32768 (spell costs top out at 250). The previous
+`shr ebx,1` builds are still recognised as installed states and rewritten in place, in either
+classifier. Retune: edit DISCOUNT_MUL below (None = the old shr-1 halving) and re-run --apply.
 
-  KNOWN RESIDUAL BAND, Cosmagic Scrying (spell 59, cost 15, an Enchanter member):
-  TCosmeticSurgerySpellCaster.Cast @0x557E8524 pushes the raw cost at 0x557E85F9 rather than going
-  through TUnitSpell.CastSpell, so at Spellcasting level 1 (10 casting points) 7 <= 10 < 15 -- the
-  cast is accepted and then rejected by Validate, i.e. it does nothing. Empty from level 2 onward
-  (20 >= 15). Fixable as a fourth wallet site if wanted; check .reloc on 0x557E85F9 first.
+  Water Mastery's raw charge (ExecuteTE 0x557F0A88 `mov ecx,[ebx+0x14]; call TSpell.CastingDone`)
+  and Cosmagic Scrying's raw TE cost (0x557E85F9) are both closed by build_caster_wallet.py
+  (2026-09-25): CastingDone and CanCastSpellInstantly now turn a raw cost into CastingMana.
 
 CAVE ZONE: 0x55820800..0x55820FFF EXCLUSIVE RESERVATION. Verified all-zero and .reloc-free before
 allocation. Sits between build_los_terrain.py's ceiling (0x55820800) and build_dispelmagic5.py's
@@ -95,7 +101,7 @@ floor (0x55821000), touching neither.
   is exactly how build_magebane.py destroyed build_dispelmagic5.py's cave. --undo here zeroes only
   the emitted length of each cave.
 
-Backup: AoWEPACK.dpl.pre-castercost
+Backup: <game dir>\backups\AoWEPACK.dpl.pre-castercost, minted only when every site is vanilla.
 Dry-run by default; --apply to write; --undo to remove surgically; --dis to dump every cave.
 """
 import os, sys, struct, shutil, subprocess
@@ -258,7 +264,9 @@ class Asm:
         return bytes(self.buf)
 
 
-def build_cave_cost(va):
+def build_cave_cost_class(va, mul=None):
+    """v1 (2026-08-26 .. 2026-09-25): the family is the spell's CLASS, by VMT slot difference.
+    Kept so the in-place rewrite can recognise it, and for --classic."""
     a = Asm(va)
     # EXACT displaced bytes, never re-assembled: keystone renders `mov esi,edx` as 89 D6 while the
     # original is 8B F2, and a re-assembled replay would fail byte-for-byte verification.
@@ -278,19 +286,88 @@ def build_cave_cost(va):
     a.db(0x8B, 0x91); a.dd(0x80)                # mov edx,[ecx+0x80]    ; GetCombatDamageValue slot
     a.db(0x2B, 0x51, 0x18)                      # sub edx,[ecx+0x18]
     a.db(0x81, 0xFA); a.dd(D_COMBAT_CFM); a.j8(0x75, "back")   # abstract TSpell exits here
-    a.db(0xBA); a.dd(EVOKER);    a.j8(0xEB, "query")
-    a.label("conj"); a.db(0xBA); a.dd(CONJURER);  a.j8(0xEB, "query")
-    a.label("ritu"); a.db(0xBA); a.dd(RITUALIST); a.j8(0xEB, "query")
-    a.label("ench"); a.db(0xBA); a.dd(ENCHANTER)
-    a.label("query")                            # EXACTLY ONE query per cost evaluation:
+    if mul is None:                             # the installed v1 bytes, kept exact for recognition
+        a.db(0xBA); a.dd(EVOKER);    a.j8(0xEB, "query")
+        a.label("conj"); a.db(0xBA); a.dd(CONJURER);  a.j8(0xEB, "query")
+        a.label("ritu"); a.db(0xBA); a.dd(RITUALIST); a.j8(0xEB, "query")
+        a.label("ench"); a.db(0xBA); a.dd(ENCHANTER)
+        a.label("query")
+    else:                                       # compact: x0.6 is 7 B longer than shr, slot is 120
+        a.db(0xB2, EVOKER);    a.j8(0xEB, "id") #   mov dl,0xAC
+        a.label("conj"); a.db(0xB2, CONJURER);  a.j8(0xEB, "id")
+        a.label("ritu"); a.db(0xB2, RITUALIST); a.j8(0xEB, "id")
+        a.label("ench"); a.db(0xB2, ENCHANTER)
+        a.label("id"); a.db(0x0F, 0xB6, 0xD2)   #   movzx edx,dl
+    # EXACTLY ONE query per cost evaluation:
     a.db(0x8B, 0x08)                            #   mov ecx,[eax]       ; caster VMT
     a.db(0xFF, 0x91); a.dd(0x148)               #   call [ecx+0x148]    ; item-aware GetAbilityEnabled
     a.db(0x84, 0xC0)                            # test al,al
     a.j8(0x74, "back")
-    a.db(0xD1, 0xEB)                            # shr ebx,1             ; NO floor here
+    emit_discount(a, mul)                       # NO floor here
     a.label("back")
     a.jmp32(CM_RESUME)
     return a.done()
+
+
+DISCOUNT_MUL = 0x999A              # ebx = (ebx*MUL)>>16; 0x999A = x0.6 (40% off). None = shr ebx,1.
+COST_SLOT = 120                     # cave_cost's fixed footprint: v1's length. Pinned so that
+                                    # cave_floor..cave_reg never move when the classifier changes.
+FAMILY_BYTE = 0x23                  # [spell+0x23], streamed from Spells.pfs tag 0x12 by
+                                    # build_spell_family.py: 0 none, 1..4 -> ability 0xAB+family
+
+
+def build_cave_cost_data(va, mul=None):
+    """v2 (2026-09-25): the family is DATA -- [spell+0x23], Spells.pfs tag 0x12."""
+    a = Asm(va)
+    a.raw(ORIG[CASTINGMANA])                    # push ebx; push esi; mov esi,edx; mov ebx,[esi+14]
+    a.db(0x85, 0xC0)                            # test eax,eax
+    a.j8(0x74, "back")                          #   nil Self guard
+    a.db(0x8B, 0x08)                            # mov ecx,[eax]         ; Self VMT
+    a.db(0x39, 0x49, 0xC0)                      # cmp [ecx-0x40],ecx    ; Delphi vmtSelfPtr sanity
+    a.j8(0x75, "back")
+    a.db(0x0F, 0xB6, 0x56, FAMILY_BYTE)         # movzx edx,byte [esi+0x23]
+    a.db(0x4A)                                  # dec edx               ; 1..4 -> 0..3, 0 -> -1
+    a.db(0x83, 0xFA, 0x03)                      # cmp edx,3
+    a.j8(0x77, "back")                          # ja back               ; none, or out of range
+    a.db(0x81, 0xC2); a.dd(EVOKER)              # add edx,0xAC          ; -> 0xAC..0xAF
+    a.db(0xFF, 0x91); a.dd(0x148)               # call [ecx+0x148]      ; item-aware GetAbilityEnabled
+    a.db(0x84, 0xC0)                            # test al,al
+    a.j8(0x74, "back")
+    emit_discount(a, mul)                       # NO floor here
+    a.label("back")
+    a.jmp32(CM_RESUME)
+    return a.done()
+
+
+def emit_discount(a, mul):
+    if mul is None:
+        a.db(0xD1, 0xEB)                        # shr ebx,1             ; x0.5 (builds before 2026-09-25)
+    else:
+        a.db(0x69, 0xDB); a.dd(mul)             # imul ebx,ebx,mul
+        a.db(0xC1, 0xEB, 0x10)                  # shr ebx,16            ; x mul/65536, truncating
+
+
+def pad_cost(body):
+    assert len(body) <= COST_SLOT, "cave_cost is %d bytes, slot is %d" % (len(body), COST_SLOT)
+    return body + bytes(COST_SLOT - len(body))
+
+
+def build_cave_cost(va):
+    fn = build_cave_cost_class if "--classic" in sys.argv else build_cave_cost_data
+    return pad_cost(fn(va, DISCOUNT_MUL))
+
+
+def other_costs(va):
+    """Every cave_cost this run is NOT installing -- the other classifier, or either classifier at
+    the old x0.5 -- all legitimate installed states to rewrite in place."""
+    want = build_cave_cost(va)
+    out = []
+    for fn in (build_cave_cost_class, build_cave_cost_data):
+        for mul in (None, DISCOUNT_MUL):
+            body = pad_cost(fn(va, mul))
+            if body != want and body not in out:
+                out.append(body)
+    return out
 
 
 def build_cave_floor(va):
@@ -448,6 +525,9 @@ def layout():
         caves.append((name, p, body))
         p = align4(p + len(body))
     used = p - CAVE_VA
+    # the caves are live at these addresses; a layout drift would orphan the installed ones
+    assert [va for _n, va, _b in caves] == [0x55820800, 0x55820878, 0x5582088C, 0x558208A0,
+                                            0x558208B4], "cave layout drifted"
     if used > CAVE_LIMIT:
         sys.exit("ABORT: caves total %d bytes, over the 0x%X reservation" % (used, CAVE_LIMIT))
     at = dict((n, va) for n, va, _ in caves)
@@ -621,6 +701,8 @@ def main():
             state.append("patched")
         elif cur == orig:
             state.append("vanilla")
+        elif va == CAVE_VA and cur in other_costs(va):
+            state.append("RECLASS")                 # the other classifier: rewrite in place
         elif va == reg_va:
             got = retuned_costs(cur, new)          # our own cave at a different level-up cost?
             if got is not None:
@@ -644,7 +726,7 @@ def main():
             note = "   cost: %d" % live[i]
             if live[i] != LEVEL_COST[i]:
                 note += " (script constant says %d -- the DATA WINS, edit it in AoWDevEd)" % LEVEL_COST[i]
-        print("  %-9s 0x%02X  halves %-20s%s" % (NAMES[i], i, FAMILY[i], note))
+        print("  %-9s 0x%02X  -40%% %-20s%s" % (NAMES[i], i, FAMILY[i], note))
     emitted = sum(len(b) for _, _, b in caves)
     print("  caves 0x%08X..0x%08X  %d bytes emitted (%d incl. alignment) of %d reserved\n" %
           (CAVE_VA, caves[-1][1] + len(caves[-1][2]) - 1, emitted, used, CAVE_LIMIT))
@@ -665,6 +747,13 @@ def main():
             print("      WARNING: Release/Ability.pfs already has records for these ids, and")
             print("               tag 6 OVERRIDES this immediate. The new costs will NOT show")
             print("               in game until you edit the level-up cost in AoWDevEd too.")
+
+    if "RECLASS" in state:
+        print("")
+        print("  *** IN-PLACE cave_cost REWRITE ***  it holds another classifier or discount;")
+        print("      --apply installs the %s classifier at x%s, in its own %d-byte slot. Nothing else moves."
+              % ("CLASS (VMT)" if "--classic" in sys.argv else "DATA ([spell+0x23])",
+                 "0.5" if DISCOUNT_MUL is None else "%.4f" % (DISCOUNT_MUL / 65536), COST_SLOT))
 
     if "OTHER" in state:
         print("\nABORT: a site holds bytes that are neither vanilla nor this patch.")
@@ -705,10 +794,7 @@ def main():
                 print("\n  --force: unregistering %d id(s) that still have Ability.pfs records."
                       % len(minted))
 
-        kill_game()
-        if not os.path.exists(BAK):
-            os.makedirs(BACKUP_DIR, exist_ok=True)
-            shutil.copy2(DLL, BAK); print("\nBackup: %s" % BAK)
+        kill_game()                             # no snapshot: the file is the PATCHED state here
         # Site order is immaterial: every write lands in one in-memory bytearray that is committed
         # by a single atomic replace below. The ordering hazard is the one handled above.
         for va, orig, new, desc in sites:
@@ -736,6 +822,8 @@ def main():
 
     reg_len = dict((n, b) for n, _v, b in caves)["cave_reg"]
     skip = [(reg_va, len(reg_len))] if "RETUNE" in state else []
+    if "RECLASS" in state:
+        skip.append((CAVE_VA, COST_SLOT))
     bad = check_cave_zone(data, caves, skip)
     if bad:
         print("  ABORT: %d byte(s) of the reservation belong to someone else, first at 0x%08X"
@@ -755,12 +843,21 @@ def main():
     for name, va, body in caves:
         print("\n%s @0x%08X (%d bytes):\n%s" % (name, va, len(body), disasm(body, va)))
 
+    if "--classic" not in sys.argv:
+        problem = family_data_missing(data)
+        if problem:
+            print("\n  ABORT: the data classifier reads [spell+0x23], but %s. Every caster discount"
+                  "\n         would be lost. Run build_spell_family.py --apply first." % problem)
+            return 1
+        print("  family data in place: TSpell.ReadWrite hook installed, tag 0x12 on every Spells.pfs record.")
+
     if not apply_:
         print("\nDry run OK. Re-run with --apply to write.")
         return 0
 
     kill_game()
-    if not os.path.exists(BAK):
+    # snapshot only from a file PROVED unpatched by this feature: every site still vanilla
+    if all(s == "vanilla" for s in state) and not os.path.exists(BAK):
         os.makedirs(BACKUP_DIR, exist_ok=True)
         shutil.copy2(DLL, BAK); print("\nBackup: %s" % BAK)
     # Site order is immaterial -- all writes land in one in-memory bytearray committed atomically.
@@ -772,6 +869,30 @@ def main():
     print("\nAoWEPACK.dpl patched.\n")
     print(OUT_OF_BAND)
     return 0
+
+
+def family_data_missing(data):
+    """None if build_spell_family.py is fully in place, else what is missing."""
+    hook = 0x557792BB
+    off = va2off(data, hook)
+    if data[off] != 0xE9 or hook + 5 + struct.unpack_from("<i", data, off + 1)[0] != 0x5584D2C0:
+        return "TSpell.ReadWrite 0x557792BB is not hooked to cave_rw 0x5584D2C0"
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    spec = importlib.util.spec_from_file_location("_pfs", os.path.join(here, "..", "re_tools", "pfs.py"))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    spec = importlib.util.spec_from_file_location("_typ", os.path.join(here, "build_pfs_typos.py"))
+    t = importlib.util.module_from_spec(spec); spec.loader.exec_module(t)
+    blob = open(os.path.join(GAME, "Release", "Spells.pfs"), "rb").read()
+    recs = m.parse_index(blob)
+    miss = 0
+    for n, (rid, body) in enumerate(recs):
+        if n == len(recs) - 1:
+            body = body[:-4]
+        e, s = t.body_dir(body)
+        if 0x12 not in t.slice_fields(body, e, s):
+            miss += 1
+    return "%d Spells.pfs records lack tag 0x12" % miss if miss else None
 
 
 def commit(data):

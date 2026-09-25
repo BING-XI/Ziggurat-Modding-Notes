@@ -2,6 +2,9 @@
 r"""
 build_marksmanship_atk2.py -- Marksmanship ATK bonus +1/level -> +2/level (5% conversion).
 
+⚠⚠ DO NOT APPLY -- owner ruling 2026-09-24: Marksmanship stays +1 ATK per level.  Kept for the
+cave analysis below; its dry run reporting CLEAN is the intended state.
+
 WHY
 ---
 Part of the 10pp -> 5pp to-hit conversion (see Zig notes/FivePct_Conversion_Manifest.md).  Every

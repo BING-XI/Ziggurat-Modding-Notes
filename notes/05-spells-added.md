@@ -114,8 +114,10 @@ Design decisions were the user's (2026-09-01): Earth sphere, tier 3 research, do
 physical component, cancels exactly against Physical Protection, refused (fizzles) on Physical Immunity
 targets, resisted the same way as Slow. `SPELL_POWER` (`= 9`, `[spell+0x34]`) is the one-line tuning
 knob if it lands too often or too rarely — already on the Ziggurat scale, left at Slow's own value
-deliberately. Slow itself is untouched: every hook re-derives Slow's own ability id `0x84` for any spell
-id that is not Embrittle's.
+deliberately. Every hook re-derives Slow's own ability id `0x84` for any spell id that is not
+Embrittle's. (Slow is now Lethargy, `build_lethargy.py`, `04-spells-modded.md`; that script also gives
+both spells an AI value through `TSlow`'s VMT slots `+0x98` (auto-resolve) and `+0x84` (manual combat),
+so the zero-value `TSlow.GetCombatDamageValueEx` below is no longer on either path.)
 
 ### The effect site — one function, every combat system
 
@@ -263,7 +265,8 @@ cannot be bought.
 @0x557F8948` returns an all-zero struct and Slow is still freely castable; `TSpell.tcGetDamageValueEx`
 (`+0x88`) just forwards to it and nothing consults the result for validity. Only **fast** combat (auto
 resolve) gates on a value — `TCombatSpell.fcPrefetchCombatCommands @0x557F76BC` skips a target whose
-`fcGetDamageValueEx` first dword is 0.
+`fcGetDamageValueEx` first dword is 0. Since `build_lethargy.py` that value is `cave_fcval`, which
+returns 0 for a Physical Immunity target, so auto-resolve never picks one.
 
 So the engine's own idiom for "this spell does not apply to that target" is a fizzle inside `CreateCA`,
 not a target-selection gate, and `CombatSpells.TTurnUndead` is the vanilla worked example:
@@ -518,7 +521,8 @@ feature's cave here previously made the audit misreport this feature as owning a
 6. On a unit that also has Physical Protection, damage is back to normal.
 7. Casting it at a Physical Immunity unit does nothing (mana is still spent — the documented fizzle, not
    a bug).
-8. Slow still works exactly as before, on its own spell and its own status.
+8. Lethargy (ex Slow) works on its own spell and its own status — its checklist is in
+   `04-spells-modded.md`.
 9. Auto-resolving a battle involving an embrittled unit raises no assert dialog.
 10. Ranged and elemental-strike weapons against an embrittled unit are doubled too (the mask test is
     any-bit, so a physical+elemental strike should double as well).

@@ -111,6 +111,12 @@ RENAMES = [
      "'%s is already active' refusal -- TPowerLeakEnchantment.Create @0x557F0FD8 loads "
      "[ench+0x1C] from AoWE.PowerLeakRStr, the same resourcestring as the spell name. "
      "Spells.pfs record 58 (build_pfs_typos.py) carries the description."),
+    ("Slow", "", "Lethargy",
+     "owner's rename 2026-09-25 with build_lethargy.py: halved movement and one melee strike "
+     "fewer instead of vanilla's +2 hex cost. ONE row covers the spell name and the status name "
+     "on the unit card -- TSlow.Create @0x557F8890 and TSlowEnchantmentAbility.Create "
+     "@0x557B9E78 both load AoWE.SlowRStr. 'Slow' is the only resourcestring with that text in "
+     "any module (the editor's 'Slow' speed option is a DFM string, not a resourcestring)."),
     ("Spell Ward locks all global enchantments",
      ("", "Spell Ward blocks Town Gate and Warp Party"),
      "Astral Ward blocks Town Gate and Warp Party",
@@ -246,7 +252,7 @@ def main():
     check_invariants(d, "before")
 
     rows = list(reversed(RENAMES)) if args.undo else RENAMES
-    todo, state = [], []
+    todo, state, was_vanilla = [], [], []
     for native, old, new, note in rows:
         olds = old if isinstance(old, tuple) else (old,)
         # undo always lands on the vanilla slot (olds[0]), never on an intermediate state
@@ -261,6 +267,7 @@ def main():
                              "Reconcile them (mld_conv.exe) before running this script."
                              % (native, cur, tcur))
         state.append((native, cur, dst, note))
+        was_vanilla.append(cur == olds[0])
         if cur == dst:
             continue
         if cur not in srcs:
@@ -286,7 +293,9 @@ def main():
         print("DRY RUN -- re-run with --apply to commit.")
         return
 
-    if not args.undo:
+    # A snapshot is only honest while every row is still vanilla; minted later it would be a
+    # patched file under a pre-patch name (it happened 2026-09-25 when the Slow row was added).
+    if not args.undo and all(was_vanilla):
         for f in (MLD, TXT):
             os.makedirs(BACKUP_DIR, exist_ok=True)
             bp = backup_path(f)

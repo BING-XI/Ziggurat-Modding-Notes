@@ -132,7 +132,7 @@ BOUND_PREFIX = bytes.fromhex("817df8")
 # accepts any of them as a starting state, which is what makes a bump an in-place rewrite rather
 # than the revert-and-re-apply this project does not have. APPEND, never replace -- and keep this
 # equal to build_abilityid_ceilings.py's LADDER.
-LADDER = (0xAA, 0xB1, 0xB2, 0xB3)                 # vanilla .. target
+LADDER = (0xAA, 0xB1, 0xB2, 0xB3, 0xBA, 0xBB, 0xBD)     # vanilla .. target
 
 # `mov dword [ebp-8], 1` -- asserted unchanged: this is what keeps Walking (id 0) hidden.
 INIT_VA = 0x00423489

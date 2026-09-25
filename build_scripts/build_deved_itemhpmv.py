@@ -422,6 +422,8 @@ LBL_DY = 3                                  # a 16 px label centred on a 22 px s
 PANEL_H = 161                               # StatisticsPnl, unchanged
 HP_MAX = 60                                 # owner's call: mirror the existing four
 MV_MAX = 50
+HP_MIN = -HP_MAX                            # 2026-09-25: negative item stats allowed (owner)
+MV_MIN = -MV_MAX
 
 
 def row_y(i):
@@ -857,7 +859,7 @@ def cave_bodies(lit_hp, lit_mv, change_va):
         mov  edx, {lit_hp:#x}
         call {T_SETTEXT:#x}
 {mk_control(IAT_TSPIN, SPIN_X, HP_Y, SPIN_W, SPIN_H, "ce_done")}
-        mov  dword ptr [esi + {SP_MINVALUE:#x}], 0
+        mov  dword ptr [esi + {SP_MINVALUE:#x}], {HP_MIN}
         mov  dword ptr [esi + {SP_MAXVALUE:#x}], {HP_MAX}
         mov  byte ptr [esi + {SP_EDITORENABLED:#x}], 0
         mov  dword ptr [{G_HPSPIN:#x}], esi
@@ -866,7 +868,7 @@ def cave_bodies(lit_hp, lit_mv, change_va):
         mov  edx, {lit_mv:#x}
         call {T_SETTEXT:#x}
 {mk_control(IAT_TSPIN, SPIN_X, MV_Y, SPIN_W, SPIN_H, "ce_done")}
-        mov  dword ptr [esi + {SP_MINVALUE:#x}], 0
+        mov  dword ptr [esi + {SP_MINVALUE:#x}], {MV_MIN}
         mov  dword ptr [esi + {SP_MAXVALUE:#x}], {MV_MAX}
         mov  byte ptr [esi + {SP_EDITORENABLED:#x}], 0
         mov  dword ptr [{G_MVSPIN:#x}], esi
@@ -1003,6 +1005,9 @@ def check_cave(cave, entries, code_len):
     maxes = [int(i.op_str.split(",")[1], 0) for i in ins
              if i.mnemonic == "mov" and i.op_str.startswith("dword ptr [esi + 0x134],")]
     assert maxes == [HP_MAX, MV_MAX], "MaxValue immediates are %r" % (maxes,)
+    mins = [int(i.op_str.split(",")[1], 0) & 0xFFFFFFFF for i in ins
+            if i.mnemonic == "mov" and i.op_str.startswith("dword ptr [esi + 0x130],")]
+    assert mins == [HP_MIN & 0xFFFFFFFF, MV_MIN & 0xFFFFFFFF], "MinValue immediates are %r" % (mins,)
     # every rel32 CALL must leave the cave (intra-body jumps legitimately do not), and
     # every branch that stays inside must land on an instruction boundary
     starts = {i.address for i in ins}
