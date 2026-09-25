@@ -67,11 +67,10 @@ depths and counting `..` broke it both times, so it walks up looking for a folde
   *vanilla* install and stayed at the root, while `GAME` became `Ziggurat/`. It failed **silently**:
   empty report, exit code 0. It now looks in `GAME` then the parent. Comparing `Ziggurat/` against
   that manifest is still exactly right — CHANGED means "differs from stock", ADDED means "new".
-  ⚠ Its filter lists (`IGNORE_DIRS` / `NEVER_SHIP` …) have **not** been re-reviewed for the new
-  layout: the 29 MB `Ziggurat Manual.exe` and the renamed exes now land in the payload, which is why
-  it reports 126.7 MB against the pre-move 93 MB, and `MISSING (4)` is the hashdb expecting
-  `AoW.exe`/`AoWCompat.exe` in a tree where they are now `AoWz.exe`/`AoWzCompat.exe`. Decide what
-  should ship before cutting a release from it.
+  `NEVER_SHIP` withholds the manual and its companions (`Ziggurat Manual.exe`, the builder, the
+  build cache, `manual_text.json`; owner rulings 2026-09-11/13), so the payload is 353 files,
+  48.8 MB (2026-09-25). `MISSING (4)` is expected: the hashdb lists `AoW.exe`/`AoWCompat.exe`,
+  which are `AoWz.exe`/`AoWzCompat.exe` here, plus `Launcher.exe` and `startbtn.WAV`.
 - **`build_ziggurat_manual.py` lost every one of its ~20 workshop paths.** They were anchored to the
   folder it used to live in. The workbook miss failed loudly; the `re_tools` miss failed **silently**
   — `pfs.py` not found, unit stats fell back to the workbook, and the manual built with 0 units
