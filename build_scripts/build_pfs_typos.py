@@ -92,6 +92,16 @@ FIXES = [
      'Launches a massive rock (4/6) at a long-ranged wall or unit.\r\n',
      'Launches a massive rock (8/13) at a long-ranged wall or unit.\r\n',
      "record 34 (doubling + 2026-08-24 re-grade, full-text row)"),
+    ("Ability.pfs",  11,   5,
+     'Permits the unit to fly across terrain and walls, unreachable by melee ground-based units. Flight costs 4 movement points, except mountains (6) and underground (5).\r\n',
+     'Permits the unit to fly across terrain and walls, unreachable by melee ground-based units. Flight costs 4 movement points, except mountains (6) and underground (5). Click to fly one map level up or down (needs 4 MP, spends all).\r\n',
+     "record 11 = Flying (ability 1): build_fly_levels.py. NB u8 directory: tag 9 sits at offset "
+     "182, so this field may grow by at most 73 B (+62 here)"),
+    ("Ability.pfs",  36,   5,
+     "Leaves a trail of forgetfulness (unexplores terrain) among enemies in the wake of the unit's passing.\r\n",
+     "Shrouds the land within 6 hexes: enemies see through it at half range, and the unit's wake is forgotten.\r\n",
+     "record 36, Trail of Darkness -> Mantle of Gloom (build_los_terrain.py v4; name via "
+     "build_resstr_names.py). Owner's wording 2026-09-26"),
     ("Ability.pfs",  37,   5,
      'Allows the unit to ensnare their target (7 Atk vs Res) in a thick, gooey web that restricts all movement and also lowers its Defense (-2). \r\n',
      'Allows the unit to ensnare their target (14 Atk vs Res) in a thick, gooey web that restricts all movement and also lowers its Defense (-2). \r\n',
@@ -144,13 +154,15 @@ FIXES = [
     # RE-TUNED 2026-09-16 by build_leadership_others.py: Leadership no longer buffs its own
     # holder -- a unit's bonus is the best Leadership level among the OTHER units in its party.
     # `old` is a tuple: [0] vanilla text (what --undo restores), [1] the 4-level text this field
-    # held between 2026-08-24 and today.
+    # held between 2026-08-24 and 2026-09-16, [2] the others-only text held until 2026-09-27.
     ("Ability.pfs",  56,   5,
      ('Gives all units in party +2 Attack and +1 Defense.\r\n',
-      'Gives all units in party +1 Attack and +1 Defense per level.\r\n'),
-     'Gives every OTHER unit in the party +1 Attack and +1 Defense per level. A leader gains '
-     'nothing from its own Leadership, only from other leaders beside it.\r\n',
-     "record 56 (doubling + 2026-08-24 re-grade; others-only rework 2026-09-16)"),
+      'Gives all units in party +1 Attack and +1 Defense per level.\r\n',
+      'Gives every OTHER unit in the party +1 Attack and +1 Defense per level. A leader gains '
+      'nothing from its own Leadership, only from other leaders beside it.\r\n'),
+     'Gives every other unit in the party +1 Attack and +1 Defense per level.\r\n',
+     "record 56 (doubling + 2026-08-24 re-grade; others-only rework 2026-09-16; "
+     "second sentence dropped 2026-09-27)"),
     ("Ability.pfs",  57,   5,
      'Restores life to the injured (+5 HitPoints). Can be performed only once a day.\r\n',
      'Restores life to the injured (+10 HitPoints). Can be performed only once a day.\r\n',
@@ -226,10 +238,12 @@ FIXES = [
      "When attacking, increases the Damage (+3) of the unit's first melee strike.\r\n",
      "When attacking, increases the Damage (+5) of the unit's first melee strike.\r\n",
      "Charge (doubling + 2026-08-24 re-grade, full-text row)"),
+    # Reworked 2026-09-26 (build_monster_slaying.py / monsterslay.py): the ATK bonus became DEF.
     ("Ability.pfs", 122,   5,
-     'Enhanced strikes (+3 Atk/Dam) against monstrous units.\r\n',
-     'Enhanced strikes (+5 Atk/Dam) against monstrous units.\r\n',
-     "Monster Slaying (doubling + 2026-08-24 re-grade, full-text row)"),
+     ('Enhanced strikes (+3 Atk/Dam) against monstrous units.\r\n',
+      'Enhanced strikes (+5 Atk/Dam) against monstrous units.\r\n'),
+     'Against monstrous units: +4 Dam and +4 Def in melee, +2 Dam and +2 Def at range.\r\n',
+     "Monster Slaying (2026-09-26 rework: DAM + DEF, no ATK; full-text row)"),
     ("Ability.pfs", 123,   5,
      "Reduces the Attack (-4) power of an enemy's first strike against the unit.\r\n",
      "Reduces the Attack (-8) power of an enemy's first strike against the unit.\r\n",

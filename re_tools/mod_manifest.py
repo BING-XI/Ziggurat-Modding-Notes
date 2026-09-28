@@ -111,8 +111,8 @@ NEVER_SHIP = {
     # Read the root-level staged listing every release -- 13 entries, a wrong one is obvious
     # there and invisible everywhere else.
     "manual_text.json",
-    # ⚠ The updater's version marker is written by the INSTALLER at ssPostInstall, from its
-    # own AppVer. Staging a copy would ship whatever version the last --stage happened to
+    # ⚠ The updater's version marker is written by the offline INSTALLER at ssPostInstall, from
+    # its own AppVer, and by installer/build_installer.py into the web payload archive. Staging a copy would ship whatever version the last --stage happened to
     # catch, and the updater would then compare GitHub against a stale number and either nag
     # forever or claim to be current when it is not.
     "version.txt",

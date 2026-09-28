@@ -193,7 +193,8 @@ the free-swing/touch path) and `0x55766699`/`0x5576669C` (second arm, same funct
 Verified 2026-08-25 by byte-diff at file offsets `0x065A55`, `0x065A91`, `0x06704D`. Under the DAM/HP
 doubling 2→4 is the correct value, so the `CalculateStrikes` copy is one too high. (Monster Slaying
 went 3→5 at *both* sites — consistently — so this is not a systematic re-grade rule; it is a specific
-miss on this one bonus.)
+miss on this one bonus. Monster Slaying has since been reworked to DAM + DEF with no ATK, 2026-09-26,
+`02-abilities-modded.md`.)
 
 ---
 
@@ -715,6 +716,19 @@ by user ruling. **Ziggurat's arrangement is not vanilla's, and the difference de
   @0x55788449`, cave `0x5580BFCE`). The ruling named Attack and Resistance only — morale's Defence
   component remains half as influential. Trivial to add if that is ever unwanted.
 
+### Flyers lose morale underground (`build_cave_flyer_morale.py`, 2026-09-27)
+
+Raw morale value −5 on Caverns (level 1), −10 on Depths (2), −15 on the Abyss (4), for a unit with
+Flying (id 1, item-aware `VMT+0x148`) and without Cave Crawling (id 4, same query). **Units only**: heroes are filtered by `IsClass(THero)`, and
+leaders never reach the site (`TLeader.GetUnitMoraleValue` returns a constant 90). Added inside
+`TAbstractUnit.GetUnitMoraleValue @0x5577EED8`, straight after vanilla's race-terrain ±10 and before
+the [0,100] clamp, so it refreshes whenever the terrain term does. Hook `0x5577EF9B`, cave
+`0x55851800`; addresses and the class survey in the script's docstring.
+
+Unproven: the penalty only shows after a morale refresh (`UpdateMoraleValue` via `Changed`,
+`SetUnitResource`, `UpdateFormation`), so flight gained mid-turn from a spell or item on a cave level
+may not count until the next refresh.
+
 ### `AoWTCPCK.dpl` — the module the DAM/HP pass never wrote to, now fixed
 
 `build_damhpdouble.py`'s 145 manifest entries are all `AoWEPACK.dpl`; the 5% conversion *did* write
@@ -741,7 +755,7 @@ backup `.pre-tcpckdamhp`. **Applied 2026-08-26, untested in game.**
 
 | site | address | was | now |
 |---|---|---|---|
-| `TCDamage[0]` melee Wall Crushing | `0x004671AC` | 6 | **12** |
+| `TCDamage[0]` melee Wall Crushing (superseded by attacker DAM, `build_wallcrush_dam.py`) | `0x004671AC` | 6 | **12** |
 | `TCDamage[1]` burning fire hex / turn | `0x004671B0` | 1 | **2** |
 | `WallMaxHP[0]` wooden wall + every city door | `0x004675F8` | 7 | **10** |
 | `WallMaxHP[1]` stone wall | `0x004675FC` | 13 | **40** |
@@ -768,8 +782,8 @@ Safe by construction, verified: no signed-byte-127 hazard in this module (every 
 to end); wall damage art rescales for free (a pure ratio, no hard-coded threshold); no AI edit needed
 (the five AI readers index the live array, not a copy); `TCombatTerrain.SetHitPoints` discards its
 argument (inert — doubled anyway for consistency with its Defence sibling); `TCombatObstacle` has no
-HP field (indestructible by design); ranged Wall Crushing takes every number from already-doubled
-AoWEPACK ability data. **Expected, not a bug: fire gets ~25–33% slower** at `TCDamage[1]`=2 against
+HP field (indestructible by design); `TCityWall` msg `0x31003` is Triple Fireball (spell `0x75`),
+whose numbers come from already-doubled AoWEPACK spell data. **Expected, not a bug: fire gets ~25–33% slower** at `TCDamage[1]`=2 against
 doubled pools (the rounding formula degenerates to exactly 1 at damage 1, ~1.5 at damage 2) — generic
 to tiny-magnitude damage under this programme, not a defect.
 
@@ -1619,6 +1633,21 @@ across 179 records: 21/81/52/25 units) is real data but is not wired into occlus
 part of ever adding it is the *fetch* (size is not reachable from a `TCombatUnit` VMT slot; `+0x90` is
 `GetAlignment`, not size), not the weight-handler hook site.
 
+**Where size is read at all — blood, nothing else (scan 2026-09-27).** Across every live exe and
+package, the only virtual calls to `TUnit.GetUnitSize` (VMT `+0x178`, reached via `[combatunit+0x4C]`)
+are two in `AoWTCPCK.dpl`, both cosmetic:
+- `CombatTE.MakeHitBlood` `0x00409A1C`: the splat's y = `rand(10) + y + 9 − 10×size` — the blood
+  appears higher on larger units.
+- `TTacticalCombatUnit.ExecuteDamage` `0x004205AE`: the splash graphic index = `30 + size`, capped at
+  `32` (vanilla), so sizes 2 and 3 share a graphic. The live module jumps to a blood-colour cave at
+  `0x0043803C` (red `30+`/cap `32`, blue `52+`/cap `54`, green `37+`/cap `39`; from
+  `AoW1 Modding/Projects/BloodTypes/install_blood_mod.py`).
+
+`AoWEPACK.dpl`'s one `+0x178` call is on a `TStructure` (`TStructure.MsgProc`), a different class.
+No exe makes a `+0x178` call or imports `GetUnitSize`, and no code in any module calls either
+implementation directly. The scan covers `call [reg+0x178]` only; it would miss a direct read of
+`TUnitResource+0x50`.
+
 ### Levers, if this is ever modded
 
 Cheapest to most invasive: re-tune an ability's arc/speed (two-byte `mov cx/dx,imm16` pairs in
@@ -2039,6 +2068,19 @@ stat, pinning results at their clamps and flattening whatever else was meant to 
 - **`HEROES.PFS`'s doubling (H6)** closed what the conversion manifest called "the one place
   where a stated decision and the installed state disagree" — recorded here so a future session does
   not re-open it as still-undecided; H6 (2026-08-24) settled it.
+
+---
+
+## 13. Auto-resolve round cap — 200
+
+`build_autocombat_roundcap.py`, applied 2026-09-27. Vanilla `TFastCombat.Execute @0x55744A0C` has no
+round limit: it ends only when a side runs out of conquer objects, a unit flees, or a round passes in
+which nobody acted. Two units that strike each other every round without either dying loop forever
+and hang the game (observed at round 3.1 million: a flying, panicked hero against a Reforming Flesh
+unit). The `call ExecuteCombatRound` at `0x55744A69` is retargeted to `cave_cap 0x55851E00`, which
+calls `TCombat.Terminate` once the round counter `[[combat+0xC]+0x44]` reaches 200. With both sides
+alive `UpdateStatus` writes result 2, the same outcome as vanilla's no-action stalemate: the attackers
+retreat. Manual combat is untouched.
 
 ---
 

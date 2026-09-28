@@ -18,6 +18,7 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Feature | Status | Owning script(s) | Binary/file |
 |---|---|---|---|
 | Sphere-tier spell research (grant-whole-tier, flat cost, grouped picker UI) | ✅ **CONFIRMED WORKING (2026-07-18)** | `build_tierresearch_dll.py`, `build_tierresearch_exe.py`, `build_glowilb.py` | `AoWEPACK.dpl`, `AoWz.exe` + `AoWzCompat.exe`, `Int\Scenes\BookWin.ILB` |
+| Magic tab + Power Distribution name the tier group, not the representative spell | applied 2026-09-27 | `build_magictab_tiername.py` | `AoWz.exe` + `AoWzCompat.exe` |
 | Spellbook hover-glow 2× boost (double-composite redraw) | 🛑 **WITHDRAWN (2026-07-18) — do not apply** | `build_glowboost.py` (script still on disk, never run) | `aowInt.dpl` |
 | Sphere Mastery casting-cost rework (opposed ×1.50 / own ×0.75) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_mastery_cost.py` | `AoWEPACK.dpl` |
 | Vanilla instant-cast raw-cost bug (coupled to Mastery, see below) | ✅ CONFIRMED WORKING (2026-08-27), per its own doc — owned elsewhere | `build_caster_cost.py` — **not one of this file's scripts**; full spec in `03-abilities-added.md` | `AoWEPACK.dpl` |
@@ -29,6 +30,7 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Power Leech (ex Power Leak) — steal 25% of rival node power | 🔨 APPLIED, UNTESTED (2026-09-07; income row 2026-09-09) | `build_powerleech.py`, `build_powerleech_ui.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `AoWz.exe`+`AoWzCompat.exe`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Terror — spell ATK 16 → 12 (five immediates, all move together) | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_terror_atk12.py` | `AoWEPACK.dpl` |
 | Lethargy (ex Slow) — halved movement, one strike fewer, AI value in both combat modes (Embrittle too); Haste +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
+| Warp Party ban — per-map "Disable Warp Party" switch (cast only; research untouched) | 🔨 APPLIED 2026-09-27; editor half driven live | `build_warpban.py` (+ `build_zigeditor.py`) | `AoWEPACK.dpl`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe`/`AoWzCompat.exe` |
 | HP/MV casting cost (extra sacrifice on top of points) | SPECULATIVE (85% "in addition", 60% "instead of") | none | `AoWEPACK.dpl` |
 | Unit-enchantment cost/upkeep scaled by target level | SPECULATIVE (85% upkeep, 55% cast-cost) | none | `AoWEPACK.dpl` |
@@ -124,6 +126,35 @@ Roman-numeral literals @`0x611020`+, ICONTAB @`0x61105C` (`0,27,30,33,36,42,39,0
 | `cave_icon` (v2) | `0x6112C0` (~236 B) | 5 B @`0x4304C8` → jmp | modes 2/3: no left icon; draws **tier-count sphere icons side by side** under the entry text at full opacity (v5 dropped the earlier 40%-blend watermark idea — see version history); Cosmos draws nothing |
 | `cave_costskip` | `0x6113B0` | 7 B @`0x42EAB1` → jmp+2nop | modes 2/3: skip the "Cost:"/"Upkeep:" mana sections |
 | nil-pushes | — | 4 byte patches @`0x42EDA7`/`AD`/`0x42EE0D`/`13` | research turns label reads just "Turns: N" |
+
+### Magic tab + Power Distribution name the group (`build_magictab_tiername.py`, both exes, 2026-09-27)
+
+Four `call TAOWLabel.SetGText` operands retargeted (nothing displaced) plus one 5-byte `jmp` in
+`TMagicWin.SpellIcnDraw`; caves in `.hcol` `0x0062A520..0x0062A9FF`.
+
+| Site | Label | Now shows |
+|---|---|---|
+| `0x42D0AD` | `TMagicWin` SpellName `[win+0xBC]` | "Cosmos II" (sphere RStr + Roman) |
+| `0x42D119` | SpellClass `[win+0xD0]` (was "Cosmos, Level 2") | member names, line 1 |
+| `0x42D185` | SpellCost `[win+0xD8]` (was "Casting Cost: N Mana") | member names, the rest |
+| `0x42BDFC` | `TPowerDlg` `[dlg+0x70]` | "Cosmos II" |
+| `0x42D8F5` | SpellIcn (40×35), `mov edx,0xA` → `jmp cave_mw_icon` | the sphere's spell-icon background disc + Roman tier numeral (AoW15WhiteGrey, white on a black 1-px shadow) |
+
+Members are the registry spells with the representative's `+0x20/+0x21` word, category ≤ 2,
+`vmt+0x64` true, passing the `id≥100` SpellTypes filter and **absent from `[magic+0x30]`** — what
+completing the research adds. Line 1 wraps at `(SpellPnl.+0x7C − label.WinLeft − 6) / 6`
+characters (floor 16); the overflow goes on line 2, which the panel clips.
+
+Icon: `Images/SpellIcn.ILB` entries are composites (`TImageNode`, ClassID `0x100`, layers at
+`[img+0x40]`, header first): layer 0 is the 40×35 sphere-coloured disc, layer 1 the monochrome
+stamp. The cave draws layer 0 only, from the library in the representative spell's own icon
+sequence (`[spell+0x2C]`, sequence 10, `[seq+0x10]`), at a fixed entry per sphere whose disc is
+that sphere's majority over every installed spell: Cosmos 120, Life 80, Death 20, Earth 40, Air 0,
+Fire 60, Water 100. A sphere-button icon (GenericI 27…42) was tried first and looked wrong in the
+box. A nil anywhere resumes the vanilla spell icon.
+
+Unproven: the numeral's position `NUM_CX, NUM_Y = 20, 10` assumes AoW15WhiteGrey is ~15 px tall. 6 px per Age8 character is estimated from the book memos' 30- and 44-character flushes
+at 260 px; if names clip or wrap early, re-tune `CHAR_PX`.
 
 **Revert:** each script's own `--undo` (surgical, zeroes its cave and restores the displaced
 bytes, touches no backup). The exe presentation layer only makes sense with the DLL mechanics
@@ -424,9 +455,9 @@ sphere-major Cosmos→Water) — do not mistake a later sphere sitting on page 2
   memo.
 
 ### Behaviour notes / limitations
-- `TMagicWin`'s small magic-screen research panel still names the representative spell (a
-  separate window, not tier-ified); turn counts are correct everywhere because every display
-  reads `magic+0x38`.
+- `TMagicWin`'s research panel (title, members, sphere disc + numeral) and the Power
+  Distribution dialog name the group since `build_magictab_tiername.py` (section after the
+  EXE-layer table). Turn counts are correct everywhere because every display reads `magic+0x38`.
 - The NewTurn event-log/popup **is** tier-ified (`cave_evtext`, v7.5/v7.6 — see the AS-BUILT DLL
   table and version history above): it names "Death I researched", not the individual spell.
   What's still silent is the *rest* of the tier's members — only the popup's own headline names
@@ -1958,7 +1989,7 @@ manual's `SPELL_BEHAVIOUR` has one line each.
     used, via `cave_walls 0x5584D700` (89 B) from `0x557B1E79`.
   - Underground garrisons with a wooden wall or none are hit at ATK 18 instead of 14, via
     `cave_atk 0x5584D75C` (32 B) from `0x557B1CE7`, which reads BSS `G_ATK 0x558FAD00`.
-  - "Underground" is levels 1–2 only. His `level != 0` would have counted the Firmament.
+  - "Underground" is every level except 0 and 3 (Caverns, Depths, the Abyss; re-tuned 2026-09-27 — it was `1 or 2`, which missed the Abyss). His `level != 0` would have counted the Firmament.
 - **Vortex rebalance** (`build_vortex_rebalance.py`; his sites A–C ×2).
   - ATK 16 → 20 (`0x557A1645`, 1 byte).
   - Ratings: Sailing 14, Swimming 10, any other non-flier 4 (was 20 / 14 / 0), via
@@ -2057,6 +2088,34 @@ In-game checklist:
 7. Multiplayer: no desync in a battle where it is cast.
 
 ---
+
+## Warp Party ban — per-map switch — 🔨 APPLIED (2026-09-27)
+
+Owner request 2026-09-27: forbid casting Warp Party in a given scenario, including a match
+already in progress; research stays open. `build_warpban.py`'s docstring holds every address.
+
+- **Storage:** `TAoWHSMap+0x193` (vanilla padding; no module addresses `+0x192/+0x193` on the
+  map), streamed as property id `0x61` from a hook on the Demo Map property in
+  `TAoWHSMap.ReadWrite`. rwByte zeroes an absent id, so every older map and save reads "allowed".
+- **Gate:** Warp Party's own `CanActivate` VMT slot (`0x557E9634`) → `c_ban`, which refuses with
+  "Warp Party is disabled on this map" or falls through to `TSpell.CanActivate` (Astral Ward
+  still applies). Covers the cast book, the exe's execution re-check and unit spellcasting.
+- **Editor:** "Disable Warp Party" checkbox under Demo Map on Map Settings > Game. The code is in
+  the DLL; `AoWDevEd.exe` carries a 14-byte stub at `0x0042EFF0` (CODE VirtualSize raised to
+  its raw size). ⚠ `TGameSettingsDlg.FormCreate` runs twice per dialog
+  (`build_deved_gamesettings_tab.py`'s `cave_build` re-invokes it); the checkbox is built only
+  when it is not already in the dialog's `Components` list.
+- **Measured live (AoWzEd, copy of `Save/autosave.asg`):** one checkbox; tick → OK → Save →
+  restart → reopen reads ticked. Ticked vs unticked editor re-saves differ only in the map's
+  top-level count (`0x20` → `0x21`), so `0x61` is the only property added.
+
+Unproven risk:
+- ⚠ **An editor re-save of a game save is not the game's own save.** The same `.asg` saved by the
+  game carries map count `0x22`; re-saved by the editor, `0x20`, with the rest of the payload
+  shifted. Whether the editor drops game state that matters (candidates: `TAoWHSMap.ReadWrite`'s
+  mode-gated ids `0x18`, `0x1D`, `0x3C`, `0x37`, `0x3A`) is not established. Do not route a live
+  match through the editor until it is.
+- Every player needs the patched DLL: an unpatched game re-saves without id `0x61`.
 
 ## Open items
 

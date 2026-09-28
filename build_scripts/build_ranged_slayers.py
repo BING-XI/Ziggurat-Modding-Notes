@@ -28,12 +28,18 @@ WHERE (verified by tracing, per the melee lesson -- don't assume one builder):
 COMPOSES with the user's existing ranged caves: the Marksmanship-scaling rework + the Cave/Depths -2 no-
 Night-Vision malus both live UPSTREAM in GetAttackRA/FUN_5580c240 (attacker-only), which we never touch.
 
+2026-09-26: Monster Slaying's block no longer uses RANGED_ATK_BONUS/RANGED_DAM_BONUS -- it calls the
+shared monsterslay.ms_test and applies +DAM / +DEF (monsterslay.py, switched by REWORK). The body is
+pinned at RNG_LEN and nop-padded so a shorter body never leaves a stale tail.
+
 Position-independent (call/pop-edi PIC anchor for the THero classref). Idempotent, verify-before-write,
 free-space asserted, backup .pre-rangedslayers, dry-run by default / --apply.
 """
 import shutil, sys, struct, os
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import monsterslay as ms
 # game dir = two levels up from this script (<game>/Modding Resources/<subdir>/);
 # override with the AOW_GAME_DIR environment variable.
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
@@ -94,11 +100,14 @@ PH_TCU=0x71111118
 
 # cave_rng: 4 slayer checks on combat attacker(ESI)/target([EBP-4]); each match bumps damage([ESP]) + attack([ESP+8]).
 # Stack (after the two saves + PIC anchor): [ESP]=damage, [ESP+4]=saved EDI, [ESP+8]=attack(uVar4). EDI = PIC anchor.
-rng_src=f"""
-    push edi
-    push eax
-    call 0x{CAVE_RNG:X}
-    pop edi
+# Monster Slaying's block. 2026-09-26 rework (monsterslay.py): +DAM on the slayer's shot, and
+# -ATK (= +DEF) on a Monster's shot or breath at a slayer, floored at 0 -- the pushed ATK is a
+# byte. The other three slayers keep +RANGED_ATK_BONUS/+RANGED_DAM_BONUS.
+if ms.REWORK:
+    ms_rng_src = ms.call_text("esi", "[ebp-4]", 0xA8) + ms.apply_text(
+        "_mr", "byte ptr [esp]", "byte ptr [esp+8]", ms.RANGED_DAM, ms.RANGED_DEF, clamp=True)
+else:
+    ms_rng_src = f"""
     mov edx, 0x70
     mov eax, esi
     mov ecx, [eax]
@@ -112,7 +121,13 @@ rng_src=f"""
     test al, al
     jz _c1
     add byte ptr [esp], {RANGED_DAM_BONUS}
-    add byte ptr [esp+8], {RANGED_ATK_BONUS}
+    add byte ptr [esp+8], {RANGED_ATK_BONUS}"""
+
+rng_src=f"""
+    push edi
+    push eax
+    call 0x{CAVE_RNG:X}
+    pop edi{ms_rng_src}
 _c1:
     mov edx, 0x92
     mov eax, esi
@@ -193,7 +208,15 @@ _cdone:
     mov edx, [eax]
     jmp 0x{RNG_CONT:X}
 """
+# PINNED at the installed length (2026-09-26): the rework made the body shorter, and this script
+# writes only len(cave_rng) bytes, so a shorter body would leave the old tail live on disk. Nops go
+# before the terminating jmp, which the terminator search and the chain splice both rely on.
+RNG_LEN=269
+_pad=RNG_LEN-len(bytes(ks.asm(rng_src,CAVE_RNG)[0]))
+assert _pad>=0, "cave_rng is over its pinned %d B" % RNG_LEN
+rng_src=rng_src.replace("_cdone:\n", "_cdone:\n"+"    nop\n"*_pad, 1)
 cave_rng=patch(bytes(ks.asm(rng_src,CAVE_RNG)[0]),CAVE_RNG,0x5F,[(PH_THERO,THERO_CLASSREF),(PH_TCU,TCU_CLASSREF)])
+assert len(cave_rng)==RNG_LEN and cave_rng[-5]==0xE9
 
 APPLY="--apply" in sys.argv
 def process(path,base,suffix=".pre-rangedslayers"):
@@ -226,8 +249,10 @@ def process(path,base,suffix=".pre-rangedslayers"):
     cur_hook=rd(RNG_INJ,5)
     live=rd(CAVE_RNG,len(cave_rng))
 
+    if ms.REWORK:
+        patches.append(ms.patch_entry(rd))
     patches.append((CAVE_RNG, live, cave_rng,
-                    "cave_rng (ranged/breath slayer +1/+1 for all four)"))
+                    "cave_rng (ranged/breath slayers)"))
     if live==cave_rng:
         pass
     elif rd(CAVE_RNG,len(PROLOGUE))==PROLOGUE:
@@ -296,9 +321,11 @@ def process(path,base,suffix=".pre-rangedslayers"):
         if cur!=orig and cur!=new: ok=False; print(f"[!] {va:08X} ({desc})\n     exp {orig.hex(' ')}\n     got {cur.hex(' ')}")
     if not ok: print("[x] mismatch -- not written"); return False
     if not APPLY: print("[dry] originals verified, cave zone free"); return True
-    os.makedirs(BACKUP_DIR, exist_ok=True)
     bp=os.path.join(BACKUP_DIR, os.path.basename(path)+suffix)
-    if not os.path.exists(bp): shutil.copy2(path,bp); print(f"[bak] {bp}")
+    # only a file with a stock hook and a virgin cave zone is honestly "pre-rangedslayers"
+    if cur_hook==RNG_ORIG and not any(live) and not os.path.exists(bp):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        shutil.copy2(path,bp); print(f"[bak] {bp}")
     for va,orig,new,desc in patches:
         o=va2off(secs,va); data[o:o+len(new)]=new; print(f"[w ] {va:08X} {desc}")
     try: open(path,"wb").write(data)

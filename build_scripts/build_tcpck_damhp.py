@@ -58,8 +58,10 @@ lands in one of them. This script uses explicit addresses only, never a range.
 NOT TOUCHED, deliberately:
   * TCAttack[0]/[1] @0x004671A4/A8 -- ALREADY doubled by fivepct (6->12, 10->20). Asserted below;
     doubling again would quadruple them.
-  * Ranged Wall Crushing (msg 0x31003) -- takes all its numbers from AoWEPACK ability data, already
-    doubled. Nothing here to patch; it is a regression check, not a target.
+  * TCityWall msg 0x31003 -- Triple Fireball (spell 0x75) against a wall; its numbers come from
+    AoWEPACK spell data, already doubled.
+TCDamage[0] is read only by LastMove @0x0040A276, whose ExecuteDamageRole call build_wallcrush_dam.py
+retargets to the attacker's DAM; the 12 here survives only as the argument that thunk replaces.
   * MakeHitBlood band 3 -- see the note beside SITES. Briefly widened to 0x7F on 2026-08-26 and
     REVERTED the same day on the author's ruling; the ladder keeps 0x7F so the state verifies.
 

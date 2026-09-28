@@ -76,9 +76,11 @@ above, 0x55823000.., is left alone.
   build_caster_cost.py 0x55820800..0x55820FFF, build_dispelmagic5.py 0x55821000..0x558213FF.
   "Unclaimed" is a statement about a moment in time, not a reservation.
 
-Mutable state: BSS page slack header at 0x558FAB00 (0x78 bytes used of the 0x80
-window 0x558FAB00..0x558FAB7F). BSS has no file backing (raw size 0), so nothing is
-written to disk for it and it is zero at load.
+Mutable state: BSS page slack header at 0x558FAB00 (0xA8 bytes used of the 0x100
+window 0x558FAB00..0x558FABFF: the three per-level arrays have 8 slots since
+2026-09-27; 0x78 of 0x80 while they had 4). BSS has no file backing (raw size 0), so nothing
+is written to disk for it and it is zero at load. The window stops at 0x558FAC00,
+build_terror_oncepercombat.py's F_SIDE.
 
   BSS NEIGHBOUR SURVEY (re-measured 2026-08-26 by grepping BOTH patch trees; the
   earlier version of this block understated Inioch's claims).
@@ -97,7 +99,7 @@ written to disk for it and it is zero at load.
       0x558FAF60 (+0x24)       diagnostic recorder, 14 dwords -> ends ~0x558FAF98
       0x558FAFA0..0x558FB000   12 x 12 B mark table, runs to the BSS page end
   So the occupied spans are 0x558FA800..0x558FAA24 and 0x558FAF20..0x558FB000, and
-  our window 0x558FAB00..0x558FAB7F sits in the clear gap between them either way.
+  our window 0x558FAB00..0x558FABFF sits in the clear gap between them either way.
 
 Bulk storage is the Delphi heap: ONE block, grown on demand, never freed (this keeps
 alloc/free churn off the per-day path). Layout: labels[] (2 B/cell, per level),
@@ -521,15 +523,19 @@ TABLE_VA   = CAVE_VA            # 0x80 bytes of neighbour deltas
 
 # MAX_LEVELS is the ONE place the level ceiling lives. It must track the engine's
 # own cap byte at TAoWHSMap.AddMapLevel 0x5577768E, which build_maplevel4.py raised
-# from 3 to 4 on 2026-09-06 to make room for the Sky level (index 3). Everything
+# from 3 to 4 on 2026-09-06 for the Firmament (index 3) and to 5 on 2026-09-27 for
+# the Abyss (index 4). A map with more levels than MAX_LEVELS fails entry's sanity
+# guard and earns no water income at all. Since 2026-09-27 it is 8, the most the header
+# window holds (HDR_END 0xA8 of 0x100) and above anything the engine can create (the
+# editor's own ceiling is z <= 7), so it no longer has to follow the cap byte. Everything
 # below derives from it: the three per-level arrays in the BSS header AND the four
 # `cmp edx, MAX_LEVELS` loop/guard bounds in the cave (entry's sanity check, and
 # build_t1's dim / mark / bfs loops). Do not write the number anywhere else --
 # a header that is 4 slots wide while a loop still stops at 3 silently drops the
 # Sky level's water from every region.
-MAX_LEVELS = 4
+MAX_LEVELS = 8
 
-HDR = 0x558FAB00                # BSS page slack, 0x80-byte window
+HDR = 0x558FAB00                # BSS page slack, 0x100-byte window
 H_MAP      = HDR + 0x00         # cached map ptr (0 => cache invalid)
 H_DAY      = HDR + 0x04         # cached [map+0x174]
 H_NLEV     = HDR + 0x08         # cached [container+0x14]
@@ -559,7 +565,7 @@ H_YN       = H_QOFF + 0x18      # entries actually cached, 0..MAX_YARDS
 H_YCOUNT   = H_QOFF + 0x1C      # TStructureControl.GetCount at the last harvest
 H_YVALID   = H_QOFF + 0x20      # 1 = yards[] is usable; build_t1 clears it
 HDR_END    = H_QOFF + 0x24
-HDR_WINDOW = 0x80
+HDR_WINDOW = 0x100
 
 # ---- engine entry points (all live-verified this session) -----------------
 MAPGLOBAL = 0x558FA040          # AoWE.AoWHSMap

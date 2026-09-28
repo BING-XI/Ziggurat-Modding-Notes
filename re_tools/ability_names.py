@@ -118,7 +118,10 @@ DOC_NAMES = {0x17: "Sailing", 0x1A: "Trail of Darkness", 0x3F: "Dragon"}
 #        text, but 0x92/0x93 are the hero-buyable skill (Ability.pfs tag 6 = 12 points) while
 #        0xA0/0xA1 are the spell-applied enchantment with no purchase cost. Both must stay
 #        separately selectable in the editor, so the enchantments keep the longer name.
-DISPLAY_OVERRIDES = {0x39: "Shoot Bolt", 0x8B: "Cave Concealment",
+#   0x1A renamed "Mantle of Gloom" 2026-09-26 through Dict/ResStr.mld (build_resstr_names.py row
+#        "Trail Of Darkness"); the DLL string is unchanged, so every scan above still finds the
+#        vanilla name.
+DISPLAY_OVERRIDES = {0x1A: "Mantle of Gloom", 0x39: "Shoot Bolt", 0x8B: "Cave Concealment",
                      0x92: "Holy Champion", 0x93: "Unholy Champion"}
 
 # a handful of class-derived names read better spelled out than as the class stem

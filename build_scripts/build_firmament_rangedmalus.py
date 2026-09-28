@@ -32,8 +32,11 @@ THE CHANGE -- 4 bytes in place, same length, same jump target
       1    01    0   yes    Caverns
       2    10    0   yes    Depths
       3    11    1   no     Firmament
+      4   100    0   yes    Abyss (build_maplevel4.py v3, 2026-09-27)
 
-That is "level 0 or level 3" for the four levels the engine has; model() asserts it.  An explicit
+That is "level 0 or level 3" for the five levels the engine has; model() asserts it.  ⚠ The
+parity trick stops matching at a sixth level: index 5 (101) is even, so it would read as surface.
+An explicit
 compare pair needs 6 bytes, and the only spare bytes (the 8 at 0x5580C288..0x5580C28F) are the
 growth zone `build_marksmanship_atk2.py` asserts is zero.
 
@@ -74,7 +77,7 @@ AOW_PROCS = ("AoW", "AoWz", "AoWCompat", "AoWzCompat", "AoWDevEd", "AoWzEd", "Ao
 
 def model():
     """The predicate NEW implements, checked against the ruling for every level."""
-    for level in range(4):
+    for level in range(5):
         skip = bin(level).count("1") % 2 == 0          # PF after test al,al
         assert skip == (level in (0, 3)), level
     return True

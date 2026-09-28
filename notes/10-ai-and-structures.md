@@ -48,6 +48,7 @@ at length below because it exists nowhere else; the build script itself only sho
 | BSS flag collision: `simfly`/`razeok` vs `build_path_outerring.py` | 🔨 APPLIED, awaiting confirmation (2026-07-22) | `build_simfly.py` + `build_razebattle_tower.py` | `AoWEPACK.dpl` |
 | City loot gold multiplier (9×→10×) | 🔨 APPLIED, UNTESTED (2026-07-12) | `build_loot_multiplier.py` | `AoWEPACK.dpl` |
 | Trampled crops: Farms −5 (was +5), city farmland charges the city's race — §12.1 | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_crop_trample.py` | `AoWEPACK.dpl` |
+| Drill digs cave entrances via Construct — §13 | SPECULATIVE — feasible, not built (2026-09-27) | none written | `AoWEPACK.dpl`, `Unitres.pfs` |
 | Migrate / Loot / Raze relation changes scale with city size, upgrades and walls — §12.2 | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_cityrel_scale.py` | `AoWEPACK.dpl` |
 | Replay assertion on an enchanted off-map (never-activated) unit | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_enchant_assert.py` | `AoWEPACK.dpl` |
 | Arena: persistent state, real battle, flat gold/XP/item rewards (Stages 1–3) | ✅ CONFIRMED WORKING (2026-07-31) | `build_arena.py` | `AoWEPACK.dpl` |
@@ -2890,7 +2891,99 @@ Owner's design: new baselines (table above) plus `M` in the direction of each en
 5. Raze a walled, upgraded city (fast and manual combat when Ziggurat's raze battle fires):
    −20 − M, with the walls counted even though razing removes them.
 
+## 13. Drill-dug cave entrances — feasibility study, nothing built (2026-09-27)
+
+Owner request: the Drill (`Unitres.pfs` record 253, already has Tunnelling `0x2A`) digs a cave
+entrance, choosing up or down, over several turns, for 200 gold. Static analysis only; no byte
+written, nothing launched. **Verdict: feasible through the Construct ability (`0x7D`).**
+
+**Tunnelling is not a viable trigger.** It is movement-only (`TMoveControl` type 7 plus
+`TAbstractUnit.MovedTo`'s EarthWall→Dirt dig, `09-terrain-movement.md`) with no order, button or TE.
+Starting a build from it needs a new command in both exes and a new serialised TE class
+(`RegisterEClasses`). It remains usable as the *gate* on who may dig.
+
+### 13.1 The construction pipeline
+
+| piece | address | behaviour |
+|---|---|---|
+| `TConstructAbility.Create` | `0x557712D0` | id `0x7D`; `+0x28` = `TConstructionControlList`; registers `TRebuildConstructionControl` (VMT `0x55770A28`) and `TBuildRoadsControl` (VMT `0x55770AE0`) |
+| `RegisterConstructionControl` | `0x55771408` | raises "Construction Control ID already used" on a duplicate `ID()` (VMT `+0x58`). Other callers: `Tower.RegisterTower @0x557C39B0`, `Shipyard.RegisterShipyard` (call at `0x557C78E1`), both from `AoWEReg` at **package init** |
+| control VMT slots | — | `+0x4C` GetInfo(unit, &name, &turns, &cost) · `+0x50` CanConstruct(unit, &err) · `+0x54` Construct(unit) · `+0x58` ID · `+0x5C` ValidateLocation(unit, &err) · `+0x60` StructureResource(unit) |
+| `TConstructionControl.CanConstruct` | `0x557711D0` | calls GetInfo; "not enough gold" if cost > `[player+0xC4]` |
+| `TStructureConstructionControl.CanConstruct` | `0x557621EC` | ValidateLocation ∧ base CanConstruct ∧ StructureResource ≠ nil |
+| `…ValidateLocation` | `0x55762050` | over the resource footprint at the builder's level: field unowned or own, no `TStructure`, overlay ∉ {0 mountain, 2}, terrain ∈ {1–5, `0xC` Dirt} |
+| `…Construct` | `0x55762230` | posts `TConstructStructureTE`: `+0x10` unit id, `+0x14` player, `+0x18` control ID |
+| `TConstructStructureTE.Execute` | `0x55761E40` | finds the control by ID in ability `0x7D`'s list; CanConstruct; StructureResource; `ClearTerrain` over the footprint on the builder's level; resource VMT `+0x68` creates and places the structure; GetInfo; structure VMT `+0x1A4` = `ExecuteBuild(unit, turns)`; deducts cost; builder VMT `+0x1AC` (unidentified) |
+| Tower / Shipyard | `0x557C381C` / `0x557C76D0` | IDs 3 / 4. Tower live cost **10** (hand edit `0x557C3894`, vanilla 50), 2 turns; Shipyard 50, 2 turns |
+
+**Build timer, generic to every `TStructure`.** `+0x24` builder's player (`0xFF` = done, `GetBuilding
+@0x5575F008`), `+0x25` turns left. `ExecuteBuild @0x5575EFD8` sets both; `NewTurn @0x5575F33C`
+decrements on the builder's turn and calls VMT `+0x19C` = `BuildingDone @0x5575F010` at 0, which
+logs "structure built" and resets `+0x24`. `TStructure.ReadWrite @0x5575E658` streams both bytes and
+`TCave.ReadWrite @0x557B37C4` inherits it, so a half-dug cave survives a save.
+
+**Exe build dialog, `AoWz.exe 0x43169C`.** Loops every control in ability `0x7D`'s list
+(`GetConstructionControl`, its only import of the framework), calls GetInfo, and adds a row
+(name via `AddObject(name, control)`, cost and turns columns). It lists **every** control for
+**every** Construct unit; nothing filters by unit. A new control appears with no exe change.
+
+### 13.2 Cave facts the design relies on
+
+- Resource ClassID **`0x2037F`** (`TCaveResource.ClassID @0x557B3F2C`); the structure is `0x2037E`.
+  `Release.hss` holds two cave records (normal and water tunnel); a lookup by class returns the first.
+- `TCave.Create @0x557B3424` always writes `[cave+0x30] = 1` (down mouth). `TCave.PlaceHX
+  @0x557B3670` then creates the twin at the same x,y through `twin_place`/`twin_strict`
+  (`build_maplevel4.py`), which already handles Firmament, Abyss and disabled levels.
+- No cave method reads `+0x24`: `CanEnter @0x557B39E0`, `CanEnterSelection @0x557B3930`,
+  `MoveExclusive @0x557B37F8` and `UpdateMapField @0x557B37E8` (sets the exclusive-move bit
+  `0x8000`) all ignore the build timer. A cave under construction is usable unless gated.
+- `TCave` overrides `GetTerrainTypeImage` (`0x557B361C`), so it bypasses the base scaffold images
+  (`0x5575E6A0` → `0x5580C390`) and looks finished while building.
+- `TStructure.ForceTerrainType @0x5575E93C` returns `0xC`, and `PlaceHX` calls
+  `TMultiHexMO.OverrideTerrain` after a successful twin placement. Whether that lets a mouth sit on
+  EarthWall was not traced (`ILTer`/`HSEngine` are not in Ghidra).
+- Unit identity: the Path of Sand idiom (`unit+0x40` → resource → `UnitResourceIndex`,
+  `09-terrain-movement.md`).
+- Live-vs-vanilla byte diff 2026-09-27: `TCave.Create`, `UpdateMapField`, `CanEnter`,
+  `GetTerrainTypeImage`, `RegisterTower`, `RegisterCave`, `TConstructStructureTE.Execute`,
+  `TStructureConstructionControl.ValidateLocation`/`CanConstruct`, `TStructure.NewTurn`/
+  `BuildingDone` identical. `MoveExclusive` and `CanEnterSelection` differ only at
+  `build_maplevel4.py`'s sites (`0x557B3810`/`0x557B3832`, `0x557B393C`); their entries are free.
+
+### 13.3 Proposed build
+
+1. **Two controls, "dig down" / "dig up"**, new IDs, registered after the Tower in
+   `Tower.RegisterTower`. Clone the instance, not the class (`05-spells-added.md`): the TE stores
+   only the control ID, so the control object is never serialised. Each instance points at a
+   runtime copy of `TStructureConstructionControl`'s VMT in BSS, with slots `+0x4C/+0x50/+0x58/
+   +0x5C/+0x60` rewritten to PIC cave methods. GetInfo returns 200 gold and the turn count;
+   StructureResource returns resource `0x2037F`.
+2. **Direction.** Hook the VMT `+0x68` placement call in `TConstructStructureTE.Execute`: when the
+   control is "dig up", set a BSS flag around that single call; `TCave.Create` writes `1 − flag` to
+   `+0x30`. A twin is unaffected because `PlaceHX` sets its flag explicitly after `Create`.
+3. **Far end.** ValidateLocation also checks: target level exists (`twin_place`); no structure or
+   army on the far hex; far terrain ∉ {0, `0xA`, 9, `0xB`, `0xE`, `0xF`}. The TE digs the far hex
+   EarthWall→Dirt (Level Terrain's call) before placement.
+4. **Closed until built.** A `+0x24 != 0xFF` gate on either mouth at the entries of `CanEnter`,
+   `UpdateMapField` and `MoveExclusive`; `ExecuteBuild` on both mouths.
+5. **Data:** add Construct `0x7D` to Drill record 253.
+
+No RNG draws. MP-safe: the build runs through a token TE. Size about that of `build_maplevel4.py`.
+
+**Unproven risks:** registration runs at package init, so only a launch proves it; the pathfinder's
+exclusive-move link may not refresh when `BuildingDone` fires; the mouth hex is the only opening at
+the far end, so only a tunneller can leave it until the Drill tunnels onward.
+
+**Couplings:** `build_maplevel4.py` owns twelve `TCave` sites and the twin helpers at
+`0x55844100`; the Tower cost hand edit at `0x557C3894` sits in `TTowerConstructionControl.GetInfo`.
+
 ## Open items
+
+- **Drill-dug caves (§13) await five owner rulings:** Drill only, or any Tunnelling + Construct
+  unit (adds Dwarf Miner 118, Earth Elemental 225); whether the Drill may also build Tower,
+  Shipyard, Roads and Rebuild once it has Construct; the turn count; show-and-refuse or hide the
+  cave rows for other Construct units (hiding needs `AoWz.exe` + `AoWzCompat.exe` at `0x43176D`);
+  dig only the far mouth hex or its six neighbours too.
 
 - **AI non-city scorched-earth raze (v6, §3.4): the isolating test was never run.** Re-run the
   engineered scenario with an *undefended* mine (strip its guards) so the razing stack arrives at full

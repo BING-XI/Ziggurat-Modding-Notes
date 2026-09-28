@@ -117,6 +117,9 @@ ROWS = [
  ("enchantment", "Stone Skin DEF",           0x557BAF40, MOV,      4,   3),
  ("enchantment", "Vertigo ATK",              0x557BAC5C, MOV,     -4,  -3),
  ("enchantment", "Vertigo DEF",              0x557BAC60, MOV,     -4,  -3),
+ # Monster Slaying's four rows below are DEAD CODE since 2026-09-26: build_monster_slaying.py jumps
+ # over both blocks (hooks 0x55766564 / 0x55767904) and the numbers live in monsterslay.py. The
+ # bytes are untouched, so these rows still verify; retuning them changes nothing in the game.
  ("combatboost", "Monster Slaying ATK (vs Dragon, StrikeDV)", 0x5576658A, ADDBL,    6, 5),
  ("combatboost", "Monster Slaying DAM (StrikeDV)",            0x5576658D, ADDESP,   6, 5),
  ("combatboost", "Monster Slaying ATK (CalculateUnitStrikes)",0x5576792A, ADDEBX,   6, 5),

@@ -1,408 +1,550 @@
 #!/usr/bin/env python3
 r"""
-AoW1 map-editor TIMER AUTOSAVE  --  binary patch for Ziggurat\AoWDevEd.exe.
-
-STATUS: SPECULATIVE / NOT APPLIED, and currently NOT APPLICABLE.  `--apply` aborts with
-"no PE header room for a new section": AoWDevEd.exe's e_lfanew is 0x100 and its thirteen
-section headers end at exactly 0x400, where CODE's raw data begins.  The seven custom
-sections already there (.dlgd .mtb .ctp .vgo .pty .tres .nmg) used the room up, so the
-`.asv` approach below cannot be taken as written.  Re-home the cave in page slack inside an
-existing writable section -- `build_deved_levelnav.py` does exactly that in `.tres` and is
-the worked example.
+EDITOR AUTOSAVE (v2)  --  Ziggurat\HSEPack.dpl only.
 
 WHAT IT DOES
-  Every N minutes (default 5) the editor writes the CURRENT map to a fixed backup
-  file (<gamedir>\Save\editor_autosave.hsm) WITHOUT touching the user's real
-  filename and WITHOUT clearing the modified/dirty flag -- so the user still sees
-  unsaved changes and their own Save target is undisturbed. A crash/hang then
-  costs at most N minutes of work.
+  Every AUTOSAVE_MINUTES the map editor writes the open map to
+      <engine data root>Scenario\Autosave\Autosave 1.hsm / 2 / 3
+  overwriting whichever of the three is OLDEST (a missing file counts as oldest), so the three
+  always hold the last three autosaved states, newest by file date. The user's own filename,
+  title bar and modified flag are untouched: Save still writes the user's file, and closing still
+  asks about unsaved changes. Both folders are created on demand. No new import, no exe byte, so
+  no `build_zigeditor.py` step: AoWzEd.exe loads Ziggurat\HSEPack.dpl directly.
 
-HOOK  (verified independently per exe)
-  TMainForm.HSMEditUpdateFrame -- the editor's per-rendered-frame handler (the
-  render loop; ~60/s after the FrameRate patch). We overwrite its 6-byte entry
-  prologue  `push ebp; mov ebp,esp; add esp,-0x64`  (55 8B EC 83 C4 9C) with
-  `jmp <cave>` (E9) + one NOP. eax = TMainForm at entry (untouched at this point).
-  JMP not CALL: nothing pushed, so re-running the prologue keeps the function's own
-  `ret` correct (a CALL hook would ret into the body -> crash).
-    AoWDevEd.exe : entry 0x00428D18  -> resume 0x00428D1E
-  ⚠ `AoWEd.exe` (RETIRED as a target -- see the trap below) carries the byte-identical
-  entry at 0x00428CA0 -> resume 0x00428CA6. Kept as reusable RE machinery.
+  A tick saves only when ALL hold (else it does nothing and waits for the next tick):
+    * [THSMEdit+0x1BC] != 0            a map is open (the test THSMEdit.Save makes)
+    * [engine+0x34] & 0x1E == 0        the engine is not loading/saving a map or mapset
+                                       (bits set by LoadHSM 2, SaveHSM 4, LoadHSS 8, SaveHSS 0x10)
+    * [map+0x3C] & 0x99 == 0x81        modified (bit 0), EDITED SINCE THE LAST AUTOSAVE (bit 7,
+                                       this patch), not being read (0x10) or destroyed (8)
+    * IsWindowEnabled(parent form)     no modal dialog or message box is up over the editor
+  so an idle editor, a map the user has just saved, and a map with no edit since the last
+  autosave all write nothing.
 
-================================================================================
-⚠⚠ THE EDITOR EXE TRAP -- an editor patch is TWO steps
-================================================================================
-`Ziggurat\AoWDevEd.exe` (zigexe.SRC_EDITOR) is the PATCH SOURCE, and nothing runs
-it. The editor the owner actually launches is `Ziggurat\AoWzEd.exe`
-(zigexe.LIVE_EDITOR), which `build_zigeditor.py` REBUILDS from AoWDevEd.exe. Skip
-the second step and the patch sits in a file no one loads -- silently:
+HOW -- three edits, all in HSEPack.dpl (preferred base 0x55600000; it rebases, cave is PIC)
+  1. THSMap.SetModified @0x5560C3C0 ORs the set constant at 0x5560C3D0 into [map+0x3C].
+     That constant 01 -> 81: every SetModified now also sets bit 7, "edited since the last
+     autosave". ResetModified's constant (0x5560C3E8) stays 01, so a manual save clears bit 0
+     only; the tick clears bit 7. Bit 7 of [THSMap+0x3C] is otherwise unused: every byte access
+     to +0x3C on a map in HSEPack, AoWEPACK, AoWDevEd.exe and AoWz.exe is a single-bit test or
+     an OR/AND with a set constant (1, 2, 4, 8, 0x10). The game calls SetModified too and gets
+     the bit; nothing there reads it, and [map+0x3C] is runtime state, not serialized.
+  2. THSMEdit.SetHSEngine @0x55613CD0 entry, 6 B `85 D2 74 13 8B CA` (test edx,edx / je /
+     mov ecx,edx) -> `jmp hook_seteng` + nop. Called once, from TMainForm.FormCreate
+     (AoWDevEd/AoWzEd 0x0042864F); the game imports no THSMEdit symbol. hook_seteng replays the
+     test and, for a non-nil engine, creates ONE VCL TTimer (owner = the THSMEdit, so it dies
+     with the map view) with OnTimer = tick (Data = the THSMEdit), Interval = the period.
+     Guarded by G_TIMER so a second SetHSEngine makes no second timer.
+  3. Cave, CODE zero tail (see OWNERSHIP): hook_seteng + make_timer at +0, seh_restore +0xD0,
+     getdelta +0xF0, tick + set_len + set_len_mkdir +0x100, the three path literals +0x300.
 
-    python build_editor_autosave.py --apply    # patches Ziggurat\AoWDevEd.exe
-    python build_zigeditor.py       --apply    # rebuilds -> Ziggurat\AoWzEd.exe
+  VCL30 is reached with no new import: vcl_delta = [HSEPack IAT slot of TOpenDialog.Create
+  0x556308DC] - 0x4137AFB0, then TTimer VMT 0x413542F8, TTimer.Create 0x41356AE8,
+  TTimer.SetInterval 0x41356C78, SysUtils.CreateDir 0x4130C194, SysUtils.FileAge 0x4130B3EC,
+  Forms.GetParentForm 0x41335578 (all preferred VAs + delta). HSEPack's own thunks cover
+  TWinControl.GetHandle (0x55601834) and user32!IsWindowEnabled (0x5560153C), reached rel32.
+  TTimer fields (vcl30, instsize 0x38): FInterval +0x24, FOnTimer.Code +0x2C, .Data +0x30.
+  Setting the fields and then calling SetInterval runs UpdateTimer, which calls SetTimer.
 
-(build_zigeditor.py takes --apply / --undo / --png PATH; no args = dry run.)
+  The save is THSMEdit.Save's call without its filename store:
+  `push 0 / push 0 / edx = path / eax = engine / call [[eax]+0xAC]` = THSEngine.SaveHSM
+  @0x5561043C. A nil progress callback is safe: TEStorageStream.ShowProgress tests only the
+  high word. ⚠⚠ SaveHSM CLEARS THE MODIFIED BIT ITSELF: TAoWHSMap.ReadWrite (AoWEPACK
+  0x55776DD5) calls THSMap.ResetModified whenever (stream mode & 6) == 2, i.e. on every binary
+  write -- THSMEdit.Save's own ResetModified is redundant. Measured live: 0x87 -> 0x06. So the
+  tick ORs bit 0 back after the call, and a hand-built SEH frame around the call (handler
+  seh_restore, map pointer pushed just above the record) ORs it back if SaveHSM raises and then
+  returns ExceptionContinueSearch. HSEPack has no load config, so the handler needs no SafeSEH
+  entry.
+  ⚠ Exceptions: TTimer.WndProc (vcl30 0x41356B68) wraps OnTimer in try/except ->
+  Application.HandleException, so a failed save (read-only file, disk full, no Scenario\)
+  shows the VCL error box and the editor carries on. Bit 7 is cleared BEFORE the save, so a
+  failing target costs one box per burst of edits, not one per tick.
 
-⚠ `AoWEd.exe` is NO LONGER A TARGET. The 2026-09-09 move left no copy in the overlay
--- only the game root's stock one, which is VANILLA and must never be patched.
+  Path: FStartupDirectory = [engine+0x2C] (TEngine; always ends in '\', see build_dlgdirs.py)
+  + "Scenario" (CreateDir) + "\Autosave" (CreateDir) + "\Autosave N.hsm", built in G_PATH, a
+  Delphi AnsiString with refcount -1 (callees deep-copy it, never free it). Nothing is baked:
+  the root is read at run time. Roots over ROOT_MAX chars skip the save.
 
-⚠⚠ AUTOSAVE_PATH IS BAKED INTO THE CAVE AS AN ABSOLUTE STRING, AND IT IS RESOLVED
-FROM `GAME`. On this machine that string contains the owner's profile directory, so
-applying this script as written would write a personal path into a binary -- the
-exact defect `build_dlgdirs.py` shipped into HSEPack.dpl and AoWDevEd.exe (CLAUDE.md,
-"a resolved path must never be BAKED INTO A PATCHED BINARY"). It is also a
-correctness bug: a baked path works on one install and fails SILENTLY elsewhere,
-because Win32 resolves a bare filename against %WINDIR%. Fix before applying --
-derive the directory at run time with GetModuleFileNameA(NULL, buf, MAX_PATH), scan
-back to the last '\', append "Save\editor_autosave.hsm". ⭐ Check the exe's own
-import table first: the editor binaries already import it with a Delphi thunk, so it
-is one `call rel32`.
+OWNERSHIP (record in 12-re-toolchain.md §6.2 HSEPack)
+  0x5561C000..0x5561C3FF  CODE zero tail, exclusive. HSEPack's last CODE export ends
+                          ~0x5561ACEB; build_hss_exception_detail.py reserves 0x5561B000..+0x1FF.
+                          CODE is R+X only -- no state here.
+  0x5562FC00..0x5562FFFF  BSS page slack past VirtualSize 0x88D (loader-zeroed, RW, no file
+                          bytes), exclusive: G_TIMER +0, G_PATH StrRec +8/+0xC, chars +0x10.
+  0x55613CD0 (6 B)        hook site.   0x5560C3D0 (1 B)  SetModified's set constant.
+  No .reloc entry in any of these ranges (asserted); the cave uses no absolute address.
 
-TIMER  (frame-count based -- fully self-contained, NO imports)
-  Neither exe imports GetElapsedMilliSeconds (GFXEPACK exports it but the exe does
-  NOT import it) nor GetTickCount/timeGetTime -- verified in the IAT. Rather than
-  perform risky import-table surgery or hardcode a rebasing cross-DLL address, the
-  cave keeps a 32-bit frame counter in its own data. The handler is the render
-  loop, so counting frames is a robust clock with no rollover / first-call edge
-  cases. Threshold AUTOSAVE_FRAMES = minutes * 60 * FPS (FPS = the DFM FrameRate,
-  60 after build_editor_framerate.py). Change MINUTES / FPS below to retune.
-  (SPECULATIVE precision: wall-clock accuracy tracks the actual frame rate; if the
-  user sets a different FrameRate, pass --fps to match, else the interval scales.)
+RANDOMNESS: none drawn. Multiplayer: the game-side effect is one extra bit in a runtime map field.
 
-GUARDS (skip the save unless it is worth doing)  -- all null-checked:
-  HSMEdit  = [TMainForm+0x22c]          ; must be non-null
-  [HSMEdit+0x1bc] != 0                   ; "map loaded" flag (Save early-outs on 0)
-  HSSet    = [HSMEdit+0x1c0]             ; the THSEngine container; non-null
-  THSMap   = [HSSet+0x3c]                ; non-null
-  [THSMap+0x3c] & 1                       ; modified/dirty bit (SetModified/ResetModified
-                                           OR/AND-NOT a const byte = 0x01 -- verified)
+UNPROVEN (static checks cannot show it): that no editor edit path marks the map modified
+without THSMap.SetModified (such an edit is only autosaved after the next SetModified edit).
+Mapset (.hss / .pfs) edits are not autosaved -- only the map.
 
-THE SAVE  (identical convention to HSMEdit.THSMEdit.Save @0x55614ED0, verified)
-  push 0                 ; callback DATA  ([ebp+0xc] in SaveHSM -> stream+0x20)
-  push 0                 ; callback CODE  ([ebp+0x8] -> stream+0x1c)  == NIL
-  mov  edx, <lit+8>      ; filename AnsiString ptr (our const literal, NOT +0x1e4)
-  mov  eax, HSSet
-  mov  ecx, [eax]        ; HSSet vmt
-  call [ecx+0xAC]        ; THSEngine.SaveHSM  (VMT slot verified = 0x5561043C)
-  We do NOT call THSMap.ResetModified afterwards, so the dirty flag persists.
+USAGE
+  python build_editor_autosave.py            dry run: state + cave disassembly
+  python build_editor_autosave.py --apply    write (kills AoW binaries holding the DLL)
+  python build_editor_autosave.py --undo     surgical: hook bytes, the constant, zero the cave
+                                             and nothing else
+  Re-tune (AUTOSAVE_MINUTES, SLOTS, folder names) by editing the constants and re-running
+  --apply: the cave is rewritten in place.
 
-  NIL CALLBACK IS SAFE (verified): SaveHSM forwards the 2 stack params to
-  TEngine.WriteEObject, which stores them at stream+0x1c (code) / +0x20 (data).
-  Engine.TEStorageStream.ShowProgress @0x5550FF58 guards with
-  `cmp word ptr [stream+0x1e],0 / je skip` -- i.e. it tests the HIGH WORD of the
-  code pointer. A NIL (0) code pointer => guard skips the call entirely.
-
-ANSISTRING LITERAL  (Delphi 3 const layout, verified against exe literals like
-  0x404EE4 'Index', 0x407B84 'Change Terrain'):
-     [lit+0] = FF FF FF FF   (refcount -1 => immutable, never freed)
-     [lit+4] = <length:dword>
-     [lit+8] = <chars...> 00  (NUL-terminated)
-  We pass edx = lit+8. Immutable refcount means no LStrClr/LStrAsg needed and the
-  callee cannot free or realloc it.
-
-CAVE placement: new PE section ".asv" appended to each exe (fixed base 0x400000,
-so absolute data refs inside the cave are fine). Keystone-assembled, capstone
-dumped below for review.
-
-CONVENTIONS: dry-run by default; --apply to write; idempotent (re-run verifies);
-verify-before-write aborts on any byte mismatch; auto-backup to
-<game dir>\backups\<exe>.pre-autosave.
-The editor locks its own exe; close it before --apply.
-
-REVERT: this script has NO revert flag, and there is no snapshot layer to fall back
-on -- both `.pre-*` stacks were purged (2026-08-08 and 2026-09-03) and nothing has
-rebuilt them, so any `.pre-autosave` on disk is at most one disposable copy of that
-day's file. Undo it surgically: restore the 6 entry bytes at the hook and drop the
-`.asv` section (it shares no cave with any other feature).
-
-Usage:
-  python build_editor_autosave.py                 # dry-run
-  python build_editor_autosave.py --apply         # patch
-  python build_editor_autosave.py --minutes 10    # retune interval
-  python build_editor_autosave.py --fps 30        # match a non-default FrameRate
+v1 (2026-07-07, reverted) hooked TMainForm.HSMEditUpdateFrame in AoWDevEd.exe; that is an
+event fired only while the mouse is over a hex with the app active, so its frame counter never
+advanced. v1 is gone; this file is v2.
 """
-import argparse, os, shutil, struct, sys
+import os, struct, subprocess, sys
+
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 
-import zigexe
-
-# game dir = two levels up from this script (<game>/Modding Resources/<subdir>/);
-# override with the AOW_GAME_DIR environment variable.
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-IB   = 0x00400000
-BACKUP_DIR = os.path.join(GAME, "backups")
-BACKUP_SUFFIX = ".pre-autosave"
+DLL = os.path.join(GAME, "HSEPack.dpl")
 
-ks = Ks(KS_ARCH_X86, KS_MODE_32)
-cs = Cs(CS_ARCH_X86, CS_MODE_32)
+AUTOSAVE_MINUTES = 5
+SLOTS = 3                                  # Autosave 1 .. Autosave SLOTS  (1..9)
+DIR1 = b"Scenario"                         # under the engine data root
+DIR2 = b"\\Autosave"
+FILE = b"\\Autosave 1.hsm"                 # the digit is FILE[-5]
 
-# ---- feature constants -------------------------------------------------------
-DEFAULT_MINUTES = 5
-DEFAULT_FPS     = 60          # DFM FrameRate after build_editor_framerate.py
+PREF_BASE = 0x55600000
 
-# ⚠⚠ BAKED INTO THE CAVE AS AN ABSOLUTE STRING -- see the docstring. On this machine it
-# resolves to a path under the owner's profile directory, which must never end up inside a
-# patched binary, and which would not survive being shared. Derive it at run time instead
-# (GetModuleFileNameA) before this script is ever applied.
-AUTOSAVE_PATH = os.path.join(GAME, "Save", "editor_autosave.hsm")
+# --- edit 1: THSMap.SetModified's set constant ---------------------------------------------
+SETMOD_FN = 0x5560C3C0
+SETMOD_FN_BYTES = bytes.fromhex("538bd8a0d0c36055")     # push ebx/mov ebx,eax/mov al,[0x5560C3D0]
+SETMOD_CONST = 0x5560C3D0
+CONST_VANILLA, CONST_OURS = 0x01, 0x81
 
-# ---- HSEPack.dpl object-layout facts (verified statically) -------------------
-OFF_HSMEDIT   = 0x22c   # [TMainForm+0x22c]  -> THSMEdit
-OFF_HSSET     = 0x1c0   # [THSMEdit+0x1c0]   -> THSEngine (HSSet)
-OFF_LOADED    = 0x1bc   # [THSMEdit+0x1bc]   -> byte "map loaded" flag
-OFF_MAP       = 0x3c    # [HSSet+0x3c]       -> THSMap
-OFF_MODIFIED  = 0x3c    # [THSMap+0x3c]      -> flags byte; bit0 = modified
-MODIFIED_BIT  = 0x01
-SAVE_VMT_SLOT = 0xAC    # [ [HSSet]+0xAC ]   -> THSEngine.SaveHSM
+# --- edit 2: THSMEdit.SetHSEngine entry ----------------------------------------------------
+HOOK_VA = 0x55613CD0
+HOOK_ORIG = bytes.fromhex("85d274138bca")               # test edx,edx / je +0x13 / mov ecx,edx
+HOOK_RESUME = 0x55613CD6                                # mov [eax+0x1C0],ecx
+HOOK_NIL = 0x55613CE7                                   # xor edx,edx (the nil-engine path)
 
-# ---- per-exe hook facts (verified independently) -----------------------------
-# entry prologue overwritten (both identical): push ebp; mov ebp,esp; add esp,-0x64
-ENTRY_ORIG = bytes.fromhex("55 8b ec 83 c4 9c".replace(" ", ""))
-# ⚠ ONE target. AoWEd.exe was the second (entry 0x00428CA0) and is retired -- see the trap in
-# the docstring, which keeps its address.
-TARGETS = {
-    zigexe.SRC_EDITOR: dict(entry=0x00428D18),
+# --- edit 3: the cave and its state --------------------------------------------------------
+CAVE = 0x5561C000
+CAVE_END = 0x5561C400
+SEH_RESTORE = CAVE + 0xD0
+GETDELTA = CAVE + 0xF0
+TICK = CAVE + 0x100                                     # fixed: make_timer stores its address
+LITS = CAVE + 0x300
+LIT_DIR1, LIT_DIR2, LIT_FILE = LITS, LITS + 0x10, LITS + 0x20
+
+G_TIMER = 0x5562FC00
+G_PATH = 0x5562FC10                                     # chars; StrRec refcount -8, length -4
+G_END = 0x55630000
+ROOT_MAX = 0x300                                        # G_PATH + root + 8+9+15+NUL < G_END
+
+BSS_VA, BSS_VSIZE = 0x5562F000, 0x88D
+
+# HSEPack imports / thunks (rel32 from the cave, so PIC)
+IAT_OPENDLG_CREATE = 0x556308DC                         # VCL30 Dialogs.TOpenDialog.Create
+THUNK_GETHANDLE = 0x55601834                            # jmp [0x55630750] TWinControl.GetHandle
+IAT_GETHANDLE = 0x55630750
+THUNK_ISWINENABLED = 0x5560153C                         # jmp [0x55630618] user32!IsWindowEnabled
+IAT_ISWINENABLED = 0x55630618
+
+# VCL30 preferred VAs (+ vcl_delta at run time)
+VCL_OPENDLG_CREATE = 0x4137AFB0
+VCL_TTIMER = 0x413542F8                                 # ExtCtrls..TTimer (VMT)
+VCL_TIMER_CREATE = 0x41356AE8
+VCL_TIMER_SETINTERVAL = 0x41356C78
+VCL_CREATEDIR = 0x4130C194
+VCL_FILEAGE = 0x4130B3EC
+VCL_GETPARENTFORM = 0x41335578
+VCL_EXPECT = {                                          # first bytes, checked against vcl30.dpl
+    VCL_TIMER_CREATE: "5356" "84d2" "7408",
+    VCL_TIMER_SETINTERVAL: "3b5024" "7408" "895024",
+    VCL_CREATEDIR: "53" "8bd8" "6a00",
+    VCL_FILEAGE: "55" "8bec" "81c4b4feffff",
+    VCL_GETPARENTFORM: "5356" "8bd8" "eb02",
 }
-# resume = entry + len(ENTRY_ORIG); the displaced prologue is re-run in the cave.
 
-# ---- PE helpers (add-section pattern, from build_spellcast_card_v2) ----------
-def load_sections(d):
-    e = struct.unpack_from('<I', d, 0x3C)[0]
-    nsec = struct.unpack_from('<H', d, e+6)[0]
-    optsz = struct.unpack_from('<H', d, e+20)[0]
-    opt = e+24
-    sectbl = opt+optsz
-    secs = []
-    for i in range(nsec):
-        b = sectbl+i*40
-        vsz, va, rsz, raw = struct.unpack_from('<IIII', d, b+8)
-        secs.append((va, vsz, raw, rsz, b))
-    return dict(e=e, nsec=nsec, opt=opt,
-                salign=struct.unpack_from('<I', d, opt+32)[0],
-                falign=struct.unpack_from('<I', d, opt+36)[0],
-                sectbl=sectbl, secs=secs)
+# engine / map / view offsets
+MAPEDIT_OPEN = 0x1BC        # THSMEdit: map loaded
+MAPEDIT_ENGINE = 0x1C0      # THSMEdit: THSEngine
+ENGINE_STATE = 0x34         # THSEngine: load/save bits
+ENGINE_MAP = 0x3C           # THSEngine: current THSMap
+ENGINE_ROOT = 0x2C          # TEngine.FStartupDirectory
+MAP_STATE = 0x3C            # THSMap: 1 modified, 8 destroying, 0x10 reading, 0x80 ours
+SAVEHSM_SLOT = 0xAC         # THSEngine VMT: SaveHSM(FileName; progress Code, Data) ret 8
+TIMER_ONTIMER = 0x2C        # TTimer.FOnTimer.Code (+0x30 Data)
 
-def align(x, a): return (x + a - 1) // a * a
 
-def va2off(secs, va):
-    r = va - IB
-    for va0, vsz, raw, rsz, _ in secs:
-        if va0 <= r < va0 + max(vsz, rsz):
-            return raw + (r - va0)
-    raise ValueError(hex(va))
+def assemble(ks, src, va):
+    """keystone has no ';' comments in Intel mode -- strip them first."""
+    clean = "\n".join(ln.split(";", 1)[0] for ln in src.splitlines())
+    code, _ = ks.asm(clean, va)
+    return bytes(code)
 
-def rel32(src, dst): return struct.pack('<i', dst - (src + 5))
 
-# ---- build one exe's cave + patch plan --------------------------------------
-def build_cave(cave_va, entry_va, frames):
-    """Return (cave_bytes, ansistr_offset_in_cave, ctr_offset_in_cave, dump_str).
+def build_cave(ks):
+    interval = AUTOSAVE_MINUTES * 60 * 1000
+    getdelta = f"""
+getdelta:                                   ; eax = runtime - preferred (HSEPack rebases)
+    call gd1
+gd1:
+    pop eax
+    sub eax, {GETDELTA + 5:#x}
+    ret
+"""
+    seh = f"""
+seh_restore:                                ; SEH handler (cdecl): [esp+8] = EstablisherFrame
+    mov eax, dword ptr [esp + 8]
+    mov eax, dword ptr [eax + 8]            ; the map, pushed just above the record
+    or byte ptr [eax + {MAP_STATE:#x}], 1   ; SaveHSM may have reset it before raising
+    xor eax, eax
+    inc eax                                 ; ExceptionContinueSearch
+    ret
+"""
+    head = f"""
+hook_seteng:                                ; THSMEdit.SetHSEngine entry: eax = Self, edx = engine
+    test edx, edx
+    jz seteng_nil
+    push eax
+    push edx
+    call make_timer
+    pop edx
+    pop eax
+    mov ecx, edx                            ; the displaced instruction
+    jmp {HOOK_RESUME:#x}
+seteng_nil:
+    jmp {HOOK_NIL:#x}
 
-    Cave layout:  [code][32-byte-aligned data: frame_ctr dword][AnsiString literal]
-    The literal's char pointer (lit+8) is what SaveHSM receives in edx.
-    """
-    resume_va = entry_va + len(ENTRY_ORIG)
+make_timer:                                 ; eax = THSMEdit
+    push ebx
+    push esi
+    push edi
+    push ebp
+    mov ebx, eax
+    call {GETDELTA:#x}
+    mov esi, eax
+    cmp dword ptr [esi + {G_TIMER:#x}], 0
+    jne mt_done
+    mov edi, dword ptr [esi + {IAT_OPENDLG_CREATE:#x}]
+    sub edi, {VCL_OPENDLG_CREATE:#x}        ; vcl_delta
+    lea eax, [edi + {VCL_TTIMER:#x}]
+    mov dl, 1
+    mov ecx, ebx                            ; Owner = the map view
+    lea ebp, [edi + {VCL_TIMER_CREATE:#x}]
+    call ebp
+    mov dword ptr [esi + {G_TIMER:#x}], eax
+    lea ecx, [esi + {TICK:#x}]
+    mov dword ptr [eax + {TIMER_ONTIMER:#x}], ecx
+    mov dword ptr [eax + {TIMER_ONTIMER + 4:#x}], ebx
+    mov edx, {interval:#x}
+    lea ebp, [edi + {VCL_TIMER_SETINTERVAL:#x}]
+    call ebp                                ; -> UpdateTimer -> SetTimer
+mt_done:
+    pop ebp
+    pop edi
+    pop esi
+    pop ebx
+    ret
+"""
+    tick = f"""
+tick:                                       ; OnTimer: eax = Data = THSMEdit, edx = the timer
+    push ebx
+    push esi
+    push edi
+    push ebp
+    mov ebx, eax
+    cmp byte ptr [ebx + {MAPEDIT_OPEN:#x}], 0
+    je t_done
+    mov edi, dword ptr [ebx + {MAPEDIT_ENGINE:#x}]
+    test edi, edi
+    jz t_done
+    test byte ptr [edi + {ENGINE_STATE:#x}], 0x1e
+    jnz t_done
+    mov eax, dword ptr [edi + {ENGINE_MAP:#x}]
+    test eax, eax
+    jz t_done
+    mov cl, byte ptr [eax + {MAP_STATE:#x}]
+    and cl, 0x99
+    cmp cl, 0x81
+    jne t_done
+    call {GETDELTA:#x}
+    mov esi, eax
+    mov ebp, dword ptr [esi + {IAT_OPENDLG_CREATE:#x}]
+    sub ebp, {VCL_OPENDLG_CREATE:#x}        ; vcl_delta
+    mov eax, ebx
+    lea ecx, [ebp + {VCL_GETPARENTFORM:#x}]
+    call ecx
+    test eax, eax
+    jz t_done
+    call {THUNK_GETHANDLE:#x}
+    push eax
+    call {THUNK_ISWINENABLED:#x}            ; a modal window disables the editor's form
+    test eax, eax
+    jz t_done
+    mov eax, dword ptr [edi + {ENGINE_ROOT:#x}]
+    test eax, eax
+    jz t_done
+    mov ecx, dword ptr [eax - 4]
+    test ecx, ecx
+    jz t_done
+    cmp ecx, {ROOT_MAX:#x}
+    ja t_done
+    push edi                                ; engine -- no exit to t_done until it is popped
+    lea edi, [esi + {G_PATH:#x}]
+    push esi
+    mov esi, eax
+    rep movsb                               ; <root>
+    pop esi
+    push esi
+    lea esi, [esi + {LIT_DIR1:#x}]
+    mov ecx, {len(DIR1)}
+    rep movsb                               ; <root>Scenario
+    pop esi
+    call set_len_mkdir
+    push esi
+    lea esi, [esi + {LIT_DIR2:#x}]
+    mov ecx, {len(DIR2)}
+    rep movsb                               ; <root>Scenario\\Autosave
+    pop esi
+    call set_len_mkdir
+    push esi
+    lea esi, [esi + {LIT_FILE:#x}]
+    mov ecx, {len(FILE)}
+    rep movsb                               ; ...\\Autosave 1.hsm
+    pop esi
+    call set_len
+    sub edi, 5                              ; edi -> the digit
+    mov ebx, 0x7fffffff                     ; oldest age so far
+    push 0x31                               ; chosen digit
+age_loop:
+    lea eax, [esi + {G_PATH:#x}]
+    lea ecx, [ebp + {VCL_FILEAGE:#x}]
+    call ecx                                ; DOS date-time, -1 if missing
+    cmp eax, ebx
+    jge age_next
+    mov ebx, eax
+    movzx eax, byte ptr [edi]
+    mov dword ptr [esp], eax
+age_next:
+    inc byte ptr [edi]
+    cmp byte ptr [edi], {0x31 + SLOTS:#x}
+    jb age_loop
+    pop eax
+    mov byte ptr [edi], al
+    pop edi                                 ; engine
+    mov eax, dword ptr [edi + {ENGINE_MAP:#x}]
+    and byte ptr [eax + {MAP_STATE:#x}], 0x7f   ; consume "edited since the last autosave"
+    push eax                                ; map, read by seh_restore
+    lea ecx, [esi + {SEH_RESTORE:#x}]
+    push ecx
+    push dword ptr fs:[0]
+    mov dword ptr fs:[0], esp
+    push 0                                  ; progress Data
+    push 0                                  ; progress Code = nil
+    lea edx, [esi + {G_PATH:#x}]
+    mov eax, edi
+    mov ecx, dword ptr [eax]
+    call dword ptr [ecx + {SAVEHSM_SLOT:#x}]   ; THSEngine.SaveHSM, ret 8
+    pop dword ptr fs:[0]
+    pop ecx
+    pop eax
+    or byte ptr [eax + {MAP_STATE:#x}], 1   ; TAoWHSMap.ReadWrite reset it; the user's file is unsaved
+t_done:
+    pop ebp
+    pop edi
+    pop esi
+    pop ebx
+    ret
 
-    # We need absolute VAs for the two data items, but their offsets depend on the
-    # code length. Assemble the code once with placeholder absolute addresses, then
-    # fix up. Simpler: assemble code referencing symbolic absolute constants we
-    # compute up front by laying data at a FIXED offset region *after* a code area
-    # whose max size we bound. To stay exact, we assemble twice.
-    def asm_code(ctr_va, str_va):
-        src = f"""
-            /* --- frame timer --- */
-            inc     dword ptr [0x{ctr_va:08X}]
-            cmp     dword ptr [0x{ctr_va:08X}], {frames}
-            jb      _done
-            mov     dword ptr [0x{ctr_va:08X}], 0
-            /* --- guards (eax = TMainForm at cave entry) --- */
-            mov     ecx, dword ptr [eax+0x{OFF_HSMEDIT:X}]   /* HSMEdit */
-            test    ecx, ecx
-            jz      _done
-            cmp     byte ptr [ecx+0x{OFF_LOADED:X}], 0        /* map loaded? */
-            jz      _done
-            mov     edx, dword ptr [ecx+0x{OFF_HSSET:X}]      /* HSSet */
-            test    edx, edx
-            jz      _done
-            mov     ecx, dword ptr [edx+0x{OFF_MAP:X}]        /* THSMap */
-            test    ecx, ecx
-            jz      _done
-            test    byte ptr [ecx+0x{OFF_MODIFIED:X}], {MODIFIED_BIT}  /* modified? */
-            jz      _done
-            /* --- do the save (edx still = HSSet); preserve eax=Self across call --- */
-            push    eax                                        /* SAVE Self (TMainForm) */
-            push    0                                          /* callback data */
-            push    0                                          /* callback code (NIL) */
-            mov     eax, edx                                   /* eax = HSSet */
-            mov     edx, 0x{str_va:08X}                        /* edx = filename AnsiString ptr */
-            mov     ecx, dword ptr [eax]                       /* HSSet vmt */
-            call    dword ptr [ecx+0x{SAVE_VMT_SLOT:X}]        /* THSEngine.SaveHSM (ret 8) */
-            pop     eax                                        /* RESTORE Self */
-        _done:
-            /* restore original entry prologue, then resume */
-            push    ebp
-            mov     ebp, esp
-            add     esp, -0x64
-            jmp     0x{resume_va:08X}
-        """
-        # NOTE (corrected during review): the hook is a JMP, so nothing is on the
-        # stack at cave entry beyond the caller's frame; re-running the prologue
-        # therefore builds a correct frame ([ebp+4] = real caller retaddr).
-        # EAX is preserved across the save because the resumed body does
-        # `mov ebx,eax` at 0x428D2F using eax as Self BEFORE reloading it; the save
-        # path push/pop's eax around SaveHSM. ecx/edx ARE dead there (the body
-        # reloads them), so we let them be clobbered. Stack balance on the save
-        # path: push eax + (SaveHSM `ret 8` @0x5561051D cleans the 2 zero args) +
-        # pop eax = net zero; SaveHSM (Delphi ABI) preserves ebx/esi/edi.
-        code, _ = ks.asm(src, cave_va)
-        return bytes(code)
+set_len:                                    ; edi = end of text: NUL + StrRec
+    mov byte ptr [edi], 0
+    lea eax, [esi + {G_PATH:#x}]
+    mov ecx, edi
+    sub ecx, eax
+    mov dword ptr [eax - 4], ecx
+    mov dword ptr [eax - 8], 0xffffffff
+    ret
 
-    # Stack balance: SaveHSM @0x5561043C epilogue is `pop esi/ebx/ebp; ret 8`
-    # (@0x5561051D) -> the 2 callback dwords we push are cleaned by the callee.
-    # (A runtime subclass override of vmt+0xAC must keep the same `ret 8` ABI --
-    # see design-doc apply-time checklist.)
+set_len_mkdir:
+    call set_len
+    lea eax, [esi + {G_PATH:#x}]
+    lea ecx, [ebp + {VCL_CREATEDIR:#x}]
+    call ecx                                ; False when it exists already -- ignored
+    ret
+"""
+    a = assemble(ks, head, CAVE)
+    h = assemble(ks, seh, SEH_RESTORE)
+    g = assemble(ks, getdelta, GETDELTA)
+    b = assemble(ks, tick, TICK)
+    assert CAVE + len(a) <= SEH_RESTORE, f"head overruns seh_restore: {len(a):#x}"
+    assert SEH_RESTORE + len(h) <= GETDELTA, f"seh_restore overruns getdelta: {len(h):#x}"
+    assert g[:6] == bytes.fromhex("e80000000058"), "getdelta is not call $+5 / pop eax"
+    assert TICK + len(b) <= LITS, f"tick overruns literals: {len(b):#x}"
+    blob = bytearray(CAVE_END - CAVE)
+    blob[0:len(a)] = a
+    blob[SEH_RESTORE - CAVE:SEH_RESTORE - CAVE + len(h)] = h
+    blob[GETDELTA - CAVE:GETDELTA - CAVE + len(g)] = g
+    blob[TICK - CAVE:TICK - CAVE + len(b)] = b
+    for va, s in ((LIT_DIR1, DIR1), (LIT_DIR2, DIR2), (LIT_FILE, FILE)):
+        assert len(s) < 0x10, s
+        blob[va - CAVE:va - CAVE + len(s)] = s
+    assert CAVE + len(blob) <= CAVE_END
+    return bytes(blob), len(a), len(b), len(h)
 
-    # First pass with dummy data VAs to measure code length.
-    code0 = asm_code(0x11111111, 0x22222222)
-    code_len = len(code0)
-    data_start = align(code_len, 4)                 # dword-align the counter
-    ctr_off = data_start                            # frame counter dword
-    lit_off = ctr_off + 4                           # AnsiString literal
-    str_off = lit_off + 8                           # char pointer (lit+8)
-    ctr_va = cave_va + ctr_off
-    str_va = cave_va + str_off
-    # Re-assemble with real absolute VAs (lengths are identical: all refs are
-    # abs32 imm/disp, size-invariant to the address value).
-    code = asm_code(ctr_va, str_va)
-    assert len(code) == code_len, "code length changed after VA fixup"
 
-    # data blob: [pad to data_start][ctr dword=0][ansistring literal]
-    path_bytes = AUTOSAVE_PATH.encode("latin1")
-    literal = struct.pack("<iI", -1, len(path_bytes)) + path_bytes + b"\x00"
-    blob = bytearray(code)
-    blob += b"\x00" * (data_start - len(blob))      # pad to counter
-    blob += struct.pack("<I", 0)                    # frame counter
-    blob += literal                                 # refcount,-1 | len | chars | NUL
+# ------------------------------------------------------------------------------------------
+class PEFile:
+    def __init__(self, data):
+        self.d = data
+        e = struct.unpack_from("<I", data, 0x3C)[0]
+        nsec = struct.unpack_from("<H", data, e + 6)[0]
+        opt = e + 24
+        self.base = struct.unpack_from("<I", data, opt + 28)[0]
+        self.reloc_dir = struct.unpack_from("<II", data, opt + 96 + 5 * 8)
+        self.loadcfg_dir = struct.unpack_from("<II", data, opt + 96 + 10 * 8)
+        self.dllchars = struct.unpack_from("<H", data, opt + 70)[0]
+        sect = opt + struct.unpack_from("<H", data, e + 20)[0]
+        self.secs = []
+        for i in range(nsec):
+            b = sect + 40 * i
+            name = data[b:b + 8].rstrip(b"\0")
+            vsz, va, rsz, raw = struct.unpack_from("<IIII", data, b + 8)
+            self.secs.append((name, va, vsz, raw, rsz))
 
-    dump = []
-    dump.append(f"    cave @ {cave_va:08X}  code {code_len}B  ctr@{ctr_va:08X}  "
-                f"str@{str_va:08X}  ('{AUTOSAVE_PATH}')")
-    for ins in cs.disasm(code, cave_va):
-        dump.append(f"    {ins.address:08X}  {ins.bytes.hex(' '):<24}{ins.mnemonic} {ins.op_str}")
-    return bytes(blob), str_va, ctr_va, "\n".join(dump)
+    def off(self, va):
+        rva = va - self.base
+        for _, sva, vsz, raw, rsz in self.secs:
+            if sva <= rva < sva + rsz:
+                return raw + rva - sva
+        raise ValueError(f"{va:#x} has no file bytes")
 
-# ---- process one exe ---------------------------------------------------------
-def process(exe_name, minutes, fps, apply):
-    path = os.path.join(GAME, exe_name)
-    if not os.path.exists(path):
-        print(f"[{exe_name}] MISSING - skipped")
-        return True
-    frames = minutes * 60 * fps
-    d = bytearray(open(path, "rb").read())
-    F = load_sections(d)
-    secs = F["secs"]
+    def rd(self, va, n):
+        o = self.off(va)
+        return bytes(self.d[o:o + n])
 
-    # idempotency: our section marker present?
-    already = any(bytes(d[s[4]:s[4]+4]) == b".asv" for s in secs)
-    entry = TARGETS[exe_name]["entry"]
-    eoff = va2off(secs, entry)
-    cur_entry = bytes(d[eoff:eoff+len(ENTRY_ORIG)])
-    hooked = cur_entry[:1] == b"\xE9"
+    def relocs(self):
+        rva, size = self.reloc_dir
+        o = self.off(self.base + rva)
+        end, out = o + size, []
+        while o < end:
+            page, bs = struct.unpack_from("<II", self.d, o)
+            if bs == 0:
+                break
+            for i in range((bs - 8) // 2):
+                e = struct.unpack_from("<H", self.d, o + 8 + 2 * i)[0]
+                if e >> 12:
+                    out.append(self.base + page + (e & 0xFFF))
+            o += bs
+        return out
 
-    if already or hooked:
-        print(f"[{exe_name}] already patched (.asv section / hook present) - idempotent no-op")
-        return True
+    def section(self, name):
+        return next(s for s in self.secs if s[0] == name)
 
-    # compute new section VA/raw
-    newva = align(max(s[0] + max(s[1], s[3]) for s in secs), F["salign"])
-    newraw = align(len(d), F["falign"])
-    cave_va = IB + newva
 
-    blob, str_va, ctr_va, dump = build_cave(cave_va, entry, frames)
+def static_checks(pe):
+    """Everything the cave assumes about HSEPack.dpl and vcl30.dpl; abort on any mismatch."""
+    assert pe.base == PREF_BASE, f"HSEPack preferred base {pe.base:#x}"
+    # seh_restore is a raw SEH handler: no SafeSEH table (load config) and no NO_SEH flag
+    assert pe.loadcfg_dir[1] == 0 and not pe.dllchars & 0x400, "HSEPack has SafeSEH / NO_SEH"
+    assert pe.rd(SETMOD_FN, 8) == SETMOD_FN_BYTES, "THSMap.SetModified differs"
+    assert pe.rd(HOOK_VA + 6, 6) == bytes.fromhex("8988c0010000"), "SetHSEngine body differs"
+    assert pe.rd(HOOK_NIL, 2) == bytes.fromhex("33d2"), "SetHSEngine nil path differs"
+    for thunk, slot in ((THUNK_GETHANDLE, IAT_GETHANDLE), (THUNK_ISWINENABLED, IAT_ISWINENABLED)):
+        assert pe.rd(thunk, 6) == b"\xff\x25" + struct.pack("<I", slot), f"thunk {thunk:#x}"
+    assert pe.rd(0x55601A54, 6) == b"\xff\x25" + struct.pack("<I", IAT_OPENDLG_CREATE)
+    name, va, vsz, raw, rsz = pe.section(b"CODE")
+    assert pe.base + va + vsz >= CAVE_END, "cave is past CODE's VirtualSize"
+    name, va, vsz, raw, rsz = pe.section(b"BSS")
+    assert (pe.base + va, vsz) == (BSS_VA, BSS_VSIZE), f"BSS is {pe.base + va:#x}/{vsz:#x}"
+    assert BSS_VA + vsz <= G_TIMER and G_END == (BSS_VA + vsz + 0xFFF) & ~0xFFF
+    assert pe.base + pe.section(b".idata")[1] == G_END, ".idata no longer follows BSS's page"
+    assert G_PATH + ROOT_MAX + len(DIR1) + len(DIR2) + len(FILE) + 1 <= G_END
+    bad = [r for r in pe.relocs()
+           if HOOK_VA - 3 <= r < HOOK_VA + 6 or SETMOD_CONST - 3 <= r < SETMOD_CONST + 1
+           or CAVE - 3 <= r < CAVE_END]
+    assert not bad, "reloc entries in a patched range: " + ", ".join(map(hex, bad))
 
-    print(f"[{exe_name}]  entry 0x{entry:08X} -> resume 0x{entry+len(ENTRY_ORIG):08X}  "
-          f"| interval {minutes} min @ {fps} fps = {frames} frames")
-    print(dump)
+    vcl = PEFile(open(os.path.join(GAME, "vcl30.dpl"), "rb").read())
+    for va, hexs in VCL_EXPECT.items():
+        assert vcl.rd(va, len(hexs) // 2).hex() == hexs, f"vcl30 {va:#x} differs"
+    vname = struct.unpack("<I", vcl.rd(VCL_TTIMER - 0x20, 4))[0]
+    assert vcl.rd(vname, 7) == b"\x06TTimer", "TTimer VMT"
+    assert struct.unpack("<I", vcl.rd(VCL_TTIMER - 0x1C, 4))[0] == 0x38, "TTimer instance size"
+    assert vcl.rd(VCL_OPENDLG_CREATE, 3) == bytes.fromhex("535684"), "TOpenDialog.Create"
 
-    # verify the entry bytes are the pristine prologue
-    if cur_entry != ENTRY_ORIG:
-        print(f"[{exe_name}] ABORT: entry bytes not the expected prologue\n"
-              f"     exp {ENTRY_ORIG.hex(' ')}\n     got {cur_entry.hex(' ')}")
-        return False
-    # header room for one more section descriptor
-    if F["sectbl"] + F["nsec"]*40 + 40 > secs[0][2]:
-        print(f"[{exe_name}] ABORT: no PE header room for a new section")
-        return False
-    print(f"[{exe_name}] entry prologue verified; header room OK")
 
-    if not apply:
-        print(f"[{exe_name}] dry-run OK")
-        return True
+def kill_game():
+    # SCRATCH GUARD: AOW_GAME_DIR set => not the real install; never kill the user's game.
+    if os.environ.get("AOW_GAME_DIR"):
+        return
+    subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         "Get-Process | Where-Object { $_.ProcessName -match "
+         "'^(AoW|AoWz|AoWCompat|AoWzCompat|AoWDevEd|AoWzEd|AoWEd|AoWSetup)$' } | Stop-Process -Force"],
+        capture_output=True)
 
-    # Snapshot goes in <game dir>\backups\, never beside the binary (CLAUDE.md 2026-09-03).
-    # We reach here only when the entry bytes were verified to be the pristine prologue and no
-    # .asv section exists, so the file is PROVED unpatched with respect to this feature.
-    backup = os.path.join(BACKUP_DIR, exe_name + BACKUP_SUFFIX)
-    if not os.path.exists(backup):
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-        shutil.copy2(path, backup)
-        print(f"[{exe_name}] backup -> {backup}")
-
-    # append section raw data
-    if len(d) < newraw:
-        d += b"\x00" * (newraw - len(d))
-    rawsz = align(len(blob), F["falign"])
-    d += blob + b"\x00" * (rawsz - len(blob))
-    # new section header
-    b = F["sectbl"] + F["nsec"]*40
-    struct.pack_into("<8sIIII", d, b, b".asv\0\0\0\0", len(blob), newva, rawsz, newraw)
-    struct.pack_into("<IIHHI", d, b+24, 0, 0, 0, 0, 0x60000020)  # code|exec|read
-    struct.pack_into("<H", d, F["e"]+6, F["nsec"]+1)             # NumberOfSections
-    struct.pack_into("<I", d, F["opt"]+56,
-                     align(newva + len(blob), F["salign"]))       # SizeOfImage
-    # patch the hook: jmp <cave> + nop  (JMP, not CALL -- see cave NOTE)
-    patch = b"\xE9" + rel32(entry, cave_va) + b"\x90"
-    assert len(patch) == len(ENTRY_ORIG)
-    d[eoff:eoff+len(patch)] = patch
-
-    try:
-        open(path, "wb").write(d)
-    except PermissionError:
-        print(f"[{exe_name}] LOCKED - close the editor and retry")
-        return False
-    print(f"[{exe_name}] written: hook + .asv cave. Revert SURGICALLY -- restore the 6 entry "
-          f"bytes and drop the .asv section; do not restore a snapshot over the file.")
-    return True
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("exe", nargs="?", help="restrict to one exe (default: every target)")
-    ap.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
-    ap.add_argument("--minutes", type=int, default=DEFAULT_MINUTES, help="autosave interval (min)")
-    ap.add_argument("--fps", type=int, default=DEFAULT_FPS, help="assumed FrameRate for frame->time")
-    args = ap.parse_args()
-    if not (1 <= args.minutes <= 120):
-        sys.exit("--minutes out of range (1..120)")
-    if not (2 <= args.fps <= 240):
-        sys.exit("--fps out of range (2..240)")
+    mode = "apply" if "--apply" in sys.argv else "undo" if "--undo" in sys.argv else "dry"
+    ks = Ks(KS_ARCH_X86, KS_MODE_32)
+    data = bytearray(open(DLL, "rb").read())
+    pe = PEFile(data)
+    static_checks(pe)
 
-    which = [args.exe] if args.exe else list(TARGETS.keys())
-    for e in which:
-        if e not in TARGETS:
-            print(f"[{e}] unknown exe - skipped"); continue
+    blob, na, nb, nh = build_cave(ks)
+    hook_ours = b"\xE9" + struct.pack("<i", CAVE - (HOOK_VA + 5)) + b"\x90"
+    assert blob[:2] == bytes.fromhex("85d2"), "hook_seteng is not at CAVE"
 
-    allok = True
-    print(f"AoW1 editor autosave  |  interval {args.minutes} min @ {args.fps} fps\n")
-    for e in which:
-        if e in TARGETS:
-            allok &= process(e, args.minutes, args.fps, args.apply)
-            print()
-    if not args.apply:
-        print("[dry-run] Re-run with --apply to write. Close the editor first.")
-    elif allok:
-        print("[done] Applied to the PATCH SOURCE. Now run:  python build_zigeditor.py --apply\n"
-              "       (rebuilds Ziggurat\\AoWzEd.exe, the editor that actually runs).\n"
-              "       Revert is surgical: restore the 6 entry bytes, drop the .asv section.")
+    hook_now = pe.rd(HOOK_VA, 6)
+    const_now = pe.rd(SETMOD_CONST, 1)[0]
+    cave_now = pe.rd(CAVE, len(blob))
+    hook_st = "vanilla" if hook_now == HOOK_ORIG else "ours" if hook_now == hook_ours else "FOREIGN"
+    const_st = {CONST_VANILLA: "vanilla", CONST_OURS: "ours"}.get(const_now, "FOREIGN")
+    cave_st = ("empty" if cave_now == bytes(len(blob)) else "current" if cave_now == blob
+               else "ours-stale" if cave_now[:2] == blob[:2] else "FOREIGN")
+    print(f"HSEPack.dpl  hook {HOOK_VA:#x}: {hook_st}   SetModified const: {const_st}   "
+          f"cave {CAVE:#x}: {cave_st}")
+    print(f"  cave: head {na} B, tick {nb} B; every {AUTOSAVE_MINUTES} min, {SLOTS} slots, "
+          f"<root>{DIR1.decode()}{DIR2.decode()}{FILE.decode()}")
+    assert "FOREIGN" not in (hook_st, const_st, cave_st), "unexpected bytes -- refusing"
+
+    if mode == "dry":
+        cs = Cs(CS_ARCH_X86, CS_MODE_32)
+        for start, n in ((CAVE, na), (SEH_RESTORE, nh), (TICK, nb)):
+            for i in cs.disasm(blob[start - CAVE:start - CAVE + n], start):
+                print(f"  {i.address:08X}  {i.bytes.hex():16s} {i.mnemonic} {i.op_str}")
+        print("dry run -- --apply to write, --undo to revert")
+        return 0
+
+    if mode == "apply":
+        if (hook_st, const_st, cave_st) == ("ours", "ours", "current"):
+            print("already applied and current -- no-op")
+            return 0
+        new = [(CAVE, blob), (SETMOD_CONST, bytes([CONST_OURS])), (HOOK_VA, hook_ours)]
     else:
-        print("[!] One or more exes not fully applied - see above.")
+        if (hook_st, const_st, cave_st) == ("vanilla", "vanilla", "empty"):
+            print("not applied -- no-op")
+            return 0
+        new = [(HOOK_VA, HOOK_ORIG), (SETMOD_CONST, bytes([CONST_VANILLA])),
+               (CAVE, bytes(len(blob)))]
+    for va, b in new:
+        o = pe.off(va)
+        data[o:o + len(b)] = b
 
-main()
+    for attempt in (1, 2):
+        try:
+            open(DLL, "wb").write(data)
+            break
+        except PermissionError:
+            if attempt == 2:
+                print("HSEPack.dpl is locked -- close the editor and the game")
+                return 1
+            kill_game()
+            import time; time.sleep(1.5)
+
+    chk = PEFile(bytearray(open(DLL, "rb").read()))
+    for va, b in new:
+        assert chk.rd(va, len(b)) == b, f"verify failed at {va:#x}"
+    print(f"{mode}: written and verified")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

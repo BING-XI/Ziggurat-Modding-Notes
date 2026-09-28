@@ -1,11 +1,18 @@
-r"""Editor Level Up / Level Down follow the DISPLAY order of a 4-level map.
+r"""Editor Level Up / Level Down follow the DISPLAY order of a 4- or 5-level map.
 
 Companion to `build_skylevel_ui.py` (the game's World Map level strip).  A 4th map level is
-STORED at index 3 and DISPLAYED ABOVE Surface, captioned "Firmament":
+STORED at index 3 and DISPLAYED ABOVE Surface, captioned "Firmament"; since v2 (2026-09-27) a
+5th is STORED at index 4 and DISPLAYED BELOW Depths, the Abyss:
 
-    display order (more than 3 levels):  slot 0 1 2 3  ->  level 3 0 1 2
-                                         "Firmament | Surface | Caverns | Depths"
+    display order (more than 3 levels):  slot 0 1 2 3 [4]  ->  level 3 0 1 2 [4]
+                                         "Firmament | Surface | Caverns | Depths [| Abyss]"
     display order (3 levels or fewer):   identity     ->  vanilla behaviour, byte for byte
+
+    v2 changes: the tables are five dwords (RORDER +0x14, code +0x28), the level-index guard
+    `cmp edx,3 / ja` becomes `cmp edx,4`, and BOTH page flips become "Surface page for level
+    0 or 3, the underground page for anything else" -- v1's "1 or 2 is underground" test
+    would have given the Abyss the surface palette.  --apply re-tunes an installed v1 in
+    place; --undo accepts either.
 
 The editor's Level Up / Level Down speed buttons step the STORED level by -1 / +1, so after
 Add Level the 4th level lands below Depths and Firmament is unreachable from Surface.  This
@@ -94,32 +101,34 @@ level in the SIGNED BYTE `[THSMEdit+0x21D]`, and have already passed the "map lo
    The cave activates it when the new level is 0 **or 3**, so Firmament gets the surface
    page rather than the underground one.  It re-uses vanilla's own two branch targets --
    0x00429FBE (set the page) and 0x00429FCF (leave it) -- and duplicates no code.
+   (v1 tested `level-1 > 1`, which is also true for 4; v2 tests 0 and 3 explicitly.)
 
-   Level DOWN's flip needs no change and is not touched: a down step can only ever land on
-   levels 0..2, and vanilla's `cmp byte,0 / jle` already leaves the surface page alone for 0
-   and selects the underground page for 1 and 2.
+   Level DOWN's flip needs no change and is not touched: a down step lands on 0 (from the
+   Firmament, whose page is already the surface one), 1, 2 or 4, and vanilla's `cmp byte,0 /
+   jle` leaves the surface page alone for 0 and selects the underground page for the rest.
 
 4. `TMainForm.SetMapLevel @0x00429C68` -- hook 0x00429D14, 23 bytes -> `E9 <cave_smp>` + 18
    nops.  Vanilla is `test esi,esi / jle surface` (esi = the requested level), i.e.
-   "anything above 0 is underground".  The cave makes it "1 or 2 is underground, everything
-   else is the surface page" via `lea eax,[esi-1] / cmp eax,1 / ja surface`, which is
-   identical to vanilla for every level a 3-level map can hold and puts level 3 on the
-   surface page.  eax is dead at that point (the preceding `TStatusPanel.SetText` returns
-   nothing either branch reads) and both vanilla branch targets are re-used unchanged.
+   "anything above 0 is underground".  v2 keeps that and adds `cmp esi,3 / je surface`, so
+   the Firmament gets the surface page and Caverns, Depths and the Abyss the underground
+   one -- identical to vanilla for every level a 3-level map can hold.  (v1's `lea eax,
+   [esi-1] / cmp eax,1 / ja surface` would have put the Abyss on the surface page.)  eax is
+   dead at that point (the preceding `TStatusPanel.SetText` returns nothing either branch
+   reads) and both vanilla branch targets are re-used unchanged.
 
 --------------------------------------------------------------------------------------
 CAVE
 --------------------------------------------------------------------------------------
-0x180 bytes:
+0x180 bytes (v2; v1 had 4-entry tables at +0x00 / +0x10 and code from +0x20, 236 B):
 
-    cave+0x000  ORDER[4]   slot  -> level  = 3, 0, 1, 2
-    cave+0x010  RORDER[4]  level -> slot   = 1, 2, 3, 0
-    cave+0x020  cave_up, cave_dn, cave_upflip, cave_smp, packed and dword-aligned (236 B)
+    cave+0x000  ORDER[5]   slot  -> level  = 3, 0, 1, 2, 4
+    cave+0x014  RORDER[5]  level -> slot   = 1, 2, 3, 0, 4
+    cave+0x028  cave_up, cave_dn, cave_upflip, cave_smp, packed and dword-aligned (248 B)
 
 Two homing modes exist because the two binaries had different amounts of PE header left.
 Only `slack` is reachable now; `section` is kept because it is generic and the retired
 AoWEd.exe used it -- **a new section `.lvn` @0x004DF000**, appended with the usual
-add-section pattern (`build_editor_autosave.py` / `build_spellcast_card_v2.py`),
+add-section pattern (`build_spellcast_card_v2.py`),
 characteristics 0xE0000060 = code / execute / read / write.
 
 **AoWDevEd.exe -- page slack inside `.tres` @0x00592080.**  ⚠ AoWDevEd.exe CANNOT take
@@ -182,16 +191,41 @@ SAVED_HDR_N = 40                          # header slot displaced -- see drop_se
 BACKUP_DIR = os.path.join(GAME, "backups")
 BACKUP_SUFFIX = ".pre-levelnav"
 
-ORDER_VALS = (3, 0, 1, 2)                 # slot  -> level
-RORDER_VALS = (1, 2, 3, 0)                # level -> slot
-
-ks = Ks(KS_ARCH_X86, KS_MODE_32)
-cs = Cs(CS_ARCH_X86, CS_MODE_32)
+class Layout:
+    """One build's table layout and flip predicates.  `order` / `rorder` are offsets from the
+    cave start; the code follows at `code`."""
+    def __init__(self, name, order_vals, rorder_vals, order, rorder, code, flips, skip=False):
+        self.name, self.order_vals, self.rorder_vals = name, order_vals, rorder_vals
+        self.order, self.rorder, self.code, self.flips = order, rorder, code, flips
+        self.skip = skip                  # v3: step over levels disabled in [map+0x41C]
+        self.maxidx = len(order_vals) - 1
+        require(order + 4 * len(order_vals) <= rorder
+                and rorder + 4 * len(rorder_vals) <= code, "%s: table layout overlaps" % name)
 
 
 def require(cond, msg):
     if not cond:
         sys.exit("ABORT: " + msg)
+
+
+# v2 (2026-09-27): five levels, the Abyss (index 4) below Depths.  The tables grow to five
+# dwords, so RORDER moves +0x10 -> +0x14 and the code +0x20 -> +0x28.  Both page flips become
+# "Surface page for 0 or 3, underground page otherwise", which puts the Abyss underground.
+# v3 (2026-09-27, same day): Level Up / Level Down step over a level DISABLED in the map's mask
+# ([map+0x41C], build_maplevel4.py v4 / build_levelset.py) -- a disabled placeholder is never
+# shown.  Same tables and offsets as v2; only the two step blocks grow.
+LAY = Layout("v3", (3, 0, 1, 2, 4), (1, 2, 3, 0, 4), 0x00, 0x14, 0x28, "v2", skip=True)
+# superseded -- kept ONLY to recognise an installed build and re-tune it in place.
+LAY_V2 = Layout("v2", (3, 0, 1, 2, 4), (1, 2, 3, 0, 4), 0x00, 0x14, 0x28, "v2")
+LAY_V1 = Layout("v1", (3, 0, 1, 2), (1, 2, 3, 0), 0x00, 0x10, 0x20, "v1")
+OLD_LAYS = (LAY_V2, LAY_V1)
+MASK_OFF = 0x41C
+
+ORDER_VALS = LAY.order_vals               # slot  -> level
+RORDER_VALS = LAY.rorder_vals             # level -> slot
+
+ks = Ks(KS_ARCH_X86, KS_MODE_32)
+cs = Cs(CS_ARCH_X86, CS_MODE_32)
 
 
 def align(x, a):
@@ -305,15 +339,15 @@ def _count(reg, mapglob):
     """
 
 
-def cave_sources(cfg, cave):
-    order, rorder = cave + 0x00, cave + 0x10
+def cave_sources(cfg, cave, lay):
+    order, rorder, mx = cave + lay.order, cave + lay.rorder, lay.maxidx
     src_up = f"""
         /* entry: eax = THSMEdit, map already known loaded.  ecx/edx are scratch. */
         movsx edx, byte ptr [eax+0x21d]                 /* current level */
         {_count('ecx', cfg['mapglob'])}
         cmp  ecx, 3
         jle  Uslot
-        cmp  edx, 3
+        cmp  edx, {mx}
         ja   Uslot
         mov  edx, dword ptr [edx*4 + {rorder:#x}]       /* level -> slot */
 Uslot:
@@ -322,7 +356,7 @@ Uslot:
         dec  edx
         cmp  ecx, 3
         jle  Uout
-        cmp  edx, 3
+        cmp  edx, {mx}
         ja   Uout
         mov  edx, dword ptr [edx*4 + {order:#x}]        /* slot -> level */
 Uout:
@@ -336,7 +370,7 @@ Unoop:
         {_count('ecx', cfg['mapglob'])}
         cmp  ecx, 3
         jle  Dslot
-        cmp  edx, 3
+        cmp  edx, {mx}
         ja   Dslot
         mov  edx, dword ptr [edx*4 + {rorder:#x}]
 Dslot:
@@ -345,7 +379,7 @@ Dslot:
         jge  Dnoop                                      /* already the last slot */
         cmp  ecx, 3
         jle  Dout
-        cmp  edx, 3
+        cmp  edx, {mx}
         ja   Dout
         mov  edx, dword ptr [edx*4 + {order:#x}]
 Dout:
@@ -353,7 +387,77 @@ Dout:
 Dnoop:
         jmp  {cfg['dn_noop']:#x}
 """
-    src_fl = f"""
+    if lay.skip:
+        mask = f"""
+        push eax
+        mov  eax, dword ptr [{cfg['mapglob']:#x}]
+        mov  eax, dword ptr [eax]
+        movzx eax, byte ptr [eax+{MASK_OFF:#x}]
+        bt   eax, edx                                   /* CF = the level is disabled */
+        pop  eax
+        """
+        src_up = f"""
+        /* entry: eax = THSMEdit, map already known loaded.  ecx/edx are scratch. */
+        movsx edx, byte ptr [eax+0x21d]                 /* current level */
+        {_count('ecx', cfg['mapglob'])}
+        cmp  ecx, 3
+        jle  Uslot
+        cmp  edx, {mx}
+        ja   Uslot
+        mov  edx, dword ptr [edx*4 + {rorder:#x}]       /* level -> slot */
+Uslot:
+        test edx, edx
+        jle  Unoop                                      /* already the topmost slot */
+        dec  edx
+        push edx                                        /* the slot */
+        cmp  ecx, 3
+        jle  Uchk
+        cmp  edx, {mx}
+        ja   Uchk
+        mov  edx, dword ptr [edx*4 + {order:#x}]        /* slot -> level */
+Uchk:
+        {mask}
+        jb   Uskip
+        add  esp, 4
+        jmp  {cfg['up_resume']:#x}
+Uskip:
+        pop  edx
+        jmp  Uslot
+Unoop:
+        jmp  {cfg['up_noop']:#x}
+"""
+        src_dn = f"""
+        /* entry: eax = THSMEdit, map already known loaded.  ecx/edx are scratch. */
+        movsx edx, byte ptr [eax+0x21d]
+        {_count('ecx', cfg['mapglob'])}
+        cmp  ecx, 3
+        jle  Dslot
+        cmp  edx, {mx}
+        ja   Dslot
+        mov  edx, dword ptr [edx*4 + {rorder:#x}]
+Dslot:
+        inc  edx
+        cmp  edx, ecx
+        jge  Dnoop                                      /* already the last slot */
+        push edx
+        cmp  ecx, 3
+        jle  Dchk
+        cmp  edx, {mx}
+        ja   Dchk
+        mov  edx, dword ptr [edx*4 + {order:#x}]
+Dchk:
+        {mask}
+        jb   Dskip
+        add  esp, 4
+        jmp  {cfg['dn_resume']:#x}
+Dskip:
+        pop  edx
+        jmp  Dslot
+Dnoop:
+        jmp  {cfg['dn_noop']:#x}
+"""
+    if lay.flips == "v1":
+        src_fl = f"""
         /* entry: eax = THSMEdit (just reloaded), edx dead.  Surface page for level 0 or 3. */
         mov  dl, byte ptr [eax+0x21d]
         dec  dl
@@ -363,12 +467,37 @@ Dnoop:
 Fset:
         jmp  {cfg['fl_set']:#x}
 """
-    src_sm = f"""
+        src_sm = f"""
         /* entry: esi = requested level, ebx = TMainForm, eax dead. */
         lea  eax, [esi-1]
         cmp  eax, 1
         ja   Msurf                                      /* not 1 or 2 => surface page */
         mov  edx, dword ptr [ebx+0x284]                 /* underground page */
+        mov  eax, dword ptr [ebx+0x240]                 /* the TPageControl */
+        call {cfg['setpage']:#x}
+        jmp  {cfg['sm_after']:#x}
+Msurf:
+        jmp  {cfg['sm_surf']:#x}
+"""
+    else:
+        src_fl = f"""
+        /* entry: eax = THSMEdit (just reloaded), edx dead.  Surface page for 0 or 3 only. */
+        mov  dl, byte ptr [eax+0x21d]
+        test dl, dl
+        je   Fset                                       /* Surface */
+        cmp  dl, 3
+        je   Fset                                       /* Firmament */
+        jmp  {cfg['fl_skip']:#x}
+Fset:
+        jmp  {cfg['fl_set']:#x}
+"""
+        src_sm = f"""
+        /* entry: esi = requested level, ebx = TMainForm, eax dead. */
+        test esi, esi
+        jle  Msurf                                      /* Surface (and vanilla's <= 0) */
+        cmp  esi, 3
+        je   Msurf                                      /* Firmament */
+        mov  edx, dword ptr [ebx+0x284]                 /* underground page: 1, 2, 4 */
         mov  eax, dword ptr [ebx+0x240]                 /* the TPageControl */
         call {cfg['setpage']:#x}
         jmp  {cfg['sm_after']:#x}
@@ -382,11 +511,11 @@ Msurf:
 BLOCK_NAMES = ["cave_up", "cave_dn", "cave_upflip", "cave_smp"]
 
 
-def build_cave(cfg, cave):
-    """Assemble the four blocks sequentially from cave+0x20.  No forward references exist
-    between blocks, so one pass is exact."""
-    addrs, parts, va = {}, {}, cave + 0x20
-    for name, src in cave_sources(cfg, cave):
+def build_cave(cfg, cave, lay=LAY):
+    """Assemble the four blocks sequentially from the layout's code offset.  No forward
+    references exist between blocks, so one pass is exact."""
+    addrs, parts, va = {}, {}, cave + lay.code
+    for name, src in cave_sources(cfg, cave, lay):
         b = bytes(ks.asm(src, va)[0])
         addrs[name] = va
         parts[name] = b
@@ -396,12 +525,13 @@ def build_cave(cfg, cave):
     require(used <= SEC_SIZE, "cave content is %d B, larger than the %d B section"
             % (used, SEC_SIZE))
 
-    require(used <= SAVED_HDR, "the cave body overruns the saved-header window")
+    if cfg["cave_mode"] == "section":        # the saved header slot exists only there
+        require(used <= SAVED_HDR, "the cave body overruns the saved-header window")
     blob = bytearray(SEC_SIZE)
-    for i, v in enumerate(ORDER_VALS):
-        struct.pack_into("<I", blob, 0x00 + i * 4, v)
-    for i, v in enumerate(RORDER_VALS):
-        struct.pack_into("<I", blob, 0x10 + i * 4, v)
+    for i, v in enumerate(lay.order_vals):
+        struct.pack_into("<I", blob, lay.order + i * 4, v)
+    for i, v in enumerate(lay.rorder_vals):
+        struct.pack_into("<I", blob, lay.rorder + i * 4, v)
     for name, b in parts.items():
         o = addrs[name] - cave
         blob[o:o + len(b)] = b
@@ -462,20 +592,26 @@ def cave_present(img, cfg, blob):
 
 
 def state(img, cfg):
-    """('orig' | 'patched' | 'partial' | 'unknown', notes)."""
+    """('orig' | 'patched' | 'patched-old' | 'partial' | 'unknown', notes, blob, addrs).
+    'patched-old' = an installed superseded build (any of OLD_LAYS), re-tunable in place."""
     cave = cave_va_of(img, cfg)
     blob, addrs, _parts, _used = build_cave(cfg, cave)
     have, empty = cave_present(img, cfg, blob)
+    olds = []
+    for lay in OLD_LAYS:
+        b, a, _p, _u = build_cave(cfg, cave, lay)
+        olds.append((cave_present(img, cfg, b)[0], a))
     bad, orig_all, new_all = [], True, True
+    old_all = [True] * len(olds)
     for label, va, n, orig, block in sites(cfg):
         require(len(orig) == n, "%s: original byte-run length" % label)
         cur = img.read(va, n)
         new = hook_bytes(va, addrs[block], n)
-        if cur != orig:
-            orig_all = False
-        if cur != new:
-            new_all = False
-        if cur not in (orig, new):
+        olds_b = [hook_bytes(va, a[block], n) for _h, a in olds]
+        orig_all &= cur == orig
+        new_all &= cur == new
+        old_all = [x and cur == b for x, b in zip(old_all, olds_b)]
+        if cur not in [orig, new] + olds_b:
             bad.append("%s: %s" % (label, cur.hex(" ")))
     if bad:
         return "unknown", bad, blob, addrs
@@ -483,7 +619,15 @@ def state(img, cfg):
         return "orig", [], blob, addrs
     if new_all and have:
         return "patched", [], blob, addrs
+    if any(x and h for x, (h, _a) in zip(old_all, olds)):
+        return "patched-old", [], blob, addrs
     return "partial", [], blob, addrs
+
+
+def known_blobs(img, cfg):
+    """Every cave body this script has ever written at this binary's cave VA."""
+    cave = cave_va_of(img, cfg)
+    return [build_cave(cfg, cave, lay)[0] for lay in (LAY,) + OLD_LAYS]
 
 
 def reloc_check(img, cfg):
@@ -514,7 +658,7 @@ def show_state():
         for label, va, n, orig, block in sites(cfg):
             cur = img.read(va, n)
             new = hook_bytes(va, addrs[block], n)
-            tag = "ORIG" if cur == orig else ("PATCHED" if cur == new else "?????")
+            tag = "ORIG" if cur == orig else ("PATCHED" if cur == new else "old/????")
             print("    %-28s %-8s %s" % (label, tag, cur[:8].hex(" ") + (" ..." if n > 8 else "")))
         for b in bad:
             print("    !! " + b)
@@ -532,8 +676,8 @@ def disassemble():
         cave = cave_va_of(img, cfg)
         blob, addrs, parts, used = build_cave(cfg, cave)
         print("==== %s  cave 0x%08X (%d of %d B used) ====" % (exe, cave, used, SEC_SIZE))
-        print("  ORDER  slot->level @0x%08X = %s" % (cave, list(ORDER_VALS)))
-        print("  RORDER level->slot @0x%08X = %s\n" % (cave + 0x10, list(RORDER_VALS)))
+        print("  ORDER  slot->level @0x%08X = %s" % (cave + LAY.order, list(ORDER_VALS)))
+        print("  RORDER level->slot @0x%08X = %s\n" % (cave + LAY.rorder, list(RORDER_VALS)))
         for name in BLOCK_NAMES:
             print("---- %s @0x%08X (%d B) ----" % (name, addrs[name], len(parts[name])))
             for i in cs.disasm(parts[name], addrs[name]):
@@ -580,12 +724,28 @@ def install_cave(img, cfg, blob):
     return add_section(img, blob)[0]
 
 
+def retune_cave(img, cfg, blob, old_blobs):
+    """In-place rewrite of an installed older cave body (slack mode: the window and the
+    raised VirtualSize are already this script's)."""
+    require(cfg["cave_mode"] == "slack", "in-place re-tune is implemented for slack mode only")
+    host = img.find_sec(cfg["host"])
+    o = host["raw"] + (cfg["cave"] - IB - host["rva"])
+    cur = bytes(img.d[o:o + SEC_SIZE])
+    require(cur in old_blobs, "%s: the cave window is not one of this script's builds" % img.path)
+    require(host["vsz"] == cfg["host_vsz_new"],
+            "%s: %s VirtualSize is 0x%X, expected this script's 0x%X"
+            % (img.path, cfg["host"].decode(), host["vsz"], cfg["host_vsz_new"]))
+    img.d[o:o + SEC_SIZE] = blob
+
+
 def remove_cave(img, cfg, blob):
+    """`blob` may be a list of every body this script has written."""
+    blobs = blob if isinstance(blob, list) else [blob]
     if cfg["cave_mode"] == "slack":
         host = img.find_sec(cfg["host"])
         o = host["raw"] + (cfg["cave"] - IB - host["rva"])
         cur = bytes(img.d[o:o + SEC_SIZE])
-        require(cur == blob or set(cur) <= {0},
+        require(cur in blobs or set(cur) <= {0},
                 "%s: the cave window holds bytes this script did not write -- refusing to "
                 "zero it" % img.path)
         img.d[o:o + SEC_SIZE] = b"\x00" * SEC_SIZE
@@ -657,17 +817,28 @@ def run(undo=False, apply_=False):
             if st == "orig":
                 print("    already unpatched, nothing to do")
                 continue
-            require(st in ("patched", "partial"), "%s: refusing to undo from %r" % (exe, st))
+            require(st in ("patched", "patched-old", "partial"),
+                    "%s: refusing to undo from %r" % (exe, st))
             for label, va, n, orig, block in sites(cfg):
                 img.write(va, orig)
-            remove_cave(img, cfg, blob)
+            remove_cave(img, cfg, known_blobs(img, cfg))
+        elif st == "patched-old":
+            # v1 -> v2 in place: same cave VA, same hook sites, new body and rel32s.
+            if not apply_:
+                print("    dry run: an older build is installed -- would rewrite the cave in "
+                      "place (%s) and re-point %d hook sites" % (LAY.name, len(sites(cfg))))
+                continue
+            retune_cave(img, cfg, blob, known_blobs(img, cfg)[1:])
+            for label, va, n, orig, block in sites(cfg):
+                img.write(va, hook_bytes(va, addrs[block], n))
+            print("    re-tuned in place to %s (no backup touched)" % LAY.name)
         else:
             if st == "patched":
                 print("    already patched, nothing to do")
                 continue
             require(st == "orig",
-                    "%s: state is %r -- this feature has no in-place re-tune path; run "
-                    "--undo first" % (exe, st))
+                    "%s: state is %r -- neither original nor a build this script can re-tune; "
+                    "run --undo first" % (exe, st))
             if not apply_:
                 print("    dry run: would install the cave and write %d hook sites"
                       % len(sites(cfg)))

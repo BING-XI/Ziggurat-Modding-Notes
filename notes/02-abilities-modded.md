@@ -33,8 +33,160 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | An aura whose owner is missing no longer freezes its army | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_formation_guard.py` | AoWEPACK.dpl |
 | Leadership buffs only the OTHER units in the party (+ split "own (+received)" card text) | 🔨 APPLIED, UNTESTED (2026-09-16) | `build_leadership_others.py` | AoWEPACK.dpl |
 | Per-race probability gate on hero level-up ability offers | 🔨 APPLIED, UNTESTED (2026-09-09) — see Feature 1 below | `build_heroskill_race.py` + `heroskill_races.py` | `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe` |
+| Monster Slaying — DAM + DEF vs Monsters, no ATK | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_monster_slaying.py` + `monsterslay.py`, cave generators in `build_assassin.py` / `build_ranged_slayers.py`, row in `build_pfs_typos.py` | AoWEPACK.dpl + Release/Ability.pfs |
+| Mantle of Gloom (was Trail of Darkness) — radius 6, sight costs double; trail radius 6; True Seeing pierces it (v5) | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_los_terrain.py` v5; name row in `build_resstr_names.py`; card row in `build_pfs_typos.py` | AoWEPACK.dpl + Dict/ResStr.mld + Release/Ability.pfs |
+| Wall Crushing damage = the carrying unit's DAM (was a flat 12); ATK stays 12 | 🔨 APPLIED (2026-09-27) | `build_wallcrush_dam.py` | AoWEPACK.dpl + AoWTCPCK.dpl |
 
 ---
+
+## Wall Crushing — damage is the unit's DAM
+
+🔨 **APPLIED (2026-09-27).** Owner's ruling. Every Wall Crushing damage figure was the constant 12
+(vanilla 6, doubled by the DAM/HP pass); all of them now read the attacker's `GetDamage`. ATK stays
+12 against the wall's Defence. Addresses, thunks and the attacker register per method:
+`build_wallcrush_dam.py`'s docstring.
+
+Eight readers, two binaries: the AI estimates (`GetDamageValue`, `GetDamageValueEx`,
+`fcGetDamageValueEx`, `tcGetDamageValueEx`, `GetOffensiveStrength`), the info card
+(`GetCombatInfo`), auto-resolve (`fcExecuteCombatCommand`) and manual combat
+(`TCAbTouchMoveTE.LastMove`'s `TCDamage[0]`, AoWTCPCK). They agree by construction: the combat
+unit's `GetDamage` (`TCombatUnit` `+0x78`, imported by `TTacticalCombatUnit`) forwards to the
+strategic unit's (`+0xC8`).
+
+Installed carriers (`Unitres.pfs`, 26 units, plus 1 item and 4 heroes), by DAM:
+
+| DAM | units |
+|---|---|
+| 2 | Battering Ram, Plated Ram, Undead Bone Ram |
+| 4 | Turtle Ram, Goblin Bomber; Dwarf Archer, Cleric, Arbalest (gold medal) |
+| 6 | Elephant; Dwarf Boar Rider, Axeman (gold medal) |
+| 8 | Azrac Howdah, Frostling Mammoth Rider, Dwarf Mole, Dwarf Miner, Goblin Big Beetle; Dwarf Berserker (gold medal) |
+| 10 | Basilisk, Undead Bone Horror, Fire Elemental |
+| 12 | Drill, Sandworm, Yeti, Nature Elemental |
+| 14 | Dwarf First Born, Earth Elemental |
+
+A hit lands at most DAM, so a DAM-2 ram needs at least 20 hits on a 40 HP stone wall.
+
+⚠ `TCDamage[0]` (`0x004671AC`, owned by `build_tcpck_damhp.py`) and the ten AoWEPACK immediates owned
+by `damhp_manifest.json` still read 12. They are not dead: they stay as the argument each thunk
+replaces and as the fallback for a nil strategic unit. Re-tune Wall Crushing in the thunks, not
+there.
+
+---
+
+## Mantle of Gloom (was Trail of Darkness)
+
+🔨 **APPLIED, UNTESTED (2026-09-26).** Owner's design. `build_los_terrain.py` v5 (PART 3 of its
+docstring holds the addresses, cave layout and the symmetry argument).
+
+- **Renamed "Mantle of Gloom"** (ability id `0x1A`): `Dict/ResStr.mld` row keyed on the native
+  "Trail Of Darkness" (`build_resstr_names.py`); card text `Ability.pfs` record 36 tag 5 reads
+  "Shrouds the land within 6 hexes: enemies see through it at half range, and the unit's wake is
+  forgotten." (`build_pfs_typos.py`); manual name via `ability_names.DISPLAY_OVERRIDES`.
+
+- **Aura:** every hex within **6** of an army that holds a Trail of Darkness unit and is **at war**
+  with you costs **2** sight instead of 1. A hex is seen if the sight line to it, charged 1 per hex
+  plus 1 per aura hex (the target included), fits the observer's radius; Earth/Rock still block
+  outright. Standing 3 hexes from such a unit, a sight-4 army no longer sees it (cost 6); at 2 hexes
+  it does (cost 4).
+- **Fog only, never exploration.** Aura hexes are still mapped; what is in them is not shown.
+  Explored bits are per player and computed on every machine, while "enemy" is relative to the
+  local seat, so gloomed exploration would diverge between multiplayer peers.
+- **Follows the unit.** Each move of an enemy Trail of Darkness army re-runs the full fog rebuild,
+  as do war/peace changes, seat changes and every new turn. The aura list is written only inside
+  that rebuild, which is what keeps fog-on and fog-off symmetric.
+- **The trail itself** now un-explores radius **6** (vanilla 1; an unowned hand edit had made it 5).
+- **"Enemy" = relation 1 (war)**, the vanilla trail's own test. Allies and your own units never
+  gloom.
+- **Humans only, in practice:** the strategic AI reads no fog at all, so the aura hides AI units from
+  you but never your units from the AI. Human-vs-human it works both ways.
+- **True Seeing pierces it (v5, owner ruling 2026-09-26).** An army of yours or an ally's that
+  holds a True Seeing unit pays no gloom surcharge out to its true-sight range, which is the
+  holder's own sight. Past that range the army's wider sight is gloomed as usual; Earth/Rock
+  still block. Each fill looks its observer up by (level, centre hex, radius) in a second list
+  recorded in the same rebuild pass as the aura sources, so fog-on and fog-off stay symmetric.
+  Such an army moving within reach of an aura (its sight + 6 of a source) triggers a full fog
+  rebuild per step. At most 28 True Seeing armies are tracked; extras get no immunity. The card
+  text does not mention it.
+- **Limits:** at most 32 aura sources are tracked; extras are ignored. A destroyed army's aura
+  lingers until the next rebuild (any enemy Trail of Darkness army moving, a war/peace change, a
+  seat change or the next turn).
+- **Revert:** `build_los_terrain.py --undo` removes the Earth/Rock occlusion too. To drop only the
+  aura, set `GLOOM = False` and re-`--apply` (an in-place re-tune; no army ever qualifies).
+
+**In-game checklist**
+1. Load a save with an enemy Trail of Darkness unit nearby: no crash, fog looks normal elsewhere.
+2. Approach it with a low-sight army: it stays hidden until well inside your nominal sight (sight 4
+   → visible at 2 hexes, hidden at 3); terrain around it is still mapped.
+3. Let it move on the enemy's turn: the dark patch follows it step by step, and no fog is left stuck
+   visible or stuck dark behind it — including after your own armies move away afterwards.
+4. Declare war on / make peace with its owner (if diplomacy allows): the aura appears / vanishes.
+5. An allied or own Trail of Darkness unit darkens nothing.
+6. An independent (neutral) Trail of Darkness unit — does it gloom? It follows whatever relation the
+   engine keeps for independents; report either way.
+7. Watch for stutter when an AI Trail of Darkness army moves (one full fog rebuild per step).
+8. The trail un-explores 6 hexes around each hex it leaves, for enemies not watching.
+9. The unit card and hero level-up dialog read "Mantle of Gloom" with the new card text.
+10. (v5) Approach the gloom with a sight-4 army holding a True Seeing unit: the enemy 3 hexes
+    away, which item 2 left hidden, is now visible. In an army whose sight (say 8) exceeds its
+    True Seeing unit's (say 4), aura hexes 5+ away are still hidden unless the double cost fits 8.
+11. (v5) Split the True Seeing unit off, or move it out and back: the patch clears as it leaves
+    and returns as it arrives, with no fog stuck visible or stuck dark behind it.
+12. (v5) An enemy's True Seeing army does nothing for you; an allied one does.
+
+---
+
+## Monster Slaying — DAM and DEF against Monsters
+
+🔨 **APPLIED, UNTESTED (2026-09-26).** Owner's design.
+
+| | vs a Monster (marker `0x3F`) | before |
+|---|---|---|
+| melee | **+4 DAM** on the slayer's strikes, **+4 DEF** against every Monster strike (deliberate, retaliation, opportunity, Round Attack) | +5 ATK / +5 DAM |
+| ranged + breath | **+2 DAM** on the slayer's shots, **+2 DEF** against a Monster's shots and breath | +2 ATK / +2 DAM |
+
+**DEF is delivered as an ATK reduction on the Monster's strike**, Parry's own mechanism
+(`sub dword ptr [ebx], 8` @`0x55767BE1`): the strike record carries the attacker's ATK and DEF is
+read at resolution, so the to-hit roll sees the same `ATK − DEF`. Dword records subtract
+**unclamped**, as Parry does on the same record — Parry has already run in `CalculateStrikes`, so a
+clamp to 0 would *raise* a parried Monster's attack. Byte operands (`BL`, the pushed ranged ATK)
+floor at 0 on borrow so a weak attacker cannot wrap to ~250.
+
+**One shared test, five sites.** `ms_test @0x5584F300` (`monsterslay.py`, 89 B; EAX=attacker,
+EDX=target, ECX=`GetAbilityEnabled` VMT slot → AL bit 0 = slayer hits Monster, bit 1 = Monster hits
+slayer; clobbers EAX/ECX/EDX only). All numbers live in `monsterslay.py`.
+
+| site | reached by | host → cave | owner |
+|---|---|---|---|
+| `StrikeDV` | AI strike valuation | hook `0x55766564` → `cave_sdv 0x5584F380` (38 B) → `0x55766591` | `build_monster_slaying.py` |
+| `TMeleeRound.CalculateUnitStrikes` | predictor / strategic units, VMT `+0x148` | hook `0x55767904` → `cave_cus 0x5584F3C0` (34 B) → `0x55767931` | `build_monster_slaying.py` |
+| `CreateStrikeCA` | opportunity, Round Attack, ability strikes | `cave_melee 0x5580E070` | `build_assassin.py` |
+| `TMeleeRound.CalculateStrikes` | deliberate attack + retaliation | `cave_melee3 0x5580E120` | `build_assassin.py` |
+| `CreateRangedAttackCA` | every shot and breath | `cave_rng 0x5580E190` (pinned 269 B, nop-padded) | `build_ranged_slayers.py` |
+
+The two new hooks overwrite only the 5-byte `mov edx,0x70` opening vanilla's block; the rest
+(`build_buff_regrade.py`'s +5 immediates at `0x5576658A`/`0x5576792A`) is dead code behind the jump
+and still verifies. The three owned caves already replayed Monster Slaying, so their generators
+switch on `monsterslay.REWORK` — re-running either owner keeps the rework. Chain exits
+(`0x5580E370`, `0x5580E3B0`, `0x55812A40`) preserved; `build_relocfix.py --audit` total 0. No RNG.
+Card text: `Ability.pfs` record 122, "Against monstrous units: +4 Dam and +4 Def in melee, +2 Dam and
++2 Def at range."
+
+⚠ **Coupling.** `cave_melee`, `cave_melee3` and `cave_rng` call `ms_test`. Each of the three scripts
+installs it zero-or-ours before writing a caller; `build_monster_slaying.py --undo` zeroes it only
+when no caller is left outside its own zone.
+
+**Revert.** Set `monsterslay.REWORK = False`, re-apply `build_assassin.py` and
+`build_ranged_slayers.py` (they regenerate the old +5/+5 and +2/+2 inline blocks), then
+`build_monster_slaying.py --undo`. Card text: `build_pfs_typos.py --undo`.
+
+### In-game checklist
+1. A Monster Slaying unit attacking a Monster in melee: damage up, hit chance unchanged from its bare ATK.
+2. A Monster attacking that unit in melee — deliberate attack and the unit's retaliation, and an attack of opportunity — hits less often.
+3. A Monster's ranged attack and breath at the unit hit less often; the unit's own shots at a Monster deal +2.
+4. A Monster with ATK below 4 (if any) attacking a slayer: no absurd hit chance (byte floor).
+5. Assassin and Holy/Unholy Champion unchanged in melee and at range.
+6. The ability card shows the new text.
 
 ## Invisibility → attacker ATK penalty, negated by True Seeing
 

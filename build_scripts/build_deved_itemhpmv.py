@@ -294,15 +294,12 @@ PERSISTENCE NEEDS NOTHING HERE, AND Zig.ail IS NOT TOUCHED
     that way: do not give a future DFM control a name containing `HitsEdit` or `MovesEdit`.
   * `.nmg` code is NOT shared: the only other script with a cave in it is
     build_deved_newmapgen.py (the section owner).  `grep -rl '\.nmg'` across build_scripts/
-    returns FOUR files, not two -- build_deved_levelnav.py names it in prose only (its cave
-    is `.tres @0x00592080`).
-  ⚠ The fourth is `build_editor_autosave.py`, and it is a forward hazard.  It APPENDS a new
-    PE section (`.asv`) to its targets.  It is not applied to either editor binary today
-    (no `.asv` in either section table), but if it ever is, `.nmg` stops being the last
-    section and its raw data stops ending at EOF.  That invariant is what
-    build_deved_newmapgen.py's `'.nmg is not the last section ... cannot grow'` assert
-    tests, and what this cave's "regrow behind a newmapgen rebuild" story depends on.
-    Apply autosave to an editor binary and BOTH .nmg scripts need re-checking.
+    also lists scripts that name it in prose only -- build_deved_levelnav.py, for one (its
+    cave is `.tres @0x00592080`).
+  ⚠ `.nmg` raw data ending at EOF is what build_deved_newmapgen.py's `'.nmg is not the last
+    section ... cannot grow'` assert tests, and what this cave's "regrow behind a newmapgen
+    rebuild" story depends on.  Any future script that appends a section to AoWDevEd.exe
+    breaks it (none can today: the header table is full).
 
 ⚠⚠ AFTER --apply YOU MUST RUN `build_zigeditor.py --apply`
   This patches `AoWDevEd.exe`, the editor patch SOURCE.  The editor the owner runs is

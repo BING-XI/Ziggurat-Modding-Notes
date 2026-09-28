@@ -36,6 +36,7 @@ features all had to learn about the engine underneath them.
 | Transport-boarding "units vanish" bug | SPECULATIVE — static analysis only | none | `AoWEPACK.dpl` |
 | Map/save instances are frozen ability snapshots | informational — ruled "not a bug" | none | `.hsm` / `.asg` / `.csm` |
 | Firmament map level (a 4th map level, index 3) | 🔨 APPLIED, UNTESTED (2026-09-06) — DLL half, v2; editor New-Map dialog and the map-gen tools still to do | `build_maplevel4.py` (v2), plus in-place re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6); UI half `build_skylevel_ui.py` | `AoWEPACK.dpl` (+ `AoWz.exe`/`AoWzCompat.exe` for the UI half) |
+| Abyss map level (a 5th map level, index 4, below Depths) + disabled levels / Map Levels popup | 🔨 APPLIED, UNTESTED (2026-09-27); editor half driven live, game strip rework not yet done | `build_maplevel4.py` (v3), plus in-place re-tunes of `build_skylevel_ui.py` (v4), `build_deved_levelnav.py` (v2, then `build_zigeditor.py`), `build_shipyard_income.py` (`MAX_LEVELS 5`) and `build_townquake_retune.py` | `AoWEPACK.dpl`, `AoWz.exe`, `AoWzCompat.exe`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Registry isolation — own settings tree, so a Ziggurat install can sit beside vanilla | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_regiso.py` | `AoWEPACK.dpl`, `AoWSetup.exe` |
 | AoWSetup install-check `'.'` fallback (companion to the above) | ✅ CONFIRMED WORKING (2026-09-09) | `build_aowsetup_installcheck.py` | `AoWSetup.exe` |
 | Ziggurat exe icon — purple, mirrored | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_icon_purple.py` | `AoWz.exe`, `AoWzCompat.exe` |
@@ -1862,19 +1863,23 @@ mirror of the vanilla `LoadResString` → `TranslateRStr` → `Add` sequence, th
 
 **Cave `0x0062A000..0x0062A3FF`** — section `.hcol` (RVA `0x212000`, file `0x20C200`,
 characteristics `0xE0000060` = read/write/execute), file offset **`0x00224200`**. Verified all zero,
-and inside that section's `0x8E84`-byte zero run starting at `0x0062417C`. 512 of 1024 bytes used (v3, 2026-09-06 — see the v3 note below for the layout history).
+and inside that section's `0x8E84`-byte zero run starting at `0x0062417C`. 580 of 1024 bytes used (**v4**, 2026-09-27, the Abyss; the v3 note below keeps the Firmament-only layout history).
 Absolute addressing throughout (exe, fixed base). No RNG draw of any kind; no resolved filesystem path.
 
 | offset | contents |
 |---|---|
-| `0x0062A000` | `ORDER[4]` slot→level = 3, 0, 1, 2 |
-| `0x0062A010` | `RORDER[4]` level→slot = 1, 2, 3, 0 |
-| `0x0062A020` | Delphi 3 const AnsiString "Firmament": `ff ff ff ff` (refcount −1), `09 00 00 00`, chars at `0x0062A028` (record ends `0x0062A031`) |
-| `0x0062A040` | `cave_caps` (199 B) — Clear, `Add("Firmament")` when count > 3, then the three vanilla resource Adds, `jmp 0x0045508F` |
-| `0x0062A108` | `cave_tabsel` (72 B, since v2) — slot `< 0` or `≥ count` → `jmp 0x00451C4C` untouched (vanilla’s whitelist; a `TAOWTabPanel` with nothing selected reports −1 and `THSMap.ViewLevel` has no lower bound); else slot→level, `[Scanner+0x17C] = −1`, `call [vmt+0xB8]` (`THSMap.ViewLevel`), `jmp 0x00451C4C`. The no-arg run reports an installed v1 as "needs re-tune", never as applied |
-| `0x0062A150` | `cave_setidx` (36 B) — level→slot, tail-`jmp 0x004031E4` |
-| `0x0062A174` | `cave_lvlup` (65 B) — level→slot, slot−1 clamped ≥ 0, slot→level, tail-`jmp 0x00401E54` |
-| `0x0062A1B8` | `cave_lvldn` (72 B) — level→slot, slot+1 clamped ≤ count−1, slot→level, tail-`jmp 0x00401E54` |
+| `0x0062A000` | `ORDER[5]` slot→level = 3, 0, 1, 2, 4 |
+| `0x0062A018` | `RORDER[5]` level→slot = 1, 2, 3, 0, 4 |
+| `0x0062A030` | Delphi 3 const AnsiString "Firmament": `ff ff ff ff` (refcount −1), `09 00 00 00`, chars at `0x0062A038` |
+| `0x0062A048` | Delphi 3 const AnsiString "Abyss": `ff ff ff ff`, `05 00 00 00`, chars at `0x0062A050` |
+| `0x0062A060` | `cave_caps` (235 B) — Clear, `Add("Firmament")` when count > 3, the three vanilla resource Adds, `Add("Abyss")` when count > 4, `jmp 0x0045508F` |
+| `0x0062A14C` | `cave_tabsel` (72 B, since v2) — slot `< 0` or `≥ count` → `jmp 0x00451C4C` untouched (vanilla’s whitelist; a `TAOWTabPanel` with nothing selected reports −1 and `THSMap.ViewLevel` has no lower bound); else slot→level, `[Scanner+0x17C] = −1`, `call [vmt+0xB8]` (`THSMap.ViewLevel`), `jmp 0x00451C4C`. The no-arg run reports an installed v1–v3 as "needs re-tune", never as applied |
+| `0x0062A194` | `cave_setidx` (36 B) — level→slot, tail-`jmp 0x004031E4` |
+| `0x0062A1B8` | `cave_lvlup` (65 B) — level→slot, slot−1 clamped ≥ 0, slot→level, tail-`jmp 0x00401E54` |
+| `0x0062A1FC` | `cave_lvldn` (72 B) — level→slot, slot+1 clamped ≤ count−1, slot→level, tail-`jmp 0x00401E54` |
+
+Every table read is guarded `cmp edx,4 / ja` (v1–v3: `3`). v4 hook bytes: caption `e9 6e 50 1d 00`+6×`90`,
+tab `e9 6b 85 1d 00`, SetIndex `e8 4a 90 1d 00`, PgUp `90 e8 f3 8c 1d 00`, PgDn `90 e8 21 8d 1d 00`.
 
 Refcount −1 makes the literal a Delphi constant string: `_LStrAsg` skips the increment on a negative
 refcount and `_LStrClr` skips the decrement, so it is never written and never freed. There is no
@@ -2038,22 +2043,23 @@ byte-verified per binary.
 3. **Level Up's page-control flip** — hook `0x00429FB5` [`0x00429F51`], **9 bytes** →
    `E9 <cave_upflip>` + 4 nops. Replaced: `cmp byte [eax+0x21d],0 / jne` (`80b81d020000007511`).
    Vanilla activates the surface page `[TMainForm+0x244]` only when the new level is 0; the
-   cave activates it when the new level is 0 **or 3** (`mov dl,[eax+0x21d] / dec dl /
-   cmp dl,1 / ja set`), so Firmament shows the surface page rather than the underground one.
+   cave activates it when the new level is 0 **or 3** (v2: `mov dl,[eax+0x21d] / test dl,dl /
+   je set / cmp dl,3 / je set`), so Firmament shows the surface page rather than the underground
+   one. (v1's `dec dl / cmp dl,1 / ja set` was also true for the Abyss, 4.)
    Both of vanilla's own branch targets are re-used — `0x00429FBE` sets the page,
    `0x00429FCF` leaves it — so no code is duplicated.
-   **Level Down's flip is deliberately NOT touched.** A down step can only ever land on
-   levels 0..2, and vanilla's `cmp byte,0 / jle` already leaves the surface page alone for 0
-   and picks the underground page for 1 and 2.
+   **Level Down's flip is deliberately NOT touched.** A down step lands on 0 (from the
+   Firmament, already on the surface page), 1, 2 or 4, and vanilla's `cmp byte,0 / jle` leaves
+   the surface page alone for 0 and picks the underground page for the rest.
 
 4. **`TMainForm.SetMapLevel`'s flip** — hook `0x00429D14` [`0x00429CB0`], **23 bytes** →
    `E9 <cave_smp>` + 18 nops. Replaced: `test esi,esi / jle surface / mov edx,[ebx+0x284] /
    mov eax,[ebx+0x240] / call SetActivePage / jmp`
    (`85f67e138b93840200008b8340020000e8c786fdffeb11`).
-   `esi` is the requested level. The cave becomes `lea eax,[esi-1] / cmp eax,1 / ja surface`
-   = "1 or 2 is underground, anything else is the surface page" — identical to vanilla for
-   every level a 3-level map can hold (negatives included, since the comparison is unsigned),
-   and level 3 now gets the surface page. `eax` is dead there (the preceding
+   `esi` is the requested level. The cave (v2) becomes `test esi,esi / jle surface / cmp esi,3 /
+   je surface` = "surface page for 0 (and vanilla's ≤ 0) or 3, underground for 1, 2 and 4" —
+   identical to vanilla for every level a 3-level map can hold. (v1's `lea eax,[esi-1] /
+   cmp eax,1 / ja surface` put the Abyss on the surface page.) `eax` is dead there (the preceding
    `TStatusPanel.SetText` return is read by neither branch). Both vanilla branch targets are
    re-used unchanged: `0x00429D2B` [`0x00429CC7`] surface, `0x00429D3C` [`0x00429CD8`] after.
    ⚠ The up/down handlers do **not** call `SetMapLevel` — each inlines its own copy of the
@@ -2061,9 +2067,10 @@ byte-verified per binary.
 
 **Cave — 0x180 bytes, homed differently in the two binaries.**
 
-    cave+0x000  ORDER[4]   slot  -> level  = 3, 0, 1, 2
-    cave+0x010  RORDER[4]  level -> slot   = 1, 2, 3, 0
-    cave+0x020  cave_up 70 B, cave_dn 70 B, cave_upflip 23 B, cave_smp 35 B  (236 B in all)
+    cave+0x000  ORDER[5]   slot  -> level  = 3, 0, 1, 2, 4          (v2, 2026-09-27)
+    cave+0x014  RORDER[5]  level -> slot   = 1, 2, 3, 0, 4
+    cave+0x028  cave_up 70 B, cave_dn 70 B, cave_upflip 25 B, cave_smp 36 B  (248 B in all)
+    (v1: 4-entry tables at +0x00 / +0x10, code from +0x20, 236 B -- recognised and re-tuned)
     cave+0x100  40 B: the section-table slot the new section displaced (AoWEd only)
 
 - **`AoWEd.exe` — a new PE section `.lvn` @`0x004DF000`**, characteristics `0xE0000060`.
@@ -2155,7 +2162,8 @@ no launch-only failure mode is expected — but nothing here has been run once.
 557776AD  call InitializeMapLevel(map, count-1)
 ```
 
-Live was `03`, pristine `03`, unclaimed. **Now `04`** (`build_maplevel4.py`). `TMapContainer.AddLevel @0x55608DF8`
+Live was `03`, pristine `03`, unclaimed. **Now `05`** (`build_maplevel4.py`: `04` for the Firmament in
+v1/v2, `05` for the Abyss in v3). `TMapContainer.AddLevel @0x55608DF8`
 has no cap; `TMapContainer.New @0x55608E44` loops `[settings+0x0C]` times; `InitializeNewMap
 @0x55777590` loops `0..count-1`; `InitializeMapLevel @0x557773CC` only distinguishes `level = 0`
 (water fill) from `≠ 0` (EarthWall `7` fill), so a 4th level builds like levels 1–2.
@@ -2242,6 +2250,27 @@ jmp  <the je/jne>
 ⚠ `build_vision9.py` owns `0x55780F12` in this same function (the `add esi,3` ceiling). Different
 bytes, no overlap — do not let the two scripts' verify ranges drift together.
 
+**+3 sight on the Firmament** — `build_firmament_vision.py`, 🔨 APPLIED, UNTESTED (2026-09-26).
+Owner request. A separate script, not a `build_maplevel4.py` re-tune. `VisibilityRange`'s single exit
+`0x55780F79..7E` (`mov eax,esi / pop edx / pop esi / pop ebx / ret`, 6 B) becomes
+`E9 → cave_fvis 0x5584F400` (26 B) + `nop`. The cave reads the level byte, which is still at `[esp+2]`
+because the local has not been popped yet. Level 3 → `esi += 3`, clamped to 15. The cave then replays
+the exit. The bonus lands **after** any halving, so it is a flat +3.
+- **The clamp is load-bearing:** `TArmy.UpdateVisibilityRanges @0x5578E10C` packs sight into the low
+  nibble of `[army+0x29]` with no clamp. Vision IX here is 3 + 9 + 3 = 15, exactly the ceiling, so any
+  source that pushes Vision past IX would spill into the true-sight nibble without it.
+- `TrueVisionRange @0x55780F80` returns `VisibilityRange` for a True Seeing (`0x29`) holder, so
+  true sight gets the +3 too. Tactical combat (`TCombatUnit.GetVisibilityRange`) is untouched.
+- Surgical `--undo`. No rolls.
+
+In-game checklist:
+1. A unit with no Vision on the Firmament reveals a radius of 6 (surface: 3).
+2. The same unit back on the surface, and on Caverns/Depths, is unchanged (3, and the underground
+   halving still applies there).
+3. A Vision IX unit on the Firmament sees 15, and a True Seeing unit in its army still sees only its
+   own true-sight range, not 15. That check proves the nibble did not overflow.
+4. A True Seeing unit on the Firmament spots invisible units 3 hexes further than on the surface.
+
 **`spellgate` — global-target spells allowed from Sky.** `TGlobalTargetSpell.CanActivate @0x5579E73C`
 has the compare in the **disp8** form (`80 7D F9 00`, four bytes), so the hook takes cmp + `je` = 6
 bytes and the cave branches itself: same predicate, then `je 0x5579E7B6` (allow) / `jmp 0x5579E791`
@@ -2251,8 +2280,10 @@ clear of the displaced range.
 **`placeguard` — `TCave.PlaceHX` cannot dig into the Sky.** `Cave.TCave.PlaceHX @0x557B3670` pairs a
 cave with a twin one level away; `[esi+0x30]` is the polarity (1 = upper mouth → twin at level+1;
 0 = lower mouth → twin at level−1). With four levels a flag-1 cave placed on level 2 would now
-*succeed* in twinning into the Sky. Guard: `movsx eax,[ebp+8]; cmp eax,2; jge .block; inc eax;
-jmp 0x557B36C0` / `.block: xor ebx,ebx; jmp 0x557B37BA`. `0x557B37BA` is the function's single
+*succeed* in twinning into the Sky. Guard (v3 body, same VA and hook): `movsx eax,[ebp+8]; mov dl,1;
+mov ecx,[ebp-4]; call twin_place; test eax,eax; js .block; jmp 0x557B36C0` / `.block: xor ebx,ebx;
+jmp 0x557B37BA` — the level below in the display order, or refuse (see "The Abyss" below; v1/v2
+refused level ≥ 2 outright). `0x557B37BA` is the function's single
 epilogue (`mov eax,ebx / pop esi / pop ebx / leave / ret 8`), so EBX=0 is a clean "placement failed",
 the same shape as the engine's own failure return at `0x557B372F`. The guard fires **before** the
 twin is allocated, so nothing is half-created.
@@ -2300,7 +2331,7 @@ compare's next instruction would refuse the cast *and* leave the message set. Th
 
 | script | change |
 |---|---|
-| `build_shipyard_income.py` | new single-source `MAX_LEVELS = 4`; the four `cmp edx,3` at `0x55822174` (entry's sanity guard) / `0x55822390` / `0x558224C4` / `0x55822540` (build_t1's dim/mark/bfs loops) now read `04`, and the three per-level dword arrays in the BSS header grow to 4 slots: `H_LABOFF +0x24`, `H_W +0x34`, `H_H +0x44`, then `H_QOFF 0x54`, `H_AOFF 0x58`, `H_COFF 0x5C`, `H_NREG 0x60`, `H_NRSLOTS 0x64`, `H_YOFF 0x68`, `H_YN 0x6C`, `H_YCOUNT 0x70`, `H_YVALID 0x74`, **`HDR_END 0x558FAB78`** — still inside the `0x80` window (neighbours end at `0x558FAA24` / start at `0x558FAF20`). Cave length unchanged at 2343 B; `--sim` 57/57 |
+| `build_shipyard_income.py` | **now `MAX_LEVELS = 8`** (2026-09-27: `HDR_END 0x558FABA8`, window grown to `0x100`, all four bounds read `08`, `--sim` 57/57 — above anything the engine can create, so it no longer tracks the cap byte). As first built: new single-source `MAX_LEVELS = 4`; the four `cmp edx,3` at `0x55822174` (entry's sanity guard) / `0x55822390` / `0x558224C4` / `0x55822540` (build_t1's dim/mark/bfs loops) now read `04`, and the three per-level dword arrays in the BSS header grow to 4 slots: `H_LABOFF +0x24`, `H_W +0x34`, `H_H +0x44`, then `H_QOFF 0x54`, `H_AOFF 0x58`, `H_COFF 0x5C`, `H_NREG 0x60`, `H_NRSLOTS 0x64`, `H_YOFF 0x68`, `H_YN 0x6C`, `H_YCOUNT 0x70`, `H_YVALID 0x74`, **`HDR_END 0x558FAB78`** — still inside the `0x80` window (neighbours end at `0x558FAA24` / start at `0x558FAF20`). Cave length unchanged at 2343 B; `--sim` 57/57 |
 | `build_waterheal.py` | **v5**: the `_earth` arm gains `cmp byte [esi+0x12],3 / je _out` ahead of everything else, so earth elementals never heal on the Firmament (they would otherwise, since the arm treats "not surface" as underground). Cave 344 → 354 B. **v6 (2026-09-06)**: the `_air` arm at `0x5582407E` accepts the Firmament as well as the surface — `cmp byte [esi+0x12],0 / jne _out` becomes `cmp 0 / je _airok / cmp 3 / jne _out`, +6 B, cave 354 → **360 B**. Earth's v5 exclusion is unchanged. v1–v5 all stay as frozen recognition sources |
 
 ⚠ **FORWARD HAZARD.** `build_waterheal.py` cave `0x55824000` and `build_maplevel4.py` both encode the
@@ -2384,7 +2415,7 @@ battle is kind 2 and already gets full tactical vision.
    wizard on a 4-level map must still cast storms on the surface and underground as before. A
    mis-patched inverted-polarity site shows up as the AI *never* casting storms, or casting them
    from the Depths.
-10. **Caves**: place a cave entrance on level 2 in the editor. It must refuse rather than dig a
+10. **Caves** (on a **4-level** map; the 5-level case is in the Abyss checklist): place a cave entrance on level 2 in the editor. It must refuse rather than dig a
     passage into the Firmament. Entrances on levels 0 and 1 must still work normally, both mouths.
 11. **Earth elemental on the Firmament**: no heal, no chime. On any underground level and on any
     Mountain hex, still +1 with the quarter-volume chime.
@@ -2461,8 +2492,11 @@ the Firmament (index 3) or the filler (index 4). The Firmament needs its own tra
 
 ### Open
 
-- A "down" cave on the bottom level indexes past the level list today at 3 levels; presumably the
-  editor prevents it. Unchanged by a 4th level, worth a guard if caves are ever placed by code.
+- **A cave whose other end is off the map cannot be placed, and cannot crash.** Vanilla
+  `TCave.CanPlace` already refused an upper mouth whose `level+1 >= count`; since `build_maplevel4.py`
+  v3 the lower mouth is checked too, and every run-time site falls back to the cave's own level
+  rather than letting `GetField` read past the level list. Only a hand-built or third-party map can
+  still carry such a cave, and it now leads nowhere instead of into garbage.
 - **Air elementals on the Firmament — RULED 2026-09-06, applied.** The Firmament is open sky, so
   air elementals heal there. `build_waterheal.py` v6 widens the `_air` arm at `0x5582407E` to
   `level == 0 or 3`. Earth's v5 exclusion is unchanged, so the two arms now disagree deliberately.
@@ -2473,6 +2507,200 @@ the Firmament (index 3) or the filler (index 4). The Firmament needs its own tra
 - **Share hazard, profile-path rule:** `Modding Resources/Ziggurat Manual.log` carries the
   username and is caught by neither the mandatory `find … -name '*.pyc' -delete` pass nor the
   Ghidra-project exclusion — add it to whichever pre-share checklist carries that `.pyc` line.
+
+## Abyss map level — a 5th map level at index 4, below Depths
+
+🔨 **APPLIED, UNTESTED (2026-09-27)**, owner request. A third cave level beneath Depths. It is
+**stored** at index 4 because levels are appended in index order and index 3 is the Firmament, so
+the top-to-bottom order is **Firmament 3 / Surface 0 / Caverns 1 / Depths 2 / Abyss 4**. A map can
+leave out any level but Surface: since `build_maplevel4.py` v4 a level can be a **disabled
+placeholder** (see "Disabled levels" below), so an Abyss needs no live Firmament. Every rule other than cave links and display order already
+treated index 4 as underground, so the level is an ordinary cave level: EarthWall fill, halved
+vision, underground spell refusals and the ranged malus. No random draws anywhere in the feature.
+
+### Cave links — the one engine change (`build_maplevel4.py` v3)
+
+A `TCave` is one mouth of a pair; `[cave+0x30]` = 1 upper mouth (other end below), 0 lower mouth
+(other end above), 2 while `Destroy` runs. Vanilla computes the other end as `level ± 1` at **twelve
+sites, all in the Cave unit** `0x557B3424..0x557B3F74`. Nothing outside it computes a cave
+destination. A byte sweep for the TCave ClassID `0x2037E` hits only this unit, and a capstone sweep
+of every `GetField` / `GetMapLevel` caller for `inc`/`dec` on the level argument found no other
+level arithmetic. AoWz.exe imports only `TCave.CanEnter` / `Enter`. `MoveExclusive` is the
+pathfinder's vertical link: `UpdateMapField` sets the field's exclusive-move bit `0x8000`, and
+`TMoveControl` calls the VMT slot. So AI routing, the player's `EnterEx` move and
+`build_fly_levels.py`'s `ValidPath` re-run all see the same topology.
+
+All twelve now call one helper (cave `0x55844100`, register-only, PIC, ECX preserved):
+
+| helper | in | out |
+|---|---|---|
+| `twin_strict` `0x55844100` | EAX level, DL ≠ 0 down / 0 up | down 0→1, 1→2, **2→4**; up 1→0, 2→1, **4→2**; anything else −1 |
+| `twin_place` `0x55844128` | + ECX = `TMapContainer` | also −1 when the result ≥ `[ecx+0x14]` (the level count) |
+| `twin_safe` `0x5584413C` | as strict | −1 becomes the **input** level |
+
+The Firmament has no cave neighbour either way. Placement sites use `twin_place` and refuse
+cleanly. Run-time sites use `twin_safe`, so a cave no placement path can create (hand-built map,
+third-party generator) resolves to its own hex instead of vanilla's unchecked `GetField(-1)` /
+`GetField(count)`. The script's dry run **executes** the three assembled helpers in a small
+interpreter against the Python order table, for levels −2..7, both directions and counts 3..5.
+
+| site | VA | B | dir | helper |
+|---|---|---|---|---|
+| `TCave.CanPlace` (was `level+1 < count` for flag 1 only) | `0x557B3652` | 15 | by flag | `twin_place` |
+| `TCave.PlaceHX` GetField, flag-1 arm (the Firmament `placeguard` hook, body rewritten) | `0x557B36BB` | 5 | down | `twin_place` |
+| `TCave.PlaceHX` twin's own PlaceHX level, flag-1 arm | `0x557B36FD` | 5 | down | `twin_strict` |
+| `TCave.PlaceHX` GetField, flag-0 arm | `0x557B373D` | 5 | up | `twin_place` (else clean fail `0x557B37BA`) |
+| `TCave.PlaceHX` twin's own PlaceHX level, flag-0 arm | `0x557B377F` | 5 | up | `twin_strict` |
+| `TCave.Destroy` flag-0 / flag-1 arm | `0x557B3494` / `0x557B34D4` | 5 / 5 | up / down | `twin_safe` |
+| `TCave.MoveExclusive` flag-1 / flag-0 arm | `0x557B3810` / `0x557B3832` | 5 / 5 | down / up | `twin_safe` |
+| `TCave.EnterMovePoints` both arms (EBP = cave) | `0x557B38D6` | 30 | by flag | `twin_safe` |
+| `TCave.CanEnterSelection` both arms (EBX = cave) | `0x557B393C` | 30 | by flag | `twin_safe` |
+| `TCave.EnterEx` both arms; flag ≥ 2 keeps `[ebp-9] = 0` as vanilla | `0x557B3A8E` | 33 | by flag | `twin_safe` |
+| `TCave.ArmyPlaced` both arms (the far end's ExploreArea) | `0x557B3E3C` | 34 | by flag | `twin_safe` |
+
+"By flag" = `cmp byte [cave+0x30],1 / sete dl`, vanilla's `== 1 ? +1 : −1`. The four long sites
+re-issue vanilla's `call [vmt+0x7C]` (GetLevel) so both arms collapse into one stub. All twelve
+ranges were byte-identical to the vanilla root, carry no `.reloc` entry and take no branch from
+outside (the script re-checks both on every run). Cap byte `0x5577768E` `04 → 05`. Cave use 250 →
+625 B of `0x400`. `CanPlace` now also checks **lower** mouths. A flag-0 twin always sits one valid
+step below its flag-1 original, so its own placement passes, and only a lower mouth on the top
+level (which vanilla would have mis-built) is refused.
+
+⚠ **Destroy relies on the fallback being the cave's OWN level.** For a cave with no neighbour,
+`GetField` returns its own hex and `FindHS(TCave)` finds the cave itself. `Destroy` has already
+set its flag to 2, so neither polarity test matches and nothing else is freed. Any other fallback
+value would need re-proving there.
+
+`--undo` restores all 21 sites and zeroes 625 B. It accepts v1, v2 or v3. Round trip 2026-09-27:
+the re-applied DLL is SHA-256-identical to the pre-undo one (`1fb61a7c…`). `build_relocfix.py
+--audit` 0.
+
+### Re-tunes elsewhere (every one in place, same hook sites)
+
+| script | change |
+|---|---|
+| `build_skylevel_ui.py` **v4** | World Map strip reads **Firmament \| Surface \| Caverns \| Depths \| Abyss** on a 5-level map: 5-entry tables, an "Abyss" const-string record, `Add("Abyss")` when count > 4, every table guard `cmp edx,4`. Layout in the UI-half table above. AoWz/AoWzCompat still differ in one byte; round trip bit-identical |
+| `build_deved_levelnav.py` **v2** | Level Down from Depths reaches the Abyss; both palette flips become "surface page for 0 or 3" (v1's "1 or 2 is underground" would have given the Abyss the surface palette). Then `build_zigeditor.py --apply` rebuilt `AoWzEd.exe`; its `.tres` window matches `AoWDevEd.exe`'s |
+| `build_shipyard_income.py` | `MAX_LEVELS 4 → 8`. The limit is the size of a per-level table (width, height, label offset), not the coordinate system; a map with more levels than rows fails entry's sanity guard and earns **no water income at all**. 8 is above the editor's own z ≤ 7 ceiling, so it no longer follows the cap byte. BSS header `0xA8` B, window grown `0x80 → 0x100` (`0x558FAB00..0x558FABFF`, next claim `0x558FAC00`). `--sim` 57/57 |
+| `build_townquake_retune.py` | "underground" was `level 1 or 2`; now `level ∉ {0, 3}`. `cave_walls` 89 → 92 B, `cave_atk` stays at `0x5584D75C`, so the hook bytes did not move. Same single synced `map.Random(10)` (`rng_audit --owners`: `ok`) |
+
+**Needed no change, verified live:** vision halving and Night Vision (`== 0 or 3`), global / storm /
+Bird's View refusal (`== 0 or 3`), fill (`== 3 ? Sky : EarthWall`), +3 Firmament sight (`== 3`),
+earth-elemental heal (`≠ 0 and ≠ 3` → heals) and air (`== 0 or 3` → does not), Raise Terrain's
+underground arm (`≠ 0`), `build_fly_levels.py` (its `UP_T`/`DN_T` already carried the Abyss row:
+up 4→2, down 2→4), and the ranged malus. The malus uses parity: `test al,al / jp` treats even
+parity as surface, and 4 = `100` has odd parity, so the malus applies. ⚠ That trick fails at a
+sixth level, because 5 = `101` has even parity and would read as surface.
+
+⚠ **FORWARD HAZARD — three scripts encode the level set.** `build_maplevel4.py` (order +
+cap), `build_townquake_retune.py` and `build_firmament_rangedmalus.py` (both "not 0 and not 3"),
+plus the two display tables. A sixth level needs all of them, and the parity site needs a real
+compare. (`build_shipyard_income.py` holds 8 levels and needs nothing below that.)
+
+Not done: the Ziggurat Map Generator and `deved_bridge.py` know three levels only; a generated map
+gets Surface/Caverns/Depths from the New Map checkboxes and nothing else.
+
+### Disabled levels — any set of levels, Surface always on (2026-09-27)
+
+🔨 **APPLIED, UNTESTED in game (2026-09-27)**; the editor half was **driven live in `AoWzEd.exe`** the
+same day (popup, append, trailing removal, middle clear, re-enable, New Map, save and reload). Owner
+request: retire Add/Remove Level for a popup showing which levels are on. Owner rulings: placeholder
+levels (not a level-kind rewrite); a cave skips to the next enabled level; the World Map strip is a
+fixed grid with blank cells.
+
+**Storage — `build_maplevel4.py` v4.** `TAoWHSMap` 0x41C → 0x420; mask byte `+0x41C`, bit L =
+level L disabled, saved as property id `0x60` through a retarget of `TAoWHSMap.ReadWrite`'s
+`call THSMap.ReadWrite` (`0x55776E50`), so it loads before any level or object. Old maps read 0 =
+all enabled. `twin_strict` became a trampoline to `strict4` (`0x55844274`), which walks the cave
+chain 0 → 1 → 2 → 4 skipping disabled and missing levels. Model check: 7 700 executed runs. Cave
+775 B. Round trip bit-identical.
+
+**Flying — `build_fly_levels.py` relaid out.** A `fly_next` helper walks `UP_T`/`DN_T` the same
+way; the Yes/No prompt text is indexed by (up target, down target). Slot grown to
+`0x5584F800..0x558507FF` after a surgical `--undo`. 3 840 executed runs.
+
+**Editor — `build_levelset.py` (new).**
+- Options > **Map Levels...** (the Add Map Level item, renamed; Remove Map Level made invisible,
+  length-neutral in the live `TMAINFORM` in `.ctp`; both old handlers now reach the popup). A
+  runtime-built `TForm` with a checkbox per level in the strip's grid, Surface greyed. On OK a level
+  switched off is cleared in place after "Delete everything on the X?" (`TMapLevel.DestroyHS` under
+  the OLD mask, so cave mouths take their partners, then `InitializeMapLevel`); a level switched on
+  is re-enabled or appended; trailing disabled levels are removed; then every cave pair the new set
+  splits is destroyed. No level ever changes index.
+  ⚠ Vanilla Remove Level deleted the *viewed* level and renumbered every level after it. That is
+  why it is retired rather than kept.
+- **New Map**: the three level radios are hidden and five checkboxes built in `MapLevelPnl`;
+  their `OnClick` keeps the hidden radios in step (Depths → three levels, Caverns → two), which is
+  all the generated-map path reads. For a blank map the set is applied right after `map.New`,
+  before anything saves or adopts it.
+- The popup and all logic live in the DLL, slot `0x55850800..0x558517FF`; VCL30/HSEPack routines
+  the DLL does not import are reached through the load delta of imports it has. The exe carries
+  only redirects: `0x0042BDD0`/`0x0042BDDE` in `AddMapLevelClick` (vanilla's own refresh tail is
+  reused), `jmp` at `0x0042BCB8`, two stubs in the now-dead `RemoveMapLevelClick` body
+  (`0x0042BD01`, `0x0042BD43`, reloc-free runs), the `ShowModal` call at `0x00429A70` and
+  `call [ecx+0xCC]` at `0x004034DB`. BSS `0x558FAEE0..0x558FAEF3` holds the New Map checkboxes.
+- **Level Up / Level Down** step over disabled levels (`build_deved_levelnav.py` v3).
+
+**Warp Party follows the flying order** (owner ruling 2026-09-27). `TWarpParty.CalculateWarpLocation
+@0x557EB1DC` chose destination levels by `abs(L − cur) == 1`, index adjacency: Depths could warp to
+the Firmament, the Abyss only to the Firmament, and a disabled placeholder was a valid target. It
+was the one `level ± 1` site outside the Cave unit (owner: no other mechanic does this). Hook
+`0x557EB2CE` (23 B) → `cave_warp` in `build_fly_levels.py`'s slot, which accepts L only if it is
+`fly_next(cur, up)` or `fly_next(cur, down)`. Candidate filter only; the spell's synced draw is
+unchanged. Checklist: from Depths a warp lands on Caverns or the Abyss, from the Abyss on Depths,
+from Surface on Caverns or the Firmament, and never on a switched-off level.
+
+**Not yet done (phase 3):** the game's World Map strip as two fixed rows
+(Surface · Firmament · (Faery) / Caverns · Depths · Abyss) with blank cells for disabled levels
+and for levels the local player has not yet explored (bit `[map+0xA5]` of `[field+0x18]`), and
+PgUp/PgDn skipping them. Until then the strip still shows every stored level, placeholders
+included. `TAOWTabPanel` (aowInt) lays tabs out in one row by X only: a two-row mode means
+patching both arms of `Draw @0x59817CEC` and `CheckMouseDown @0x5981812C`, gated to the World Map
+instance.
+
+Checklist for this part:
+1. Options > Map Levels on an old map shows its levels ticked; OK with no change does nothing.
+2. Surface + Depths + Abyss only (Caverns and Firmament off): a cave on Surface pairs with Depths,
+   one on Depths with the Abyss; walking and pathfinding go Surface → Depths → Abyss.
+3. Switch Caverns back on: that Surface↔Depths cave pair disappears (both mouths).
+4. Level Down from Surface skips a disabled Caverns; Level Up from Surface does nothing when the
+   Firmament is off.
+5. Flying from a Surface Chasm with Caverns off goes down to Depths; the prompt names Depths.
+6. New Map with Caverns off and Abyss on: the blank map opens with Surface, Depths and Abyss.
+7. Save, reload, and play the map: the disabled levels stay disabled.
+
+### In-game checklist — nobody has played this
+
+1. **Launch `AoWz.exe` and `AoWzEd.exe`.** Nothing runs at package init, but twelve hooks sit on
+   cave code.
+2. **Editor, levels:** in Options > Map Levels tick the Abyss. It comes up as **EarthWall** with
+   the border ring. Level Down from Depths goes to the Abyss, and Level Up from
+   the Abyss returns to Depths. The Abyss shows the **underground** palette page, and the Firmament
+   still shows the surface one.
+3. **Editor, caves:** on a 5-level map, place a cave entrance on **Depths**. It is accepted and its
+   lower mouth appears on the **Abyss** at the same x,y. On a **4-level** map the same placement is
+   refused. Entrances on Surface and Caverns still pair with Caverns and Depths.
+4. **Delete** a Depths↔Abyss cave from either end in the editor: both mouths go. Delete a
+   Surface↔Caverns one: both mouths go, as before.
+5. Save the 5-level map, reload it, and check the Depths↔Abyss cave still links.
+6. **Game, World Map strip:** reads **Firmament | Surface | Caverns | Depths | Abyss**. Clicking each
+   tab shows that level. PgDn from Depths reaches the Abyss, PgUp from the Abyss returns to Depths,
+   and PgDn on the Abyss does nothing. Also check whether "Firmament" still fits a fifth-width tab
+   (145 px at the minimum window width, so 29 px a tab). If not, widen the window.
+7. **Walk through the cave both ways.** Entering on Depths puts the army on the Abyss, and the view
+   follows. Entering the Abyss mouth returns it to Depths. The prompt, movement cost and scouting at
+   the far end behave as on any other cave.
+8. **Pathfinding through it:** order an army on Surface to a hex on the Abyss. The path routes
+   through the caves (Surface→Caverns→Depths→Abyss) and the move completes. Give an AI player a
+   reason to go down, and it does.
+9. **Abyss rules:** a unit without Night Vision sees half its radius; a global / storm / Bird's View
+   spell is refused; a ranged unit without Night Vision takes the −4; an earth elemental heals per
+   hex and an air elemental does not.
+10. **Shipyard income** with water on all five levels: each level's sea is counted separately.
+11. **Town Quake** on a city in the Abyss behaves as underground (walls 90% wood / 60% stone, ATK 18
+    without stone walls). A Firmament city does not.
+12. **Regression, 3-level map:** caves, PgUp/PgDn, the strip and Level Up/Down behave exactly as
+    before.
 
 ## Open items
 

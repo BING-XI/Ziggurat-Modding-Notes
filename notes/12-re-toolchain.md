@@ -1522,7 +1522,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 
 | VA | script | size | feature |
 |---|---|---|---|
-| `0x55820000` | `build_los_terrain.py` | 0x800 | strategic-map terrain LOS blocking (Earth/Rock) + fog-refcount rebuild |
+| `0x55820000` | `build_los_terrain.py` | 0x800 (v5 uses `..0x55820708`) | strategic-map terrain LOS blocking (Earth/Rock) + fog-refcount rebuild + Mantle of Gloom (v4, 🔨 APPLIED, UNTESTED 2026-09-26). v4 adds call retargets `0x5577844D` (UpdateVisibility's closing `InvalidateMap`) and `0x5575433E` (SetDiplomaticRelation's `UpdateVisibility`), and owns the Trail of Darkness ring-bound byte `0x55780170` (vanilla 1, previously an unowned hand edit 5, now 6). **BSS `0x558FAD40..0x558FAECF`** (gloom source list) plus `0x558FAA00/01`. **v5** (True Seeing pierces the gloom) adds **cave 2 `0x5584F480..0x5584F77F`, exclusive** (`tsqual`/`tslook`/`tsrec`/`tscheck`, 542 B) and **BSS `0x558FAC10..0x558FACFF`** (True Seeing observer list) |
 | `0x55820800` | `build_caster_cost.py` | **exclusive** `0x55820800`–`0x55820FFF` | four bit-only hero abilities cutting the initial casting cost of a spell family each by 40% (x0.6 since 2026-09-25). `cave_cost` is a **pinned 120-B slot** at `0x55820800` (data classifier 58 B + zero pad; `--classic` puts the class classifier back, 118 B at x0.6); the other four caves must not move |
 | `0x55821000` | `build_dispelmagic5.py` | **exclusive** `0x55821000`–`0x558213FF` | Dispel Magic IV+V. **Relocated 2026-08-26** — see §6.3 for the full swallow/repair story, the single best worked example of the allocation discipline in this codebase. |
 | `0x55822000` | `build_shipyard_income.py` | **exclusive**, a full page `0x55822000`–`0x55822FFF` | Shipyard gold income from contiguous adjacent water. Currently claimed — treat any older note calling this address free as stale. |
@@ -1544,14 +1544,14 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x55838000` | `build_ai_itemloot.py` | `0x55838000`–`0x55838600` (6 sub-caves) | AI heroes pick up / equip / upgrade-swap / stash ground items; supersedes `build_ai_itempickup.py` and `build_ai_itemtarget.py` above |
 | `0x5583E000` | `build_raiseterrain_ug_earth.py` | `C_UGDIRT` `0x5583E000` (320 B), `C_SHOWGATE` `0x5583E140` (64 B slot, 22 B used) | Raise Terrain works underground, producing temporary earth. `C_SHOWGATE` is what `0x5582A4E0` jumps to: it tests the restore-terrain byte `[eax+0x0E]` and the Earth marker `[eax+0x0F] == 7`, then either `jmp 0x5582A4E6` (Grip of Winter's own untouched 14-byte tail → vanilla `Show`) or `jmp 0x5582A4F1` (`ret 4`, draw nothing). See the `0x5582A200` row for the undo ordering this creates. |
 | `0x55842000` | `build_minddecay_oos.py` | 256 B written; full page `0x55842000`–`0x55842FFF` verified zero and reserved | Mind Decay's to-hit roll made draw-count-invariant (§4.5's worked example) |
-| `0x55844000` | `build_maplevel4.py` | **exclusive**, `0x400` (v2: 250 B used — `fillterr` `0x55844000`, `vis1` `..20`, `vis2` `..40`, `spellgate` `..60`, `placeguard` `..80`, `stormcast` `..A0`, `stormai` `..C0`, `birdsview` `..E0`) | Firmament map level (index 3): Sky terrain fill, surface-like vision, the global-target / storm / Bird's View spell gates, and the `TCave.PlaceHX` guard. Needs no globals — no PIC anchor, no absolute operand |
+| `0x55844000` | `build_maplevel4.py` | **exclusive**, `0x400` (**v4: 775 B used** — v3 below, plus `strict4` `0x55844274` and `cave_rw` `0x558442E8`; `twin_strict` is now a trampoline; ⚠ also owns `TAoWHSMap` InstanceSize `0x5570E858` (0x41C → 0x420, mask at `+0x41C`, id 0x60) and the call at `0x55776E50`. v3 was 625 B used — `fillterr` `0x55844000`, `vis1` `..20`, `vis2` `..40`, `spellgate` `..60`, `placeguard` `..80` (body rewritten in v3), `stormcast` `..A0`, `stormai` `..C0`, `birdsview` `..E0`; v3 from `0x55844100`: helpers `twin_strict`/`twin_place`/`twin_safe`, then 12 cave-link stubs to `0x55844270`) | Firmament (index 3) and Abyss (index 4) map levels: Sky terrain fill, surface-like vision, the global-target / storm / Bird's View spell gates, and every `TCave` level±1 site routed through the level order. Needs no globals — no PIC anchor, no absolute operand |
 | `0x55846000` | `build_spellcast_herotier.py` | **exclusive**, `0x80` | the Spellcasting-level tier gate applies to units only, not heroes |
 | `0x55847000` | `build_spellward_rescope.py` | **exclusive**, `0x100` (22 B used) | Astral Ward (ex Spell Ward) blocks only Town Gate (`0x26`) and Warp Party (`0x22`) — `cave_spellward`, hooked from `TSpell.CanActivate @0x557792E8` |
 | `0x55848000` | `build_powerleech.py` | **exclusive**, `0x400` (379 B used — `cave_powerleech` `0x55848000`, `nodepower` `0x5584810F`) | Power Leech: the caster steals 25% of the power of every magic node owned by another player. Entered by retargeting the opening `call` of `GetNetPower @0x5577CEC4`. **PIC anchored on a function**, not on a data global — `sub ecx, 0x77C50` leaves EDI = runtime `TPowerNode.GetPower @0x557D03C8`, so the node test is `cmp [edx+0x1F8], edi` and the map (`edi + 0x129C78`) and `TPlayerStructurePowerSource.Power` (`edi − 0x6E874`) are small offsets. **No `0x55xxxxxx` operand in the cave.** |
 | `0x55849000` | `combatunitguard.py` (**a module, not a build script**) | **exclusive**, `0x100` (98 B used — `guard_unit` `0x55849000`, `guard_hero` `0x55849040`) | The shared "is this combat object really a `TCombatUnit`?" guard, added 2026-09-11 after a wall-target AV. `guard_unit(EAX=combat obj) -> EAX = [obj+0x4C]` or 0; `guard_hero(EAX=combat obj) -> AL = target is a THero`. **⚠ COUPLED, by design**: `build_assassin.py` and `build_magebane.py` both install the identical blob (verify-before-write accepts zero-or-ours from either) and both call `combatunitguard.undo_if_unused()`, which zeroes it **only when no caller outside the undoing script's own caves remains**. Clobbers EAX + flags only; PIC via a `call $+5`/`pop` anchor to the classref cells `0x55715A54` (TCombatUnit) and `0x55711FAC` (THero) |
 | `0x5584A000` | `build_leadership_others.py` (🔨 APPLIED, UNTESTED 2026-09-16) | **exclusive**, `0x400` (518 B used — `cave_blevel` `0x5584A000` 28 B, `cave_pass2` `0x5584A040` 226 B, `cave_lname` `0x5584A180` 264 B incl. the four `" (+<roman> received)"` AnsiStrings and their pointer table at `0x5584A214`) | Leadership buffs only the OTHER units in the party, and the card splits own level from received level. Hooks `0x557661FC` / `0x55766210` (the two bonus getters, 5 B `call`), `0x5578D128` (`TArmy.UpdateFormation` pass 2, 6 B `jmp`, resuming at the shared exit `0x5578D186` — only the first 6 bytes may be displaced, `0x5578D162` carries the region's sole `.reloc` entry) and the VMT slot `0x55722060` (`GetName`, itself `.reloc`-covered — the value is repointed, the entry kept). **⚠ COUPLED**: `cave_lname` reaches `build_leadership4.py`'s `cave_lsname` through `VMT+0x10c` rather than by address, so the two compose; and `build_leadership_fearless.py` depends on `TLeadershipAbility.GetLevel` still returning `max(own, borrowed)`, which is why the original author's own-only `GetLevel` change was deliberately not ported. PIC: one `call $+5`/`pop edi` anchor for `0x558FA044` in `cave_pass2`, one `pop ebp` anchor for the literal table in `cave_lname`. |
 | `0x5584B000` | `build_hero_turn1_upgrade.py` (🔨 APPLIED, UNTESTED 2026-09-22 v2; **v3** 2026-09-24) | **exclusive**, `0x100` (was `0x80`; 129 B used — `C_TURN1` `0x5584B000`) | A hero holding unspent skill points is offered them. Entered by **retargeting the `call rel32`** at `THero.NewTurn+0x1B @0x55787FE7` (was `ValidateHeroUpgrade @0x55787D54`); the cave creates the level-cache lag when `GetSkillPoints() > 0` and **tail-jumps** to the original. Second site `0x55786CB3` is 10× `nop` (vanilla's day-1 confiscation, disarmed). v3 adds guard 4: no lag for a PBEM human's leader on day 1 (`pbemday1.py` predicate; map via a `call $+5` anchor), re-tuned in place over v2. **⚠ COUPLED** to `build_pbem_leadersetup.py`, which accepts this cave only fully v3 or fully absent. ⚠ **v1 hooked `0x55786CB3` instead and never executed** — see `01-combat-maths.md` §5 |
-| `0x5584C000` | `build_pbem_leadersetup.py` (stage 1 ✅ 2026-09-24; stage 2 🔨 APPLIED, UNTESTED 2026-09-24) | **exclusive**, `0x400` (was `0x100`; 649 B used), asserted zero-or-ours | PBEM turn-1 leader window. Fixed entries: `C_RAISE 0x5584C000` (124 B; 5-byte E9 over `0x55756B94`, raises `TPlayerMagicEventLog` mode 3; VMT derived PIC), `C_GATE 0x5584C100` (71 B; E9 + 17 nop over `0x5577CC5C`, defers the day-1 grant), `C_APPLY 0x5584C180` (265 B; called from the exe through the rebase delta `[0x45DF7C] − 0x558FA040` — the exe holds this constant, so it must not move). Second site `0x5577C3FF` (one rel8 byte, `4B→47`). **⚠ COUPLED**: `C_APPLY` calls `build_tierresearch_dll.py`'s `cave_day1` v2 at `0x5580EE30`. Exe half is the `0x0062C000` row in §6.2. Full record `07-ui.md` §10.5–10.6. |
+| `0x5584C000` | `build_pbem_leadersetup.py` (✅ CONFIRMED WORKING 2026-09-24, both stages) | **exclusive**, `0x400` (was `0x100`; 649 B used), asserted zero-or-ours | PBEM turn-1 leader window. Fixed entries: `C_RAISE 0x5584C000` (124 B; 5-byte E9 over `0x55756B94`, raises `TPlayerMagicEventLog` mode 3; VMT derived PIC), `C_GATE 0x5584C100` (71 B; E9 + 17 nop over `0x5577CC5C`, defers the day-1 grant), `C_APPLY 0x5584C180` (265 B; called from the exe through the rebase delta `[0x45DF7C] − 0x558FA040` — the exe holds this constant, so it must not move). Second site `0x5577C3FF` (one rel8 byte, `4B→47`). **⚠ COUPLED**: `C_APPLY` calls `build_tierresearch_dll.py`'s `cave_day1` v2 at `0x5580EE30`. Exe half is the `0x0062C000` row in §6.2. Full record `07-ui.md` §10.5–10.6. |
 | `0x5584D000` | `build_levelup_eventloc.py` (🔨 APPLIED, UNTESTED 2026-09-24) | **exclusive**, `0x100` (85 B used — `C_CAP` `0x5584D000` 28 B, `C_RW` `0x5584D040` 29 B, `C_VIEW` `0x5584D080` 28 B), asserted zero-or-ours | Hero level-up events centre on the level-up hex. Entered by retargeting `call DistributeLocationEventLog` at `0x55787F93` (nothing displaced) and through two `THeroUpgradeEventLog` VMT slots, `+0x18` ReadWrite `0x55711BA0` and `+0x74` ViewLocation `0x55711BFC` (both `.reloc`-covered, entries kept); instance size `0x55711B6C` grows `0x24 → 0x28`. Register/rel32 only, no anchor. Full record `07-ui.md` §11. **Current high-water mark** |
 | `0x5584D100` | `build_defeat_enchant_guard.py` (🔨 APPLIED, UNTESTED 2026-09-24) | **exclusive**, `0x100` (`cave_rem` `0x5584D100` 75 B, `cave_dis` `0x5584D180` 75 B) | Defeat can't freeze on an orphaned enchantment (`04-spells-modded.md`). Hooks `0x5577CB9C` (37 B), `0x55765E2A` (7 B) |
 | `0x5584D200` | `build_mpresume_customize.py` (🔨 APPLIED, UNTESTED 2026-09-24) | **exclusive**, `0x40` (22 B) | MP save resume with Customize Leaders (`07-ui.md` §12). Hook `0x557E11AA` (6 B) |
@@ -1560,7 +1560,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x5584D300` | `build_caster_wallet.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x100` (`cave_f` `0x5584D300` 78 B, `cave_cd` `0x5584D360` 28 B, `cave_ccd` `0x5584D3A0` 30 B) | raw spell cost → `CastingMana` (`04-spells-modded.md`). Hooks `0x5578964A` (6 B), `0x557794D6` (7 B), `0x55779517` (8 B); one call/pop anchor in `cave_f` for `0x558FA044` |
 | `0x5584D400` | `build_ground_debuffs.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x80` (`cave_holy` `0x5584D400`, `cave_unholy` `0x5584D440`, 36 B each) | Holy Woods → Vertigo, Evil Woods → Cursed (`04-spells-modded.md`). Hooks `0x557C7F9E` / `0x557C910B` (6 B each) |
 | `0x5584D480` | `build_levelterrain_rocks.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x280` (`cave_lvl` `0x5584D480` 170 B, `cave_rocks` `0x5584D530` 267 B) | Level Terrain leaves rocks. Hook `0x5579F109` (5 B); two call/pop anchors |
-| `0x5584D700` | `build_townquake_retune.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x80` (`cave_walls` `0x5584D700` 89 B, `cave_atk` `0x5584D75C` 32 B) | Town Quake by wall type and level. Hooks `0x557B1E79` (10 B), `0x557B1CE7` (5 B). **BSS `G_ATK 0x558FAD00`** (4 B, in the clear gap `0x558FAC04..0x558FAF1F`) |
+| `0x5584D700` | `build_townquake_retune.py` (🔨 APPLIED, UNTESTED 2026-09-25; underground test re-tuned 2026-09-27) | **exclusive**, `0x80` (`cave_walls` `0x5584D700` 92 B, `cave_atk` `0x5584D75C` 32 B — 4 B left) | Town Quake by wall type and level. Hooks `0x557B1E79` (10 B), `0x557B1CE7` (5 B). **BSS `G_ATK 0x558FAD00`** (4 B, in the clear gap `0x558FAC04..0x558FAF1F`) |
 | `0x5584D780` | `build_vortex_rebalance.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x100` (`cave_rating` `0x5584D780` 62 B, `cave_drain` `0x5584D7C0` 116 B) | Vortex ATK 20, 14/10/4, movement drain. Hooks `0x557A1605` (54 B), `0x557A1645` (1 B), `0x557A168C` (6 B) |
 | `0x5584D880` | `build_ai_replan_cap.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x40` (`cave_cap` 37 B, `cave_reset` `0x5584D8A8` 19 B) | AI group re-plan cap 20. Hooks `0x55738C66` (10 B, `MoveExecuterDone`), `0x55739067` (8 B, `Activate`); counter byte `[agc+0x156]` |
 | `0x5584D8C0` | `build_formation_guard.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x20` (`cave_formation` 19 B) | nil aura owner skips the unit in `TArmy.UpdateFormation`. Hook `0x5578D0DE` (6 B) |
@@ -1571,6 +1571,15 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x5584E400` | `build_cityrel_scale.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x100` (`cave_m` 39 B, `stub_neg_esi` `0x5584E430` 20 B, `stub_pos_edi` `0x5584E450` 18 B, `stub_pos_ebx` `0x5584E470` 18 B, `stub_raze` `0x5584E490` 30 B, `stub_razeadj` `0x5584E4B0` 13 B) | Migrate/Loot/Raze race-relation scaling (`10-ai-and-structures.md` §12.2). Call retargets + imm8 at `0x557A80EB`, `0x557A8243`, `0x557A882E`, `0x557A8918`, `0x557A8970`, `0x557A89D3`, `0x557A8A28`, `0x557AB445` (8 B each), `0x557AB41F` (5 B) |
 | `0x5584E500` | `build_command_bond.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0xD00` (19 helpers + 14 host caves + 5 literals, ends `0x5584F0C2`) | command bonds, Commanding, Dispel on thralls (`02-abilities-modded.md`). Hooks `0x557BCDAF` (registration), `0x5576FB4C`/`0x5576FB6C` (entry jmps), `0x55727591`, `0x5578F7BE`, `0x5578F3F8`, `0x5576CB4C`, `0x557E8AE3`, `0x5576D84E` (call retargets), `0x5577F454`, `0x5576CC18` (5 B jmps), `0x5576D824` (5 B call), `TMultiLevelAbility` VMT cells `0x5571E034`/`0x5571E0DC` (`.reloc` kept). **BSS `0x558FAD20`** (1 B, Desert-text flag) |
 | `0x5584F200` | `build_command_resroll.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x100` (4 caves, ends `0x5584F2C5`) | command roll 2 = commander RES. Hooks `0x557681ED`, `0x55768270`, `0x55768171`, `0x557680EE` (6 B each) |
+| `0x5584F300` | `build_monster_slaying.py` + `monsterslay.py` (🔨 APPLIED, UNTESTED 2026-09-26) | **exclusive**, `0x100` (`ms_test` `0x5584F300` 89 B, `cave_sdv` `0x5584F380` 38 B, `cave_cus` `0x5584F3C0` 34 B) | Monster Slaying DAM + DEF (`02-abilities-modded.md`). Hooks `0x55766564`, `0x55767904` (5 B each). **⚠ COUPLED**: `ms_test` is also called from `build_assassin.py`'s `cave_melee`/`cave_melee3` and `build_ranged_slayers.py`'s `cave_rng`; all three scripts install it zero-or-ours. Register/rel32 only |
+| `0x5584F400` | `build_firmament_vision.py` (🔨 APPLIED, UNTESTED 2026-09-26) | **exclusive**, `0x40` (`cave_fvis` 26 B) | +3 sight on the Firmament, clamped to 15. Hook `0x55780F79` (6 B, `VisibilityRange` exit incl. `ret`) |
+| `0x5584F800` | `build_fly_levels.py` (🔨 APPLIED, UNTESTED 2026-09-26; relaid out 2026-09-27) | **exclusive**, `0x1000` = `0x5584F800..0x558507FF` (data 692 B + 14 blocks incl. `fly_next` and `cave_warp` `0x55850120`, ends `0x5585015F`; hooks also `0x557EB2CE` 23 B, Warp Party) | Flying between map levels. VMT slots `0x557B7374`/`0x557B7390` (`TMovementAbility` `+0x98`/`+0xB4`, `.reloc` kept), hooks `0x55746979` (6 B, `ValidPath` epilogue), `0x55780343` (19 B, `MovedTo` clamp). **BSS `0x558FAA30..0x558FAAF8`** (runtime clone of `TEnterCaveEventLog`'s VMT + built flag) |
+| `0x55850800` | `build_levelset.py` (🔨 APPLIED 2026-09-27; editor half driven live) | **exclusive**, `0x1000` = `0x55850800..0x558517FF` (≈2.3 KB: strings, the popup `levelset` `0x55850980`, `cave_bits`, `repair`, `nm_click`, `nm_apply`, the New Map table, `nm_show`) | The editor's Map Levels popup and the New Map level checkboxes. Reached from `AoWDevEd.exe` only, through `[0x0043289C]` + a link-time difference. **BSS `G_CB 0x558FAEE0..0x558FAEF3`**. Exe side: `0x0042BDD0` (9 B), `0x0042BDDE` (18 B), `0x0042BCB8` (5 B), stubs `0x0042BD01`/`0x0042BD43` in the dead `RemoveMapLevelClick` body, `0x00429A70` (rel32), `0x004034DB` (6 B), and a length-neutral menu-item edit in the live `TMAINFORM` (`.ctp`) |
+| `0x55851800` | `build_cave_flyer_morale.py` (2026-09-27) | **exclusive**, `0x80` (`cave_flymor` 111 B) | flyers lose raw morale underground (−5/−10/−15 on levels 1/2/4), units only, Cave Crawling (id 4) exempt. Hook `0x5577EF9B` in `TAbstractUnit.GetUnitMoraleValue`; call/pop anchor to the THero classref cell `0x55711FAC` |
+| `0x55851880` | `build_race_terrain_move.py` (🔨 APPLIED, UNTESTED 2026-09-27) | **exclusive**, `0x80` (`cave_race` 75 B) | Frostlings on Snow / Azracs on Desert at the Grass cost (`09-terrain-movement.md`). Hook `0x5577FDC4` (6 B, `CreateMovePointTable` entry; prologue replayed in the cave). Also writes the Desert/Snow rows of movement tables 0/3/4/5/7. Register/rel32 only |
+| `0x55851900` | `build_wallcrush_dam.py` (🔨 APPLIED 2026-09-27) | **exclusive**, `0x200` (10 caves, ends `0x55851A4C`) | Wall Crushing damage = attacker DAM (`02-abilities-modded.md`). Entry hooks `0x557685B8`, `0x55768618` (5 B each, prologue replayed); call retargets `0x5576860C` `0x5576867D` `0x557686A7` `0x5576875C` `0x55768783` `0x5576883C` `0x55768863` `0x55768900` `0x55768948`; VMT slot `0x55721418` (`TWallCrushingAbility` `+0x104`, `.reloc` kept). Register/rel32 only |
+| `0x55851C00` | `build_warpban.py` (🔨 APPLIED 2026-09-27) | **exclusive**, `0x200` (362 B used: MSG/CAP literals, `c_rw` `0x55851C50`, `c_ban` `0x55851C72`, `ed_disp` `0x55851CA8`) | Per-map Warp Party ban (`04-spells-modded.md`). Hook `0x55777239` (11 B, `TAoWHSMap.ReadWrite`, streams `map+0x193` as id `0x61`); VMT slot `0x557E9634` (`TWarpParty` `+0x68` CanActivate, `.reloc` kept). `ed_*` is editor-only, reached from `AoWDevEd.exe`'s stub `0x0042EFF0`, and holds absolute EXE addresses only. ⚠ Undo both halves together (the script does) |
+| `0x55851E00` | `build_autocombat_roundcap.py` (🔨 APPLIED 2026-09-27) | **exclusive**, `0x40` (`cave_cap` 25 B) | auto-resolve ends after round 200 (`01-combat-maths.md` §13). Retargets the `call ExecuteCombatRound` rel32 at `0x55744A69`; nothing displaced |
 
 ⚠ **`build_spellcast_herotier.py --apply` would abort today.** Its `ZONE_END` is `0x55848000`
 (line 125) and it asserts `cave_end..ZONE_END` is zero, but `build_spellward_rescope.py`'s cave
@@ -1579,7 +1588,7 @@ touch that script. Found 2026-09-07 during the Power Leech scoping; the abort is
 corrupting, and `build_powerleech.py` does not make it worse — its cave starts at exactly
 `0x55848000`, which is where both neighbours' zero-asserts stop.
 
-Free above `0x5584F300`, all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move) and `0x558FAD20` (command bonds) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
+Free above `0x55851E00` (and `0x55851B00..0x55851BFF`) (`0x5584F440..0x5584F47F` and `0x5584F780..0x5584F7FF` are small free gaps), all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAA30..0x558FAAF8` (fly-levels popup class clone, `build_fly_levels.py`), `0x558FAB00..0x558FABFF` (shipyard-income header, `build_shipyard_income.py`; 0xA8 B used since its per-level arrays grew to 8 slots), `0x558FAC10..0x558FACFF` (True Seeing list, `build_los_terrain.py` v5), `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move), `0x558FAD20` (command bonds) and `0x558FAD40..0x558FAECF` (Mantle of Gloom, `build_los_terrain.py`) and `0x558FAEE0..0x558FAEF3` (New Map checkboxes, `build_levelset.py`) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
 ⚠ `aowepack_patch.run` (and `exe_patch.run`) assert that a script's caves do not overlap each other, as well
 as that they fit the slot — added 2026-09-25 after `cave_walls` overran a fixed `cave_atk` address by 3 B.
 The three 2026-09-24 scripts above share the helper module `build_scripts/aowepack_patch.py`.
@@ -1602,17 +1611,19 @@ telling you to run it after an exe patch is stale.):
 | `0x0060C0A8` | `build_spellcast_book_exe.py` (original), **rewritten in place and extended** by `build_scroll_spellbook.py` | `cave_bookfilter` — hides too-high-tier spells from the casting book. **⚠ COUPLED, non-trivially** — full revert-order story in §6.5. |
 | `0x00610720` | `build_bltprobe_exe.py` | diagnostic: captures the original exception behind "Blt Error" |
 | `0x00628000`–`0x00629FFF` | `build_heroskill_race.py` | **exclusive**, `0x2000` — the per-race hero level-up offer gate. `RGT1` magic at `0x00628000`, code `0x00628010` (201 B), the two **fixed** tail-jump slots at `0x00628200`/`0x00628205`, and a 16×256 table at `0x00629000` ending exactly at the squatter floor below. ⚠⚠ **COUPLED to `build_herodlg_columns.py`, which would otherwise unlink it**: its hook sits *inside* `cave_fill`, which that script regenerates on every `--apply`. Both scripts locate the site by pattern (never by constant) and the columns script re-chains via `relink_bytes()`; full story in `02-abilities-modded.md` Feature 1. Also the project's first **P4 derived-hash** site (`rngstd.fmix32` at `0x006280A9`) |
-| `0x0062A000`–`0x0062A3FF` | `build_skylevel_ui.py` | **v3** (caption "Firmament", code base `0x0062A040`, 512 B used) — the AoWz.exe/AoWzCompat.exe half of the Firmament map level: the World Map level strip (`TSWindow.ScannerTab`) and the level-navigation UI. DLL half is `build_maplevel4.py`, cave `0x55844000`. ✅ **Guard is already in place**: `build_herodlg_columns.py` sets `SQUATTER_FLOOR` and asserts it in `apply_to`. That floor moved `0x0062A000` → **`0x00628000`** on 2026-09-09 when the entry above took the top 8 KB; the columns blob tops out at **`0x00624200`** (2026-09-10: 8 rows/column, the per-column scrollbar sync in `cave_setfmax`, and the derive-don't-cache `cave_activelist` of `07-ui.md` §2.4a), leaving **15,872 verified-zero bytes at `0x00624200..0x00628000`** for future exe caves (`0x3E00`) |
+| `0x0062A000`–`0x0062A3FF` | `build_skylevel_ui.py` | **v4** (captions "Firmament" + "Abyss", 5-entry tables, code base `0x0062A060`, 580 B used) — the AoWz.exe/AoWzCompat.exe half of the Firmament and Abyss map levels: the World Map level strip (`TSWindow.ScannerTab`) and the level-navigation UI. DLL half is `build_maplevel4.py`, cave `0x55844000`. ✅ **Guard is already in place**: `build_herodlg_columns.py` sets `SQUATTER_FLOOR` and asserts it in `apply_to`. That floor moved `0x0062A000` → **`0x00628000`** on 2026-09-09 when the entry above took the top 8 KB; the columns blob tops out at **`0x00624200`** (2026-09-10: 8 rows/column, the per-column scrollbar sync in `cave_setfmax`, and the derive-don't-cache `cave_activelist` of `07-ui.md` §2.4a), leaving **15,872 verified-zero bytes at `0x00624200..0x00628000`** for future exe caves (`0x3E00`) |
 | `0x0062D000` | `build_unitwin_ability.py` | lets a hero use an item-granted activatable ability from the unit window |
 | `0x0062D020` | `build_savedate_format.py` | ISO date in the Load/Save dialog (".hcol" section, after the entry above) |
 | `0x0062B000`–`0x0062B0FF` | `build_taskbar_icon.py` | **exclusive**, `0x100` (96 B used) — sets `WM_SETICON` ICON_BIG + ICON_SMALL on the `TApplication` owner window so the taskbar button stops showing the grey placeholder. Reached by **retargeting the existing `call Forms.TApplication.Initialize` at `0x004599DE`** (4 bytes of operand, nothing displaced); the cave tail-jumps to the real thunk `0x00401754`. Borrows `user32!LoadIconA`/`SendMessageA` and the `'MAINICON'` literal out of **vcl30.dpl** via the rebase delta `[0x0045D56C] − 0x4133C0F8` (that IAT slot is `Forms.TApplication.GetExeName`, preferred VA `0x4133C0F8`) — AoWz.exe imports exactly one user32 function (UnionRect) and neither of those two. Editor half is the `.vgo` row below |
 | `0x00630000`–`0x00632FFF` | `build_itembanner_hpmv.py` | **exclusive**, its own new RWX section **`.ibnr`** (`0x3000`, appended after `.pyar`; SizeOfImage `0x230000` → `0x233000`). Layout: the grown `TITEMBANNER` DFM at `0x00630000` (9469 B), the relocated 17-entry field table at `0x00632500`, `cave_hpmv` at `0x00632700` (328 B) and `cave_clamp` at `0x00632848` (40 B) — top of blob `0x00632870`, leaving `0x00632870..0x00633000` = **1936 B** spare (measured all-zero, file-backed at file `0x22CA70..0x22D200`). ⚠ **`--apply` zeroes the whole `0x3000` before writing**, so a squatter in that tail is wiped by the next re-apply exactly as `.hcol`'s below-floor squatters would be — take one of the three `.hcol` runs listed below the table instead unless you also add a floor here. ⚠⚠ **This section consumed the LAST free section-header slot in the exe**: the table starts at file `0x1F8` and SizeOfHeaders is `0x400`, so 13 headers end at exactly `0x400`. No 14th section can be added — squat in a zero tail, or `--undo` this first (its `--undo` removes the section and gives the slot back). ⚠ Its relocated field table carries **one absolute with no `.reloc` entry** — the class-table VA `0x00406AA0` at `0x00632502`, whose original at `0x0040697A` did have a HIGHLOW entry. That is precedent, not a defect: `build_herodlg_columns.py` relocates `THeroUpgradeDlg`'s table with the byte-identical shape and is CONFIRMED WORKING, and AoWz.exe is `RELOCS_STRIPPED=0 / DYNAMIC_BASE=0` (DllCharacteristics `0x0000`), so the image always loads at `0x00400000`. **`build_relocfix.py` detects only STALE relocations, never a MISSING one**, so a clean audit says nothing either way. Full record in `07-ui.md` §9 |
 | `0x00633000`–`0x0063CFFF` | `build_taskbar_coords.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **tenant above `.ibnr`'s owner**: grows `.ibnr` `0x3000 → 0xD000` (SizeOfImage `0x233000 → 0x23D000`, file +40 KB, both exes). Grown `TTBWINDOW` DFM `0x00633000` (35923 B), relocated `TTBWindow` field table `0x0063BC60`, data + code `0x0063BFF0..0x0063C1DC`. Hooks `0x450F77` (7 B), `DisplayMouseMove` method entry file `0x51BB0`, VMT field-table/instance-size, resource entry file `0x731A0`. ⚠ `build_itembanner_hpmv.py --undo` refuses while `.ibnr` > `0x3000`: undo this first. `07-ui.md` §16 |
+| `0x0063D000`–`0x00646FFF` | `build_unit_ai.py` (🔨 APPLIED, UNTESTED 2026-09-27) | **tenant above `build_taskbar_coords.py`**: grows `.ibnr` `0xD000 → 0x17000` (SizeOfImage `0x23D000 → 0x247000`). Grown `TTBWINDOW` DFM `0x0063D000` (36693 B, + `UnitAIBtn`), field table `0x00645F60`, code `0x00646300`–`0x0064639A`. Repoints the three `TTBWindow` sites the coords script owns (resource entry, field table, instance size `0x148 → 0x14C`) plus the `AutoBtn2Click` / `TCMapSeatedPlayerChanged` method entries. ⚠ `build_taskbar_coords.py` aborts on the `.ibnr` size while this is installed: undo this first. `07-ui.md` §18 |
 | `0x0062D100`–`0x0062D2FF` | `build_powerleech_ui.py` | **exclusive**, `0x200` (0xA8 B of data + 107 B of code at `0x0062D1A8`) — the Power Leech income row in `TMagicWin` tab 4, hooked from `0x0042CFD9` (7 B). Also `.hcol`, the next clear `0x100`-aligned slot above `build_savedate_format.py`'s cave (last non-zero `0x0062D07A`); the script asserts `0x0062D0A0..0x0062DFFF` is zero outside its own span. The data half is two Delphi literal AnsiStrings plus a **fake object + 24-slot fake VMT of `xor eax,eax ; ret`** — the name list's `AddObject` object may not be nil, because `PowerSourceListDoubleClick @0x0042D944` and `PowerValueListMouseDown @0x0042D988` deref it unchecked. DLL half is `build_powerleech.py`, cave `0x55848000` |
 | `0x0062A400`–`0x0062A43F` | `build_eventlog_hover.py` | **exclusive**, 22 B used — `cave_evhover`, reached by retargeting the `call SetListOff` operand at `0x0042336A` (4 B, nothing displaced). Skips the event list's scroll-to-newest while `build_wheel_aowint.py`'s hover latch holds it. Patched in lockstep on both exes through `build_scripts/exe_patch.py`; `07-ui.md` §13 |
 | `0x0062A440`–`0x0062A47F` | `build_magictab_refresh.py` | **exclusive**, 24 B used — `cave_magicrefresh`, from the 8-byte prologue of `TMagicWin`'s refresh `0x0042D2CC`; plus the 2-byte NOP at `0x0042D497`. Both exes via `exe_patch.py`; `07-ui.md` §14 |
 | `0x0062A480`–`0x0062A51F` | `build_customize_name.py` | **exclusive**, 125 B used — `cave_custname`, from the 7 B `ctl.Done` call at `0x00416DD8` in `TLeaderSetupWin`'s finish routine: in a network session the customised name becomes registry `General\strings\0` and both pre-lobby name edits. Both exes via `exe_patch.py`; `07-ui.md` §15. ⚠ `build_pbem_leadersetup.py`'s anchor is split around this hook |
-| `0x0062C000`–`0x0062C3FF` | `build_pbem_leadersetup.py` (stage 1 ✅ 2026-09-24; stage 2 🔨 APPLIED, UNTESTED 2026-09-24) | **exclusive**, `0x400` (944 B used), asserted zero-or-ours, inside the `.hcol` run `0x0062B100..0x0062D000`. Globals `G_EVENT 0x0062C000`, `G_CODE ..04`, `G_DATA ..08`, `G_MODAL ..0C` (byte); `.hcol` is RWX (`0xE0000060`, asserted), so `--undo` is one contiguous zero-fill. `C_SHOW 0x0062C010` (315 B, fixed: the dispatch hook targets it), `C_DONE 0x0062C150` (210 B, calls the DLL's `C_APPLY`), `C_PANEL 0x0062C230` (29 B), `C_OFFER 0x0062C250` (234 B, the P4 offer roll — `rng_audit.py --hash` lists it at `0x0062C301`), panel table `0x0062C340`, `G_VIS 0x0062C390`, `G_PLAYER 0x0062C3A0`. Sites: the rel32 of the `jmp 0x44F51E` at `0x0044F183` (nothing displaced) and a 6-byte E9 over `0x004161C9` in `TLeaderSetupWin`'s available-ability loop. Reads `build_heroskill_race.py`'s table at `0x00629000`. DLL half is the `0x5584C000` row. Full record `07-ui.md` §10.5–10.6 |
+| `0x0062A520`–`0x0062A9FF` | `build_magictab_tiername.py` | **exclusive**, 1029 B used — the Magic tab's research panel and the Power Distribution dialog name the tier group ("Cosmos II" + unresearched members; sphere-coloured spell-icon disc + Roman numeral in the panel's icon box) instead of the representative spell. Four retargeted `call SetGText` operands (`0x0042D0AD`, `0x0042D119`, `0x0042D185`, `0x0042BDFC`) and a 5 B `jmp` at `0x0042D8F5`. Both exes via `exe_patch.py`; `04-spells-modded.md` |
+| `0x0062C000`–`0x0062C3FF` | `build_pbem_leadersetup.py` (✅ CONFIRMED WORKING 2026-09-24, both stages) | **exclusive**, `0x400` (944 B used), asserted zero-or-ours, inside the `.hcol` run `0x0062B100..0x0062D000`. Globals `G_EVENT 0x0062C000`, `G_CODE ..04`, `G_DATA ..08`, `G_MODAL ..0C` (byte); `.hcol` is RWX (`0xE0000060`, asserted), so `--undo` is one contiguous zero-fill. `C_SHOW 0x0062C010` (315 B, fixed: the dispatch hook targets it), `C_DONE 0x0062C150` (210 B, calls the DLL's `C_APPLY`), `C_PANEL 0x0062C230` (29 B), `C_OFFER 0x0062C250` (234 B, the P4 offer roll — `rng_audit.py --hash` lists it at `0x0062C301`), panel table `0x0062C340`, `G_VIS 0x0062C390`, `G_PLAYER 0x0062C3A0`. Sites: the rel32 of the `jmp 0x44F51E` at `0x0044F183` (nothing displaced) and a 6-byte E9 over `0x004161C9` in `TLeaderSetupWin`'s available-ability loop. Reads `build_heroskill_race.py`'s table at `0x00629000`. DLL half is the `0x5584C000` row. Full record `07-ui.md` §10.5–10.6 |
 
 ⚠⚠ **`.hcol` below `0x00628000` is NOT allocatable — `build_herodlg_columns.py` zeroes it on every
 `--apply`.** Its line 1547 is `exe.wr(SEC_VA, b"\0" * (SQUATTER_FLOOR - SEC_VA))`, i.e. it wipes
@@ -1626,7 +1637,7 @@ declares the whole `0x100` exclusive):
 
 | run | size | note |
 |---|---|---|
-| `0x0062A520..0x0062B000` | 2784 B | above `build_customize_name.py`'s `0x0062A480..0x0062A51F` (2026-09-25), itself above `build_magictab_refresh.py`'s and `build_eventlog_hover.py`'s slots, below the taskbar cave |
+| `0x0062AA00..0x0062B000` | 1536 B | above `build_magictab_tiername.py`'s `0x0062A520..0x0062A9FF` (2026-09-27), itself above `build_customize_name.py`'s, `build_magictab_refresh.py`'s and `build_eventlog_hover.py`'s slots, below the taskbar cave |
 | `0x0062B100..0x0062C000` | 3840 B | above `build_taskbar_icon.py`'s exclusive `0x0062B000..0x0062B0FF` |
 | `0x0062C400..0x0062D000` | 3072 B | above `build_pbem_leadersetup.py`'s exclusive `0x0062C000..0x0062C3FF` (claimed 2026-09-23 out of the former 7936 B run) |
 | `0x0062D213..0x0062E000` | 3565 B | `.hcol`'s real tail, above `build_powerleech_ui.py`'s last byte `0x0062D212` — **not** everything from `0x0062D000`, which is that script's own cave |
@@ -1674,9 +1685,9 @@ Fixed editor-exe allocations that DO exist (2026-09-06):
 
 | VA range | binary | owner script | contents |
 |---|---|---|---|
-| `0x00592080..0x005921FF` | `AoWDevEd.exe` (`.tres` page slack) | `build_deved_levelnav.py` | ORDER/RORDER + 4 code blocks (236 B used) — ⚠ shares `.tres` with `build_editor_timerres.py`, which owns `0x00592000..0x00592075`; `build_editor_timerres.py --apply` over an installed state would truncate the file at `.tres`'s raw offset — only its own "`.tres` is not the last section" assert protects `.nmg` and this cave |
+| `0x00592080..0x005921FF` | `AoWDevEd.exe` (`.tres` page slack) | `build_deved_levelnav.py` | v2: 5-entry ORDER/RORDER + 4 code blocks (248 B used) — ⚠ shares `.tres` with `build_editor_timerres.py`, which owns `0x00592000..0x00592075`; `build_editor_timerres.py --apply` over an installed state would truncate the file at `.tres`'s raw offset — only its own "`.tres` is not the last section" assert protects `.nmg` and this cave |
 | `0x00593000..0x00598DD6` | `AoWDevEd.exe` (own section `.nmg`, rva `0x193000`, 24022 of **35840** B) | `build_deved_newmapgen.py` | the **largest editor-exe allocation there is**: OK cave, `GenChanged`, `GenInit`, `GenInfo`, then a 0x2000-based data area, then the relocated method/class/field tables and the rebuilt 9078-byte DFM. ⚠ It is the LAST section and its raw data runs to end-of-file, which is what lets a rebuilt cave regrow it in place; `--undo` leaves it behind as dead data so a re-apply reuses it. Everything in it moves on every rebuild — read addresses from the binary, never from a note. ⚠⚠ It **no longer owns the whole section**: `build_deved_itemhpmv.py` holds the cave at `0x00599000..0x005993FF` **and a live 9958-byte resource at `0x00599400`** in the page slack above. A rebuild here zeroes **both** — the cave silently, the resource not silently at all, because the directory entry still points at rva `0x199400` and **Item Properties then fails to open with a `TReader` error**. Its `rawsz = max(exist_rawsz, …)` keeps SizeOfRawData at `0x8C00`, so the file length and SizeOfImage survive and only VirtualSize drops back to `0x5DD6`. `build_deved_itemhpmv.py` recognises that exact asymmetry as its DAMAGED state and repairs it in place. ⚠ Latent, not live: this script's `--apply` refuses while applied, and its `--undo` needs `Ziggurat\backups\AoWDevEd.exe.pre-newmapgen`, which does not exist. Its `--undo` is in any case surgical and leaves `.nmg` alone |
-| `0x004E0000..0x004E051F` | `AoWDevEd.exe` (own section `.dlgd`, rva `0xE0000`) | `build_dlgdirs.py` | the exe half of the dialog-directory feature: 8 hook wrappers + `ensure_ini` + `getdelta` in the raw `0x400` (718 B used, 306 spare), then `PATHBUF` at `0x004E0400` in page slack (VirtualSize `0x520`). ⚠ **v3 (2026-09-11) left this half byte-identical to v2** — the engine-data-root fallback is `Set`-key-only and there is no Set dialog in the exe — so `0x520` here is correct and is *not* evidence of a stale install. ⚠ Free page slack is now `0x004E0524..0x004E06FF` and `0x004E0708..0x004E0FFF`. `build_deved_gamesettings_tab.py` took the first dword and `build_deved_casterfamily.py` holds `0x004E0700..0x004E0707` (`G_COMBO`, `G_ID`). ⚠⚠ **Giving `AoWDevEd.exe` an `engfb` entry would collide with it**: v3's `DIRBUF_OFF = PATHBUF_OFF + PATHBUF_SIZE = 0x520` is exactly that dword |
+| `0x004E0000..0x004E051F` | `AoWDevEd.exe` (own section `.dlgd`, rva `0xE0000`) | `build_dlgdirs.py` | the exe half of the dialog-directory feature: 8 hook wrappers + `ensure_ini` + `getdelta` in the raw `0x400` (718 B used, 306 spare), then `PATHBUF` at `0x004E0400` in page slack (VirtualSize `0x520`). ⚠ **v3 (2026-09-11) left this half byte-identical to v2** — the engine-data-root fallback is `Set`-key-only and there is no Set dialog in the exe — so `0x520` here is correct and is *not* evidence of a stale install. ⚠ Free page slack is now `0x004E0528..0x004E06FF` (`0x004E0524` = `build_warpban.py`'s `G_CB`) and `0x004E0708..0x004E0FFF`. `build_deved_gamesettings_tab.py` took the first dword and `build_deved_casterfamily.py` holds `0x004E0700..0x004E0707` (`G_COMBO`, `G_ID`). ⚠⚠ **Giving `AoWDevEd.exe` an `engfb` entry would collide with it**: v3's `DIRBUF_OFF = PATHBUF_OFF + PATHBUF_SIZE = 0x520` is exactly that dword |
 | `0x004DF000..0x004DF17F` | `AoWEd.exe` (new section `.lvn`) | `build_deved_levelnav.py` | same layout; `+0x100` holds the 40 displaced section-header bytes |
 | `0x00590180..0x005901FF` | `AoWDevEd.exe` (`.vgo` tail) | `build_taskbar_icon.py` | **exclusive**, `0x80` (96 B used) — the editor half of the taskbar icon; same cave body as AoWz.exe `0x0062B000`, only four immediates differ (`app 0x00432224`, `GetExeName 0x00432178`, `GetModuleHandleA 0x00432160`, thunk `0x00401328`). Hook is the `call Forms.TApplication.Initialize` at `0x0042EE52`, operand-only. `build_validation_goto.py` owns `0x00590000..0x0059016C` below it and is a no-op once `.vgo` exists, so it will not wipe this. ⚠ `.vgo` had `SizeOfRawData 0x200` but `VirtualSize 0x16D`; `--apply` raises VirtualSize to `0x200` (and `--undo` puts it back) so the cave is inside the declared section rather than relying on loader slack behaviour. SizeOfImage and file length are unchanged |
 | `0x0052E060..0x0052ECF2` + `0x0058E3F0..0x0058F0B7` | `AoWDevEd.exe` (`.ctp`) | `build_deved_heroprune.py` | Developer > Delete Unused Heroes **and Delete Unused Items** (2026-09-25). Both handlers (`PruneFreeHeroesClick` `0x0052E060`, `PruneFreeItemsClick` `0x0052E290`, ~1.2 KB with literals) live in **terrainpal's dead 134-entry method table**, which `strip()` re-emits byte-identical from the live table's first 134 entries before repointing VMT−0x28 back at it. The 136-entry table (3272 B) follows the grown DFM (`0x5F644 → 0x5F6F9`). The script's tail ends at **`ZONE_CEIL 0x0058F100`**: `strip()` zeroes up to there and no further. `.ctp` VirtualSize `0x61350 → 0x61400`, SizeOfRawData untouched. ⚠ **COUPLED to `build_deved_terrainpal.py`** — see the hazard below |
@@ -1687,6 +1698,7 @@ Fixed editor-exe allocations that DO exist (2026-09-06):
 | `0x0052D6A0..0x0052D7FF` | `AoWDevEd.exe` (`.mtb` page slack, above listarrows) | `build_deved_casterfamily.py` | **exclusive**, 352 B reserved / 341 used (2026-09-25). It holds the Settings > Spells "Caster:" label + combo authoring spell byte `+0x23`: a 16 B `'Caster:'` AnsiString, then `getsp 0x0052D6B0`, `cave_change 0x0052D6C2`, `mk 0x0052D6FC` and `cave_load 0x0052D711` (284 B of code), then a 41 B NUL-terminated item list. It is reached by **retargeting one `call rel32` operand**, `0x0042C0B8` (the tier `TSpin.SetValue` in `SpellListBoxClick`), 4 bytes, nothing displaced. Its mutable state, `G_COMBO 0x004E0700` / `G_ID 0x004E0704`, sits in `.dlgd` page slack. ⚠⚠ **It writes no `.mtb` header field and depends on `build_deved_listarrows.py`'s** VirtualSize `0x4C800` + Characteristics `0x60000040`; it refuses to apply without them. It also edits four vaInt16 values in the live TMAINFORM DFM in `.ctp`. No `.reloc` entry in the operand window, the cave, `.dlgd`'s page or the TMAINFORM copy |
 | `0x00599400..0x0059BAE6` | `AoWDevEd.exe` (`.nmg`, above the cave) | `build_deved_itemhpmv.py` | **the relocated `TITEMEDITFORM` DFM**, 9958 B — data, not code. Item Properties grew two `TImage` nodes (`Image13`/`Image14`, the HP and MV stat icons, copied verbatim out of `THEROEDITFORM`) and could not grow in place, so the resource **directory entry** at file `0x000434E0` was repointed here from rva `0x6D1A8`. ⚠ **This is the entry that grew `.nmg`**: VirtualSize **and** SizeOfRawData `0x6E00 -> 0x8C00`, SizeOfImage `0x0019A000 -> 0x0019C000` (RVA space — *not* `0x59C000`), file length `0x00192200 -> 0x00194000`. `.nmg`'s top slack was `0x0059BAE6..0x0059BC00` = 282 B, not the 2816 B this table used to claim; `build_deved_goto_sites.py` took `0x0059BB00..0x0059BBFF` on 2026-09-25 (row below), leaving **26 B**. The `.rsrc` original at file `0x000697A8` is left in place as a dead master — see the dead-master register below |
 | `0x0059BB00..0x0059BBFF` | `AoWDevEd.exe` (`.nmg` top slack, above the TITEMEDITFORM copy) | `build_deved_goto_sites.py` | **exclusive**, 256 B reserved / 247 used (2026-09-25) — Go-to into exploration sites: `goto_item` `+0`, `goto_hero` `+0x17`, `find_site`. Reached from `0x0042CD44` and `0x0042CDE0` (`cmp byte [esp],0FFh / je`, 6 B each → `call`+`nop`). `.nmg` is RWX, file-backed to `0x0059BC00`. ⚠⚠ **`build_deved_newmapgen.py` rebuilds `.nmg` and zeroes this**; re-apply this script after any such rebuild. ⚠⚠ **So does `build_deved_itemhpmv.py --apply`** (it wipes its own slack; seen 2026-09-25). `08-editor.md` §15 |
+| `0x0042EFF0..0x0042EFFF` | `AoWDevEd.exe` (CODE raw tail) | `build_warpban.py` | **exclusive**, 14 B stub (`push [0x0043289C] / add [esp],ed_disp-0x558FA040 / ret`) into `AoWEPACK.dpl`. CODE VirtualSize raised `0x2DFF0` → `0x2E000` (= SizeOfRawData, same page) so the loader maps it; `--undo` restores it. Reached by retargeting `call rel32` at `0x0042DF21` (`TGameSettingsDlg.FormCreate`) and `0x0042E103` (its `OKBtnClick`'s SetModified). Mutable `G_CB` at `0x004E0524` (`.dlgd` page slack; free slack is now `0x004E0528..0x004E06FF`) |
 
 ⚠ **`AoWDevEd.exe` cannot take another PE section**: `e_lfanew` is `0x100` and its 13 headers end at exactly file `0x400`, where CODE's raw data begins. Future AoWDevEd caves go into page slack of an existing section.
 
@@ -1733,7 +1745,16 @@ as AoWEPACK applies):
 | `0x00439800` | `build_group_move_tc.py` | tactical group move — plan front-first, queue behind the leader (`09-terrain-movement.md`, "Tactical group move"). Core 1,231 B + preview/click stubs + two CanMoveOver caves + starting-hex cost cave, all PIC; hooks `0x41E7F7`, `0x41E2B0`, `0x40F81C`, `0x42083A`, VMT slots `0x412DDC`/`0x431214`. Zone **`0x439800`–`0x43A3FF`** reserved to this script |
 | `0x00439400` | `build_breath_line.py` | breath / Flame Throwing strikes aim at their own damage hex (`01-combat-maths.md`, "Breath and Flame Throwing aim each strike at its own hex"). Hook `0x40D5F1` (5 B), cave 164 B, PIC; zone **`0x439400`–`0x4397FF`** reserved to this script |
 | `0x0043A400` | `build_ooze_extinguish.py` | Ooze puts out fires and Burning (`04-spells-modded.md`). Hook `0x40C93E` (10 B, relocation-free), `cave_ooze` 134 B, PIC; zone **`0x43A400`–`0x43A4FF`** reserved to this script (above `build_group_move_tc.py`'s `0x439800`–`0x43A3FF`) |
-| `0x0043A500` | `build_ai_selfheal.py` | AI units with Healing heal themselves (`10-ai-and-structures.md` §11.2). Hooks `0x419212` (8 B), `0x41ACE4` (10 B); `cave_prop` 368 B (PIC, two import slots through call/pop), `cave_exec` `0x43A670` 106 B; zone **`0x43A500`–`0x43A6FF`** reserved to this script. Next free `0x43A700` |
+| `0x0043A500` | `build_ai_selfheal.py` | AI units with Healing heal themselves (`10-ai-and-structures.md` §11.2). Hooks `0x419212` (8 B), `0x41ACE4` (10 B); `cave_prop` 368 B (PIC, two import slots through call/pop), `cave_exec` `0x43A670` 106 B; zone **`0x43A500`–`0x43A6FF`** reserved to this script |
+| `0x0043A700` | `build_unit_ai.py` | "Unit AI" combat-bar checkbox arming right-click (`07-ui.md` §18). Hooks `0x418421` (9 B), `0x41C629` (10 B), `0x41BAB8` (6 B), `0x41BB30` (6 B), `0x41EE7F` (6 B); caves `bss_ptr`/`cmd`/`start`/`rclick`/`filter`/`done`/`seat`/`turn` `0x43A700`–`0x43AA3B`, PIC. The exe calls `cmd` `0x43A710` through `[IAT 0x45EBAC] + (0x43A710 − 0x430B68)`, so **moving `cmd` breaks the exe half silently**. Zone **`0x43A700`–`0x43ABFF`** reserved to this script. |
+| `0x0043AC00` | `build_wallcrush_dam.py` (AoWTCPCK half) | manual-combat Wall Crushing damage = attacker DAM. Call retarget `0x40A27D` (`LastMove` → `ExecuteDamageRole` thunk), `th_lastmove` 34 B, PIC; zone **`0x43AC00`–`0x43AC3F`** reserved to this script. Next free `0x43AC40` |
+
+**AoWTCPCK.dpl BSS** (VA `0x46C000`, VirtualSize `0xA1`, no file bytes): the rest of the page,
+`0x46C0A1`–`0x46CFFF`, is loader-zeroed and writable — mutable state only, reached PIC.
+
+| VA | script | holds |
+|---|---|---|
+| `0x0046C800`–`0x0046C90F` | `build_unit_ai.py` | active byte, armed byte, player, map, count, 64 `TCombatObject` pointers. The exe reads both bytes through the same `SetAuto` delta. |
 
 **aowInt.dpl** (preferred base `0x59800000`):
 
@@ -1797,6 +1818,9 @@ of them; these two do not:
 | `.dlgd` `0x5564E520`–`0x5564E62F` | `build_dlgdirs.py` | `DIRBUF` (v3): StrRec at `0x5564E520`, chars at `0x5564E528`. VirtualSize raised `0x520 → 0x630` |
 | `.dlgd` `0x5564E630`–`0x5564EFFF` | **free** | 2512 B of page slack. `.dlgd` owns its whole page — `.rgt` is at RVA `0x4F000` — so a VirtualSize up to `0x1000` is safe |
 | `.rgt` `0x5564F000`–`0x5564F043` | `build_editor_rendergate.py` | counter / `every` / `skip_sleep` tunables |
+| `.hxg` `0x55650000`–`0x55650E00` (raw), VirtualSize `0x12000` | `build_editor_hexgroup.py` | hex-group selection + area copy/paste: globals `+0x00..0x2B`, strings `+0x40..0x167`, code `+0x200` (2646 B), position buffer `+0x2000..0x11FFF` (loader-zeroed). Appended after `.rgt`, so `build_editor_rendergate.py`'s in-place rewrite now refuses: undo this first |
+| CODE `0x5561C000`–`0x5561C3FF` (zero tail inside VirtualSize) | `build_editor_autosave.py` | **exclusive**, editor autosave: `hook_seteng`/`make_timer` `+0`, `seh_restore` `+0xD0`, `getdelta` `+0xF0`, `tick` `+0x100`, path literals `+0x300`. CODE is zero from ~`0x5561ACEC` to `0x5562D818`; `build_hss_exception_detail.py` reserves `0x5561B000`–`0x5561B1FF`. R+X only |
+| BSS page slack `0x5562FC00`–`0x5562FFFF` (past VirtualSize `0x88D`, loader-zeroed, RW) | `build_editor_autosave.py` | **exclusive**: `G_TIMER` `+0`, path AnsiString StrRec `+8`, chars `+0x10`. Also owns the hook `0x55613CD0` (6 B, `THSMEdit.SetHSEngine` entry) and the byte `0x5560C3D0` (`THSMap.SetModified`'s set constant `01 → 81`) |
 
 ⚠ `.dlgd`'s page slack is writable *data* only. Anything past `SizeOfRawData` has no file bytes
 behind it, so **code cannot live there** — it exists solely because the loader zero-fills a section's
@@ -5277,12 +5301,12 @@ are reusable outside that context, so they're kept here rather than in a "featur
 | Holy / Vertigo | `0x40` |
 | Magic | `0x08` |
 
-"Unit size" is a largely dead axis in AoW1 — `TAbstractUnit.GetUnitSize @0x5577F184` always returns 1,
-i.e. **every unit in the game is 1-hex.** Any mechanic that wants to scale off "how big is this unit"
-has no real stat to read; pivot to level, transport capacity, or accept a new invented cover/cost
-stat. (Missile blocking, once thought to need this, does not — `AoWTCPCK.dpl`'s manual tactical
-combat already intercepts shots per-hex against units/walls/Obstacle overlay/EarthWall-Border terrain
-independent of any size concept; see the missile-trajectory file for the mechanism.)
+"Unit size" drives nothing but blood graphics. The data is real (`TUnitResource+0x50`, `Unitres.pfs`
+tag `0x1C`, 0–3) and `TUnit.GetUnitSize @0x557827F8` returns it; the base
+`TAbstractUnit.GetUnitSize @0x5577F184` returns a constant 1. Every unit occupies one hex. The only
+callers are the two blood-splat sites in `AoWTCPCK.dpl` (`01-combat-maths.md`, "Does unit size
+matter?"); missile occlusion ignores size. A size-based mechanic has to fetch the byte through
+`[combatunit+0x4C]` → VMT `+0x178`.
 
 ---
 
@@ -5377,8 +5401,8 @@ never owned. Owner ruling 2026-09-07: include it.
 ⚠⚠ **`AoWEd.exe` NO LONGER EXISTS AS A PATCH TARGET, and its patches are gone** (measured
 2026-09-10). It was never shipped (owner ruling 2026-09-07 — `AoWDevEd.exe` supersedes it), and the
 2026-09-09 move left **no `Ziggurat/AoWEd.exe` at all**; the only copy is `<root>/AoWEd.exe`, which is
-**stock** — md5 `f45bebf5…`, MATCH against the GOG hashdb. So its four editor-side patches —
-`build_editor_autosave.py`, `build_editor_framerate.py`, `build_editor_spinners.py`,
+**stock** — md5 `f45bebf5…`, MATCH against the GOG hashdb. So its three editor-side patches —
+`build_editor_framerate.py`, `build_editor_spinners.py`,
 `build_deved_levelnav.py` — are no longer installed anywhere, and any script still naming
 `AoWEd.exe` now aborts with `FileNotFoundError` (`build_editor_spinners.py` does exactly this; see
 `01-combat-maths.md`). ⭐ It fails loudly and **cannot reach the vanilla file**, because `GAME` is
@@ -5442,6 +5466,8 @@ that anything the authoring tools *write* becomes payload the moment it exists.
    that is invisible to every other check (§5.2c).
 4. Verify the exe pair differs at **exactly one** offset, `0x3BB7C` (`0x0F`/`0x05`) — §11.2. A fix
    applied to only one of them shows up here and nowhere else.
+4a. `build_scripts/build_version_stamp.py <AppVer> --apply` — the in-game version text is the
+   release date (§13.5). `build_installer.py` refuses a staged payload stamped with another date.
 5. `mod_manifest.py --stage <path> --json <path>`, then **orphan check** (staged-on-disk minus the
    manifest) and **staged-vs-live MD5**, both to 0 / N-of-N. Re-stage after *any* later patch.
 6. Rebuild the Pages manual: `--public --out "Modding Resources/site/index.html"`, copy to
@@ -5451,11 +5477,14 @@ that anything the authoring tools *write* becomes payload the moment it exists.
    handle there, and a force-push afterwards does **not** remove the exposed commit from GitHub.
    Commit messages are player-facing: gameplay changes only, or nothing. No bugfixes, no attribution
    trailers. Both rules and the reflog trap are in the repo-root `CLAUDE.md`.
-7. Compile the installer (§13.3).
+7. `python installer/build_installer.py <AppVer>` — both installers and the signed payload (§13.3a).
 8. Pre-share hygiene **last**: delete `.pyc` and `Ziggurat Manual.log`, then the guarded `grep -laF`
-   scans over the staged payload, the installer exe and `gh-repo/` — §13.4.
-9. `gh release create v<AppVer> "<exe>" --title … --notes-file …`, then confirm the asset's byte
-   count matches the local file.
+   scans over the staged payload, both installer exes and `gh-repo/` — §13.4. The `.7z` is
+   compressed, so scan the staged tree it was built from, not the archive.
+9. `gh release create v<AppVer>` with the four assets **in the order the script prints** (offline
+   exe first), `--title … --notes-file …`, then confirm every asset's byte count matches the local
+   file. ⚠⚠ Never publish a release without `Ziggurat-payload.7z` + `.7z.issig`: every web installer
+   in the wild resolves `releases/latest` and fails until a release carries them.
 
 ⭐ **Two post-publish checks that are not optional.** The asset upload is reported as a URL whether
 or not the bytes arrived — read back `state=uploaded` and the size. And **Pages deploys
@@ -5501,6 +5530,51 @@ reads it as a filename. Output lands in `installer/out/Ziggurat Setup <AppVer>.e
    vanilla overwrites the mod.
 2. `HKCU\Software\Triumph Studios\Age of Wonders Z\General\Startup Directory` must point at
    `{app}\Ziggurat\`. No archive can write that, and without it the mod loads vanilla's data.
+
+### 13.3a The web installer — 2026-09-27
+
+Owner ruling 2026-09-27: ship a web installer **alongside** the offline one. `Ziggurat.iss` builds
+both; `/DWeb` swaps the compiled-in payload for a download of
+`https://github.com/BING-XI/Ziggurat-Engine-Mod/releases/latest/download/Ziggurat-payload.7z`, so a
+kept copy always installs the newest release. The vanilla copy, its failure checks and `[Registry]`
+are shared code.
+
+| asset | size (2026-09-27 test build) | |
+|---|---|---|
+| `Ziggurat Setup <ver>.exe` | 18.2 MB | offline; writes `version.txt` from its AppVer |
+| `Ziggurat Web Setup.exe` | 2.2 MB | fixed name, no version |
+| `Ziggurat-payload.7z` | 16.9 MB | non-solid, carries `version.txt` written by `build_installer.py` |
+| `Ziggurat-payload.7z.issig` | 376 B | Inno Setup signature |
+
+**Signing.** The download is verified with `[ISSigKeys]` (key id `13c93952…`) before extraction.
+Private key: `Documents\Ziggurat signing\ziggurat-payload.ispriv` in the owner's profile, never in
+this tree; public half: `installer/ziggurat-payload.ispublickey`. `build_installer.py` verifies each
+signature against the public file, which proves the private key on disk is the one the installer
+trusts. ⚠ Losing the private key means a new pair and a new web installer; every copy players hold
+trusts only the old key.
+
+**Tested 2026-09-27** against a localhost server with `/DTestNoRegistry` into a fake game tree:
+good archive → exit 0, 353/353 payload files match staging, `version.txt` correct. One flipped
+byte → "hash of the file is incorrect", exit 7, **no `Ziggurat\` folder created** — the download and
+check run before `PrepareToInstall`, so a bad download writes nothing. First shipped in
+**v2026.09.27**; the same test build against the live `releases/latest` URL installed 354/354.
+
+⚠⚠ **GitHub rewrites spaces in asset names to dots**: `Ziggurat Setup 2026.09.27.exe` is served as
+`Ziggurat.Setup.2026.09.27.exe`. Anything that selects an asset by name must match the dotted form —
+the first 2026.09.27 upload shipped an `update.ps1` filtering on `Ziggurat Setup *.exe`, which
+matches nothing, and was replaced before anyone could download it. The payload names have no spaces
+for this reason.
+
+⚠ **The web installer's `[Code]` is frozen in every copy players keep.** A fix to `PrepareToInstall`
+or `[Registry]` reaches only players who re-download it; only the payload tracks `latest`.
+
+⚠ `update.ps1` before 2026.09.27 installs the **first** `.exe` asset, which is why the offline exe
+is uploaded first (the API also lists assets alphabetically, where `Ziggurat.Setup…` precedes
+`Ziggurat.Web…`). From 2026.09.27 it selects `Ziggurat?Setup*.exe`, excluding `*Web*`.
+
+⚠ Test builds: `ISCC` defines holding a URL need `MSYS_NO_PATHCONV=1` with single slashes — the
+`//D` trick passes `//DPayloadUrl=http://…` through unmangled and ISCC rejects it. `/DTestNoRegistry`
+removes both registry writes; never ship a build made with it.
 
 ### ⚠⚠ `createvalueifdoesntexist` made the install location unfixable — removed 2026-09-15
 
@@ -5617,8 +5691,8 @@ That is stated in the release body and in the repo README.
 
 ### 13.4 ⚠ The `.pyc` delete must be the **LAST** pre-share step, not an early one
 
-`CLAUDE.md` calls `find "Modding Resources" -name '*.pyc' -delete` a mandatory pre-share step but
-does not say when to run it. **Order matters: running any RE tool re-creates the leak.** Python
+`find "Modding Resources" -name '*.pyc' -delete` is a mandatory pre-share step, but it matters
+when it runs. **Order matters: running any RE tool re-creates the leak.** Python
 embeds the absolute source path in every `__pycache__` entry it writes, so a single
 `dasm.py`/`pescan.py` invocation regenerates `re_tools/__pycache__/{aowsyms,pescan}.cpython-*.pyc`
 carrying the profile path. Observed 2026-09-09: a QA pass that deleted the caches, then ran `dasm.py`
@@ -5627,8 +5701,8 @@ to check a cave, ended with both files back on disk.
 So the sequence is: finish every verification run first, **then** delete the caches, **then** run the
 two `grep -laF` / `grep -rlaF` scans (with `-a`, never `-I`), **then** zip. Anything that re-runs a
 tool after the delete invalidates the scan. The same applies to `Modding Resources/Ziggurat
-Manual.log` (rebuilding the manual re-creates it) and to `Zig Modding Tools/`, which the two scans in
-`CLAUDE.md` do not cover at all — see `Map_Generator.md`.
+Manual.log` (rebuilding the manual re-creates it) and to `Zig Modding Tools/`, which the scans below
+do not cover at all — see `Map_Generator.md`.
 
 ⚠⚠ **Guard the pattern, or an empty `$USERNAME` reports the entire tree as leaking.**
 `U="$USERNAME"; grep -rlaF "$U" .` with `U` unset becomes `grep -F ""`, which matches **every
@@ -5642,6 +5716,52 @@ U="$USERNAME"; [ -z "$U" ] && echo "ABORT: USERNAME empty" || grep -rlaF "$U" "M
 
 A true positive is a handful of named files. A hit list in the hundreds means the pattern is
 empty, not that the tree is compromised — check `$U` before believing it.
+
+**The scans** (moved here from `CLAUDE.md` 2026-09-27). Use `-F` (escaped-regex forms silently match
+nothing) and `-a` (`-I` skips "binary" files and once hid 59 of 66 hits):
+
+```bash
+U="$USERNAME"
+grep -laF  "$U" *.exe *.dpl Ziggurat/*.exe Ziggurat/*.dpl   # both trees
+grep -rlaF "$U" "Ziggurat/Modding Resources/"
+for P in "$USERNAME" "$(git config --global user.name)" "$(git config --global user.email)"; do
+  [ -z "$P" ] && { echo "ABORT: empty pattern"; continue; }
+  echo "$P: $(grep -rlaF "$P" "Ziggurat/Modding Resources/" 2>/dev/null | wc -l)"
+done
+```
+
+The third loop exists because `$USERNAME` (`<user>`) and the old git identity (`<git-name>`, a gmail
+address) do not contain each other: on 2026-09-14 both username scans came back clean while the
+real name and e-mail sat in `gh-repo/.git/logs/` reflogs. Clearing a reflog needs
+`git reflog expire --expire=now --all && git gc --prune=now`; deleting a branch or force-pushing
+does not. `Modding Resources/AoW1 Modding/` (the Ghidra project DB) records the username in a form
+that cannot be scrubbed: exclude it from anything shared. A patched binary can leak too — a cave
+that needs a path derives it at runtime (`GetModuleFileNameA`, trim to the last `\`), never bakes a
+resolved one (`build_dlgdirs.py` did, `08-editor.md`).
+
+### 13.5 The version number is the release date (from 2026-09-28)
+
+Owner ruling 2026-09-28: the version shown in game is the release date, `YYYY.MM.DD`, the same
+string as the installer AppVer and the tag. `build_version_stamp.py <ver> --apply` writes
+`Version: Ziggurat <ver>` into the `[US]` slot of `Version: %s` in `Dict/ResStr.mld` + `.txt`.
+
+Both screens that show a version format `AoWE.VersionXRStr` through that dictionary, but pass
+different numbers, so before the stamp they disagreed:
+
+| screen | code | argument | showed |
+|---|---|---|---|
+| game title | `TTitleScene.TitleSceneCreate`, `AoWz.exe 0x41A35B` | `TAoWEngine.GetVersionStr`, `M.mm.bbbb` | 20.21.0078 |
+| editor About | `TAboutDlg.FormCreate` → `AoWzEd.exe 0x42800C` | literal `1` `.` `0x24` `.` + `GetBuildNumber` | 1.36.78 |
+
+The stamped text has no `%s`, so the argument is dropped (`AoWE.Format` ignores surplus arguments)
+and both read the date. Verified in the editor's About box; the title screen is the same entry.
+
+**The engine number is left alone.** `TAoWEngine.Create` (AoWEPACK `0x55797C13`) calls
+`SetVersion(major, minor, build)` → `[engine+0x58]` = `major<<24 | minor<<16 | build`, clamped
+99 / 99 / 9999. Vanilla is 1.36.53; Ziggurat's 20.21.78 has no owning script. Besides the title
+screen, its only reader is `TSetupControl.ValidateCompatibleVersion` (`0x557DFCAC`), which compares
+major.minor; a fixed value keeps every Ziggurat release able to join every other. Saves and maps
+do not record it.
 
 ---
 

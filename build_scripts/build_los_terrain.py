@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 r"""
-AoW1 mod -- strategic-map terrain LOS blocking + fog-refcount rebuild on terrain change.
+AoW1 mod -- strategic-map terrain LOS blocking + fog-refcount rebuild on terrain change
+            + Mantle of Gloom (v4, 2026-09-26): enemy Trail of Darkness armies thicken the fog.
 
 Terrain 7 (Earth) and 8 (Rock) block strategic line of sight. Every area fill in
 TAoWMapLevel (fog on, fog off, explore, unfog+explore) is filtered per hex: a hex is only
@@ -125,6 +126,82 @@ step 4's army re-unfog is vanilla-gated off, so the spectator display goes dark 
 the next seat change (0x20020006 re-unfogs from the clean zero state). Counts stay
 correct throughout; single-player keeps the human seated during AI turns.
 
+================================================================================
+PART 3 -- Mantle of Gloom (v4, 2026-09-26, APPLIED, UNTESTED)
+================================================================================
+Every hex within GLOOM_R (6) of an army that (a) is at war with the LOCAL SEATED player
+(owner's GetDiplomaticRelation(seated) == 1, the vanilla trail's own test) and (b) holds a
+unit answering GetAbilityEnabled(0x1A Trail of Darkness) costs 2 sight instead of 1.
+los_core charges each walk 1 per step plus 1 per gloom hex stepped onto (target included,
+observer's own hex not); a terrain-clear walk whose cost exceeds the fill radius [ebp+8]
+is "gloom-hidden". los_core now answers ZF=1 terrain-blocked / CF=1 gloom-hidden / neither
+visible. Cost is measured along the two sight lines, never a detour around the aura.
+
+  FOG honours gloom: stub_fog and stub_unfog skip on ZF or CF (same flags, same skip);
+  stub_ue does the unfog half only when visible, the explore half whenever terrain-clear.
+  EXPLORATION ignores gloom (stub_ex branches on ZF only). Reason: explored bits are per
+  player and computed on every machine, while the gloom list is relative to the local
+  seat -- gloomed exploration would diverge between multiplayer peers. Fog is already
+  per-seat display state in vanilla, so gloom there is as safe as vanilla's own fog.
+
+Source list (BSS, runtime only): G_CNT 0x558FAD40, G_OVF 0x558FAD44, G_INUV 0x558FAD45,
+G_ENT 0x558FAD50 = 32 x {army ptr, TAoWMapLevel ptr, cube x (word), cube z (word)}, ends
+0x558FAED0. SYMMETRY: the list is written ONLY inside the rebuild's zeroing pass
+(stub_army, FLAG set: `qualify` the army, append), after uv_hook has cleared it and
+before ResetFog + the fresh re-unfog. Between rebuilds it is constant, so every fog-off
+filters through the same gloom as its fog-on. Overflow (> 32 sources) sets G_OVF and
+ignores the extras. Exploration during the zeroing pass sees a partial list -- harmless,
+exploration never reads gloom.
+
+Following a moving unit: stub_army's normal path (FLAG clear) re-qualifies the army on
+every TArmy.UpdateUnfog (TArmy.Update, SetPlayer, PlaceOnMap, the 0x20020006/8
+broadcasts). If its source status, level or position differs from its recorded entry
+(or it newly qualifies and the list has room) it sets PEND and calls UpdateVisibility --
+a full rebuild per step of an enemy Trail of Darkness army. Guards: never while PEND is
+already set (a locked UpdateVisibility defers to UnLockUpdateVisibility), never while
+G_INUV is set -- uv_hook sets it at the top of UpdateVisibility's body and `uv_end`
+(retargeted closing `call InvalidateMap` @0x5577844D) clears it, so no rebuild can start
+inside another. Vanilla UpdateUnfog only compares radius with its cache, so an outer
+broadcast that resumes after a nested rebuild finds every cache current and does nothing.
+A destroyed army's entry lingers until the next rebuild (dangling pointer is compared,
+never dereferenced). `trig_dipl` retargets SetDiplomaticRelation's `call UpdateVisibility`
+(@0x5575433E) through `trig_uv` (PEND=1) so war/peace changes re-qualify everyone.
+
+TRUE SEEING PIERCES THE GLOOM (v5, 2026-09-26, APPLIED, UNTESTED). Owner ruling: an observer
+army holding a True Seeing (0x29) unit ignores the gloom surcharge out to its TRUE range, the
+high nibble of [army+0x29] (= the holder's own sight; every non-holder's TrueVisionRange is 1).
+Beyond that range the army's wider sight is gloomed as before; Earth/Rock still block.
+  los_core: a terrain-clear walk is visible if cost <= radius OR steps <= true range.
+  The fill does not know its observer, so the true range comes from a second BSS list,
+  T_ENT 0x558FAC20 = 28 x {TAoWMapLevel ptr, x | y<<8 | radius<<16 | true range<<24}, T_CNT
+  0x558FAC10, T_OVF 0x558FAC14, looked up by the fill's own (level, centre, radius) -- `tslook`.
+  SYMMETRY: the list is written only in the rebuild's zeroing pass (stub_army rec -> `tsrec`)
+  and cleared by uv_hook with the gloom list, so between rebuilds a (level, centre, radius)
+  always gets the same answer and fog-off matches its fog-on. Observer = TArmy.UpdateUnfog's
+  own test (own army, or owner allied (relation 2) to the seated player) -- `tsqual`.
+  Following changes: stub_army's normal path calls `tscheck` when the gloom check wants no
+  rebuild. While any gloom source sits on the army's level within radius + GLOOM_R (a sight
+  line never leaves `radius` of its centre, so farther away the answer cannot change what is
+  seen), it compares the list's answer for the army's current key with the range it holds now
+  and requests a rebuild on a mismatch -- moving, gaining or losing True Seeing, radius change.
+  A full list (T_OVF) suppresses the "missing entry" rebuild, so overflow cannot loop.
+  Cost: a rebuild per step of a friendly True Seeing army moving within reach of the gloom.
+  Cave 2 0x5584F480..0x5584F77F (EXCLUSIVE, asserted zero-or-ours): tsqual, tslook, tsrec,
+  tscheck. Cave 1 grew by the lookup in los_core, the walkclear test, stub_army's tsck/tsr.
+
+Trail of Darkness itself: ExecuteTrailOfDarkness's ring bound `cmp dword [esp+0x14], N`
+@0x5578016C is TRAIL_R = 6 (vanilla 1; an unowned hand edit had made it 5 -- --undo
+restores the 5).
+
+Engine: GetPlayers 0x557544D0, GetDiplomaticRelation 0x55750A10 (1 = war, per the AI's
+attack-target mask), unit VMT +0x148 GetAbilityEnabled, army +0x08 unit list (count
+[+8], items [+4]), +0x10 bit0 active, +0x12 owner, +0x13/14/15 x/y/level (0xFF = off map),
++0x17 fog cache; map +0xA5 seated player, +0x140 player list, +0x10 level container.
+
+The strategic AI reads no fog at all (no TAI* function calls VisibleForPlayer, Visible,
+Watching, GetExplored or FoggedForPlayer, nor reads [field+0x1A]), so gloom -- like
+Earth/Rock -- hides enemy AI units from a human, never a human's units from the AI.
+
 .reloc: measured -- none of the displaced code runs carries a reloc entry; the VMT slot
 does (kept valid: we only change the dword value, same-image VA). Re-verified on every
 apply/undo.
@@ -159,11 +236,33 @@ CAVE_LIMIT = 0x800
 # ---- tuning ----------------------------------------------------------------
 BLOCKING = (7, 8)               # Earth, Rock -- the only blocking terrain ids
 STEP_CAP = 64                   # line-walk safety cap; exhausted => visible
+GLOOM = True                    # False: no army ever qualifies -> v3 behaviour, same hooks
+GLOOM_R = 6                     # Mantle of Gloom radius around an enemy Trail of Darkness army
+TRAIL_R = 6                     # Trail of Darkness un-explore radius (vanilla 1, hand edit 5)
 # ----------------------------------------------------------------------------
 
 # mutable state (BSS page slack; runtime-only, no file backing)
 FLAG = 0x558FAA00               # 1 while the zero-cache broadcast runs
 PEND = 0x558FAA01               # 1 = rebuild requested
+# Mantle of Gloom source list -- BSS clear gap 0x558FAC04..0x558FAF1F (FAD00..FAD23 taken)
+G_CNT  = 0x558FAD40             # dword: entries recorded by the last rebuild
+G_OVF  = 0x558FAD44             # byte: 1 = more sources than G_MAX (extras ignored)
+G_INUV = 0x558FAD45             # byte: 1 while UpdateVisibility's body runs
+G_ENT  = 0x558FAD50             # G_MAX x 12 B: army ptr, level ptr, cube x (w), cube z (w)
+G_MAX  = 32
+G_END  = G_ENT + G_MAX * 12     # 0x558FAED0 -- must stay below 0x558FAF20
+assert G_END <= 0x558FAF20
+# v5 True Seeing list -- same clear gap, below the Town Quake dword at 0x558FAD00
+T_CNT  = 0x558FAC10             # dword: entries recorded by the last rebuild
+T_OVF  = 0x558FAC14             # byte: 1 = more True Seeing observers than T_MAX
+T_ENT  = 0x558FAC20             # T_MAX x 8 B: level ptr, x | y<<8 | radius<<16 | true range<<24
+T_MAX  = 28
+assert T_ENT + T_MAX * 8 <= 0x558FAD00
+
+# v5 second cave: the True Seeing helpers (the 0x800 reservation above is nearly full and
+# 0x55820800 belongs to build_caster_cost.py). EXCLUSIVE, asserted zero-or-ours.
+CAVE2_VA = 0x5584F480
+CAVE2_LIMIT = 0x300
 
 # engine entry points (all AoWEPACK.dpl, live-verified this session)
 UPDVIS    = 0x55778408          # TAoWHSMap.UpdateVisibility
@@ -172,6 +271,12 @@ INITMSG   = 0x5570347C          # thunk EngineP!Engine.InitMsg
 GETLVL    = 0x557020EC          # thunk HSEPack!TMapContainer.GetMapLevel
 RESETFOG  = 0x557721D4          # TAoWMapLevel.ResetFog (zero callers in vanilla)
 INVMAP    = 0x557725C0          # TAbstractAoWHSMap.InvalidateMap
+GETPLAYERS = 0x557544D0         # TPlayerList.GetPlayers (eax=list, edx=idx -> player|nil)
+GETREL    = 0x55750A10          # TPlayerDiplomaticRelations.GetDiplomaticRelation (dl=other)
+MAPVAR    = 0x558FA040          # AoWE.AoWHSMap global (read via load delta)
+ABIL_TOD  = 0x1A                # Trail of Darkness; unit VMT +0x148 = GetAbilityEnabled
+REL_WAR   = 1                   # the relation value the vanilla trail tests
+REL_ALLY  = 2                   # the relation TArmy.UpdateUnfog unfogs for (0x5578E27E)
 VMT_SLOT  = 0x5570E908          # TAoWHSMap VMT +0x94 -- VANILLA in v2 (v1 repointed it)
 VMT_ORIG  = bytes.fromhex("EC247755")           # -> 0x557724EC TriggerTerrainChangedEvent
 LEGACY_VMT = bytes.fromhex("D0038255")          # v1 cave_tc @0x558203D0 -- migrated away
@@ -182,6 +287,20 @@ TRIG_SITES = [
     ("trig_seat",    0x55756D3C),   # TTurnPlayerControl.SetSeatedPlayer
     ("trig_flood",   0x557F15BE),   # TFloodControl.Flood
     ("trig_restore", 0x557F1851),   # TFloodControl.Restore
+]
+
+# v4 call retargets with their own vanilla targets: (name, site, vanilla target, cave)
+CALL_SITES = [
+    ("uv_end",    0x5577844D, INVMAP, "uv_end"),    # UpdateVisibility's closing call
+    ("trig_dipl", 0x5575433E, UPDVIS, "trig_uv"),   # TPlayerList.SetDiplomaticRelation
+]
+
+# v4 raw byte edits: (name, va, pre-script bytes, new bytes)
+# ExecuteTrailOfDarkness ring bound `cmp dword [esp+0x14], N`. Vanilla N=1; an unowned
+# hand edit made it 5 before this script took the byte over. --undo restores the 5.
+RAW_SITES = [
+    ("trail_r", 0x5578016C, bytes.fromhex("837C241405"),
+     bytes.fromhex("837C2414") + bytes([TRAIL_R])),
 ]
 
 HAND_EDIT_VA = 0x557721BE
@@ -224,6 +343,8 @@ def is_ours_hook(kind, va, c, length):
     of 0x55820000..+0x800 is exclusive -- nothing else may point there. Used only
     to recognise our own previous output for re-tune/undo; the BACKUP gate never
     accepts this (backups are minted from positively-original bytes only)."""
+    if kind == "raw":
+        return False
     op = 0xE9 if kind == "jmp" else 0xE8
     if len(c) != length or c[0] != op or c[5:] != b"\x90" * (length - 5):
         return False
@@ -247,6 +368,261 @@ def build():
         out[name] = (addr, b)
         return addr + len(b)
 
+    # ======== CAVE 2 (v5): True Seeing sees through the Mantle of Gloom ========
+    # --- tsqual: eax = army -> eax = TAoWMapLevel (0 = not an observer for the seated
+    # player), edx = x | y<<8 | radius<<16 | true range<<24. Observer = the exact test
+    # TArmy.UpdateUnfog uses to unfog at all: active, on the map, seated player present,
+    # owner == seated or owner's relation to seated == ally. radius / true range are the
+    # nibble pair [army+0x29] -- radius is what UpdateUnfog passes to the fills.
+    # Preserves ebx/esi/edi/ebp.
+    a2 = CAVE2_VA
+    a_tsq = a2
+    pop_at = a2 + 9                 # 4 x push(1) + call(5)
+    nxt2 = asm("tsqual", a2, f"""
+        push ebx
+        push esi
+        push edi
+        push ebp
+        call 0x{pop_at:X}
+        pop  ebp
+        sub  ebp, 0x{pop_at:X}          ; ebp = load delta
+        mov  ebx, eax
+        test byte ptr [ebx+0x10], 1
+        jz   tqno
+        cmp  byte ptr [ebx+0x13], 0xFF
+        je   tqno
+        cmp  byte ptr [ebx+0x15], 0xFF
+        je   tqno
+        mov  esi, [ebp + 0x{MAPVAR:X}]
+        test esi, esi
+        jz   tqno
+        mov  al, [esi+0xA5]             ; seated player
+        cmp  al, 0xFF
+        je   tqno
+        cmp  al, [ebx+0x12]
+        je   tqobs                        ; own army
+        movsx edx, byte ptr [ebx+0x12]
+        mov  eax, [esi+0x140]
+        test eax, eax
+        jz   tqno
+        call 0x{GETPLAYERS:X}
+        test eax, eax
+        jz   tqno
+        mov  eax, [eax+0x40]
+        test eax, eax
+        jz   tqno
+        mov  dl, [esi+0xA5]
+        call 0x{GETREL:X}
+        cmp  al, {REL_ALLY}
+        jne  tqno
+    tqobs:
+        movsx edx, byte ptr [ebx+0x15]
+        mov  eax, [esi+0x10]
+        call 0x{GETLVL:X}
+        test eax, eax
+        jz   tqno
+        movzx ecx, byte ptr [ebx+0x29]  ; true range << 4 | radius
+        mov  edx, ecx
+        and  edx, 0x0F
+        shr  ecx, 4
+        shl  ecx, 8
+        or   ecx, edx
+        shl  ecx, 8
+        mov  cl, [ebx+0x14]             ; y
+        shl  ecx, 8
+        mov  cl, [ebx+0x13]             ; x
+        mov  edx, ecx
+        jmp  tqout
+    tqno:
+        xor  eax, eax
+        xor  edx, edx
+    tqout:
+        pop  ebp
+        pop  edi
+        pop  esi
+        pop  ebx
+        ret
+    """)
+
+    # --- tslook: eax = key (x | y<<8 | radius<<16), ebx = TAoWMapLevel, edx = load delta
+    # -> eax = recorded true range | 0x100 when an entry matches, else 0. Clobbers ecx/edx.
+    a2 = align(nxt2)
+    a_tsl = a2
+    nxt2 = asm("tslook", a2, f"""
+        push esi
+        push edi
+        mov  ecx, [edx + 0x{T_CNT:X}]
+        cmp  ecx, {T_MAX}
+        jbe  l0
+        mov  ecx, {T_MAX}
+    l0:
+        lea  edx, [edx + 0x{T_ENT:X}]
+    l1:
+        dec  ecx
+        js   lno
+        cmp  [edx], ebx
+        jne  l2
+        mov  esi, [edx+4]
+        mov  edi, esi
+        and  esi, 0xFFFFFF
+        cmp  esi, eax
+        je   lhit
+    l2:
+        add  edx, 8
+        jmp  l1
+    lhit:
+        shr  edi, 24
+        lea  eax, [edi + 0x100]
+        jmp  lout
+    lno:
+        xor  eax, eax
+    lout:
+        pop  edi
+        pop  esi
+        ret
+    """)
+
+    # --- tsrec: the rebuild's zeroing pass (FLAG set). ebx = army, ebp = load delta.
+    # Records the army if it is an observer holding True Seeing (true range > 1 -- every
+    # other unit's TrueVisionRange is 1). Clobbers eax/ecx/edx.
+    a2 = align(nxt2)
+    a_tsr = a2
+    nxt2 = asm("tsrec", a2, f"""
+        mov  eax, ebx
+        call 0x{a_tsq:X}
+        test eax, eax
+        jz   rdone
+        mov  ecx, edx
+        shr  ecx, 24
+        cmp  ecx, 1
+        jbe  rdone
+        mov  ecx, [ebp + 0x{T_CNT:X}]
+        cmp  ecx, {T_MAX}
+        jb   rstore
+        mov  byte ptr [ebp + 0x{T_OVF:X}], 1
+        jmp  rdone
+    rstore:
+        lea  ecx, [ebp + ecx*8 + 0x{T_ENT:X}]
+        mov  [ecx], eax
+        mov  [ecx+4], edx
+        inc  dword ptr [ebp + 0x{T_CNT:X}]
+    rdone:
+        ret
+    """)
+
+    # --- tscheck: stub_army's normal path. ebx = army, ebp = load delta -> eax = 1 when
+    # a rebuild is needed because what the list says for this army's (level, hex, radius)
+    # is not what it now holds. Only consulted while some gloom source is on this level
+    # within radius + GLOOM_R of the army (a sight line never leaves radius of its centre,
+    # so outside that the answer cannot change what is seen). Preserves ebx/ebp.
+    a2 = align(nxt2)
+    a_tsc = a2
+    nxt2 = asm("tscheck", a2, f"""
+        cmp  dword ptr [ebp + 0x{G_CNT:X}], 0
+        je   tzero                      ; no gloom anywhere
+        mov  eax, ebx
+        call 0x{a_tsq:X}
+        test eax, eax
+        jz   tzero                      ; not an observer: it fills nothing
+        push ebx
+        push ebp
+        mov  esi, eax                   ; level
+        mov  edi, edx                   ; packed
+        movzx eax, dl                   ; x
+        movzx ecx, dh                   ; y
+        mov  edx, eax
+        and  edx, 1
+        mov  ebx, eax
+        sub  ebx, edx
+        sar  ebx, 1
+        sub  ecx, ebx                   ; ecx = cube z, eax = cube x
+        mov  ebx, edi
+        shr  ebx, 16
+        and  ebx, 0xFF
+        add  ebx, {GLOOM_R}
+        add  ebx, ebx                   ; 2 x (radius + GLOOM_R)
+        mov  edx, [ebp + 0x{G_CNT:X}]
+        cmp  edx, {G_MAX}
+        jbe  r0
+        mov  edx, {G_MAX}
+    r0:
+        push edx                        ; [esp] = sources left
+        lea  ebp, [ebp + 0x{G_ENT:X}]
+    rl:
+        dec  dword ptr [esp]
+        js   rno
+        cmp  [ebp+4], esi
+        jne  rn
+        push eax
+        push ecx
+        movsx edx, word ptr [ebp+8]
+        sub  edx, eax                   ; dx
+        movsx eax, word ptr [ebp+10]
+        sub  eax, ecx                   ; dz
+        lea  ecx, [eax+edx]
+        test edx, edx
+        jns  ta1
+        neg  edx
+    ta1:
+        test eax, eax
+        jns  ta2
+        neg  eax
+    ta2:
+        test ecx, ecx
+        jns  ta3
+        neg  ecx
+    ta3:
+        add  eax, edx
+        add  eax, ecx                   ; 2 x hex distance
+        cmp  eax, ebx
+        pop  ecx
+        pop  eax
+        jbe  ryes
+    rn:
+        add  ebp, 12
+        jmp  rl
+    rno:
+        pop  edx
+        pop  ebp
+        pop  ebx
+    tzero:
+        xor  eax, eax
+        ret
+    ryes:
+        pop  edx
+        pop  ebp                        ; load delta again
+        mov  eax, edi
+        and  eax, 0xFFFFFF              ; key
+        mov  ebx, esi
+        mov  edx, ebp
+        call 0x{a_tsl:X}                ; eax = listed range | 0x100 found
+        mov  ecx, edi
+        shr  ecx, 24                    ; wanted range
+        cmp  ecx, 1
+        ja   w1
+        xor  ecx, ecx                   ; no True Seeing: wants no entry
+    w1:
+        movzx edx, al
+        cmp  ecx, edx
+        je   tsame
+        test ecx, ecx
+        jz   tneed                      ; lost True Seeing (or moved): stale entry
+        test eax, 0x100
+        jnz  tneed                      ; listed with a different range
+        cmp  byte ptr [ebp + 0x{T_OVF:X}], 0
+        jne  tsame                      ; list full: a rebuild could not record it
+    tneed:
+        mov  eax, 1
+        pop  ebx
+        ret
+    tsame:
+        xor  eax, eax
+        pop  ebx
+        ret
+    """)
+    out["_end2"] = nxt2
+
+    # ======== CAVE 1 ========
     # --- neighbour delta table: parity*0x40 + side*8 -> (dx dword, dy dword)
     a_tab = CAVE_VA
     tab = bytearray(0x80)
@@ -255,18 +631,23 @@ def build():
             struct.pack_into("<ii", tab, p * 0x40 + s * 8, dx, dy)
     out["table"] = (a_tab, bytes(tab))
 
-    # --- los_core: ZF=1 blocked, ZF=0 clear; preserves everything.
+    # --- los_core: the shared per-hex filter. Preserves every register; answers in flags:
+    #   ZF=1          terrain-blocked: neither tie-break walk is free of Earth/Rock
+    #   ZF=0, CF=1    gloom-hidden: a walk is terrain-clear, but every clear walk costs more
+    #                 than the fill radius (1 per step, +1 more per Mantle of Gloom hex entered)
+    #   ZF=0, CF=0    visible
     # Reads the fill's frame via ebp (identical layout in all four fills):
-    #   [ebp-0x0C]/[ebp-0x08] centre x,y   [ebp-0x14]/[ebp-0x10] target x,y
-    # ebx = TAoWMapLevel (from the pushad frame at [esp+0x40]).
+    #   [ebp-0x0C]/[ebp-0x08] centre x,y   [ebp-0x14]/[ebp-0x10] target x,y   [ebp+8] radius
+    # ebx = TAoWMapLevel (from the pushad frame at [esp+0x50]).
     # Frame: [esp+0x00] load delta  +0x04/+0x08 cand x,y  +0x0C bestd  +0x10 cap
     #        +0x14 t_x  +0x18 t_z (cube)  +0x1C side  +0x20/+0x24 best x,y
     #        +0x28 mode (0 = walk A first-tie-wins, 1 = walk B last-tie-wins)
+    #        +0x2C radius  +0x30 walk cost  +0x34 1 = some walk was terrain-clear
     a_los = align(a_tab + 0x80)
-    pop_at = a_los + 9          # pushad(1) + sub esp,0x30(3) + call(5)
+    pop_at = a_los + 9          # pushad(1) + sub esp,0x40(3) + call(5)
     src_los = f"""
         pushad
-        sub  esp, 0x30
+        sub  esp, 0x40
         call 0x{pop_at:X}
         pop  eax
         sub  eax, 0x{pop_at:X}
@@ -280,19 +661,32 @@ def build():
         mov  ecx, [ebp-0x10]            ; target y
         sub  ecx, eax
         mov  [esp+0x18], ecx            ; t_z (cube)
+        mov  eax, [ebp+8]
+        mov  [esp+0x2C], eax            ; fill radius
+        movzx eax, byte ptr [ebp+8]     ; v5: key = x | y<<8 | radius<<16 of this fill
+        shl  eax, 8
+        mov  al, byte ptr [ebp-0x08]
+        shl  eax, 8
+        mov  al, byte ptr [ebp-0x0C]
+        mov  edx, [esp]
+        call 0x{a_tsl:X}                ; ebx = the fill's level, untouched so far
+        movzx eax, al
+        mov  [esp+0x38], eax            ; True Seeing range of this observer, 0 = none
+        mov  dword ptr [esp+0x34], 0    ; no terrain-clear walk yet
         mov  dword ptr [esp+0x28], 0    ; mode = walk A
     walkinit:
         mov  esi, [ebp-0x0C]            ; cur x = centre x
         mov  edi, [ebp-0x08]            ; cur y = centre y
         mov  dword ptr [esp+0x10], {STEP_CAP}
+        mov  dword ptr [esp+0x30], 0    ; cost
     step:
         cmp  esi, [ebp-0x14]
         jne  notdone
         cmp  edi, [ebp-0x10]
-        je   clear
+        je   walkclear                  ; reached the target with no blocking hex
     notdone:
         dec  dword ptr [esp+0x10]
-        js   clear                      ; cap exhausted -> fail open
+        js   walkclear                  ; cap exhausted -> fail open
         mov  dword ptr [esp+0x0C], 0x7FFFFFFF   ; bestd
         mov  dword ptr [esp+0x1C], 0            ; side
     sides:
@@ -326,44 +720,65 @@ def build():
         jl   sides
         mov  esi, [esp+0x20]
         mov  edi, [esp+0x24]
-        cmp  esi, [ebp-0x14]
-        jne  check
-        cmp  edi, [ebp-0x10]
-        je   clear                      ; reached target: endpoint excluded
-    check:
-        mov  ebx, [esp+0x40]            ; level (saved ebx in pushad frame)
+        inc  dword ptr [esp+0x30]       ; one step of sight
+        mov  ebx, [esp+0x50]            ; level (saved ebx in pushad frame)
         test esi, esi
-        js   step                       ; off-map intermediate: skip check
+        js   step                       ; off-map intermediate: no gloom, no terrain
         test edi, edi
         js   step
         cmp  esi, [ebx+0x0C]
         jge  step
         cmp  edi, [ebx+0x10]
         jge  step
+        mov  eax, [esp]
+        call gloom
+        add  [esp+0x30], eax            ; a Mantle of Gloom hex costs one more
+        cmp  esi, [ebp-0x14]
+        jne  check
+        cmp  edi, [ebp-0x10]
+        je   step                       ; the target: gloom counts, terrain never blocks
+    check:
         mov  eax, [ebx+0x74]
         mov  eax, [eax + esi*4]
         mov  edx, [ebx+0x78]
         add  eax, [edx + edi*4]         ; field
         mov  dl, [eax+0x14]             ; terrain
         cmp  dl, {BLOCKING[0]}
-        je   walkhit
+        je   walkfail
         cmp  dl, {BLOCKING[1]}
-        je   walkhit
+        je   walkfail
         jmp  step
-    walkhit:                            ; this walk crossed blocking terrain
+    walkclear:                          ; this walk crossed no blocking terrain
+        mov  dword ptr [esp+0x34], 1
+        mov  eax, [esp+0x30]
+        cmp  eax, [esp+0x2C]
+        jle  visible
+        mov  eax, {STEP_CAP}            ; v5: steps taken, gloom not charged
+        sub  eax, [esp+0x10]
+        cmp  eax, [esp+0x38]
+        jle  visible                    ; within the True Seeing range: gloom ignored
+    walkfail:                           ; blocked, or clear but too costly
         cmp  dword ptr [esp+0x28], 0
-        jne  blocked                    ; walk B blocked too -> hidden
+        jne  decide
         mov  dword ptr [esp+0x28], 1    ; retry with opposite tie-break
         jmp  walkinit
-    blocked:
-        add  esp, 0x30
+    decide:
+        cmp  dword ptr [esp+0x34], 0
+        je   blocked
+        add  esp, 0x40                  ; gloom-hidden: ZF=0 CF=1
         popad
-        cmp  eax, eax                   ; ZF=1
+        test esp, esp
+        stc
         ret
-    clear:
-        add  esp, 0x30
+    blocked:
+        add  esp, 0x40
         popad
-        test esp, esp                   ; ZF=0 (esp never 0)
+        cmp  eax, eax                   ; ZF=1 CF=0
+        ret
+    visible:
+        add  esp, 0x40
+        popad
+        test esp, esp                   ; ZF=0 CF=0 (esp never 0)
         ret
     dist:                               ; eax=x, edx=y -> eax = hexdist to target
         mov  ecx, eax                   ; (locals shifted +4 by the ret addr)
@@ -393,14 +808,76 @@ def build():
         add  eax, ecx
         sar  eax, 1
         ret
+    gloom:                              ; eax=delta esi=x edi=y ebx=level -> eax 1|0
+        push ebp                        ; clobbers ecx/edx only
+        push esi
+        push edi
+        mov  ecx, esi
+        and  ecx, 1
+        mov  edx, esi
+        sub  edx, ecx
+        sar  edx, 1
+        sub  edi, edx                   ; edi = cube z, esi = cube x
+        mov  ecx, [eax + 0x{G_CNT:X}]
+        cmp  ecx, {G_MAX}
+        jbe  gcnt
+        mov  ecx, {G_MAX}
+    gcnt:
+        lea  ebp, [eax + 0x{G_ENT:X}]
+    gloop:
+        test ecx, ecx
+        jz   gno
+        cmp  [ebp+4], ebx               ; same map level?
+        jne  gnext
+        movsx eax, word ptr [ebp+8]
+        movsx edx, word ptr [ebp+10]
+        sub  eax, esi                   ; dx
+        sub  edx, edi                   ; dz
+        push ecx
+        lea  ecx, [eax+edx]             ; -(dy)
+        test eax, eax
+        jns  ga
+        neg  eax
+    ga:
+        test edx, edx
+        jns  gb
+        neg  edx
+    gb:
+        test ecx, ecx
+        jns  gc
+        neg  ecx
+    gc:
+        add  eax, edx
+        add  eax, ecx                   ; = 2 x hex distance
+        pop  ecx
+        cmp  eax, {2 * GLOOM_R}
+        jbe  gyes
+    gnext:
+        add  ebp, 12
+        dec  ecx
+        jmp  gloop
+    gno:
+        xor  eax, eax
+        jmp  gout
+    gyes:
+        mov  eax, 1
+    gout:
+        pop  edi
+        pop  esi
+        pop  ebp
+        ret
     """
     nxt = asm("los_core", a_los, src_los)
 
     # --- fill stubs (jmp'd into; jmp back). All four call the SAME los_core.
+    # Fog counts (FogArea, UnFogArea, UnFogExploreArea's unfog) honour gloom; EXPLORATION
+    # never does (ExploreArea, UnFogExploreArea's explore half) -- explored bits are per
+    # player on every machine, and the gloom list is relative to the local seated player.
     a = align(nxt)
     nxt = asm("stub_fog", a, f"""
         call 0x{a_los:X}
         jz   skip
+        jc   skip
         mov  dl, [eax+0x1A]
         cmp  dl, 1
         jmp  0x55771F3C
@@ -411,6 +888,7 @@ def build():
     nxt = asm("stub_unfog", a, f"""
         call 0x{a_los:X}
         jz   skip
+        jc   skip
         mov  dl, [eax+0x1A]
         test dl, dl
         jmp  0x55771FAB
@@ -421,11 +899,14 @@ def build():
     nxt = asm("stub_ue", a, f"""
         call 0x{a_los:X}
         jz   skip
+        jc   exonly
         cmp  byte ptr [esi+0x1A], 0
         jne  taken
         jmp  0x55772053
     taken:
         jmp  0x5577205E
+    exonly:
+        jmp  0x55772069
     skip:
         jmp  0x557720B6
     """)
@@ -460,7 +941,189 @@ def build():
 
     d5 = "push ebx\npush esi\npush edi\nmov edi, eax"
     d7 = "push ebx\npush esi\npush edi\npush ebp\nadd esp, -8"
-    a = align(nxt); nxt = unfog_stub("stub_army",  a, 0x17, d5, 0x5578E22D)
+    # --- qualify: is this army a Mantle of Gloom source for the local seated player?
+    # eax = army -> eax = TAoWMapLevel (0 = not a source), edx = cube x | cube z << 16.
+    # Source = active, on the map, owner != seated, owner's relation to seated == war,
+    # and some unit answers GetAbilityEnabled(Trail of Darkness) -- the vanilla trail's
+    # own query (TAbstractUnit.MovedTo @0x55780507). Preserves ebx/esi/edi/ebp.
+    a = align(nxt)
+    a_qual = a
+    pop_at = a + 9 + (0 if GLOOM else 5)    # [off-switch 5] + 4 x push(1) + call(5)
+    nxt = asm("qualify", a, ("" if GLOOM else """
+        xor  eax, eax
+        xor  edx, edx
+        ret
+    """) + f"""
+        push ebx
+        push esi
+        push edi
+        push ebp
+        call 0x{pop_at:X}
+        pop  ebp
+        sub  ebp, 0x{pop_at:X}          ; ebp = load delta
+        mov  ebx, eax                   ; army
+        test byte ptr [ebx+0x10], 1
+        jz   qno
+        cmp  byte ptr [ebx+0x13], 0xFF
+        je   qno
+        cmp  byte ptr [ebx+0x15], 0xFF
+        je   qno
+        mov  esi, [ebp + 0x{MAPVAR:X}]  ; map
+        test esi, esi
+        jz   qno
+        mov  al, [esi+0xA5]             ; seated player
+        cmp  al, 0xFF
+        je   qno
+        cmp  al, [ebx+0x12]
+        je   qno
+        movsx edx, byte ptr [ebx+0x12]
+        mov  eax, [esi+0x140]
+        test eax, eax
+        jz   qno
+        call 0x{GETPLAYERS:X}
+        test eax, eax
+        jz   qno
+        mov  eax, [eax+0x40]            ; the owner's diplomatic relations
+        test eax, eax
+        jz   qno
+        mov  dl, [esi+0xA5]
+        call 0x{GETREL:X}
+        cmp  al, {REL_WAR}
+        jne  qno
+        mov  eax, [ebx+8]               ; unit list
+        test eax, eax
+        jz   qno
+        mov  edi, [eax+8]               ; count
+    qunit:
+        dec  edi
+        js   qno
+        mov  eax, [ebx+8]
+        mov  eax, [eax+4]
+        mov  eax, [eax + edi*4]
+        test eax, eax
+        jz   qunit
+        mov  edx, {ABIL_TOD}
+        mov  ecx, [eax]
+        call dword ptr [ecx+0x148]      ; GetAbilityEnabled
+        test al, al
+        jz   qunit
+        movsx edx, byte ptr [ebx+0x15]
+        mov  eax, [esi+0x10]
+        call 0x{GETLVL:X}
+        test eax, eax
+        jz   qno
+        movsx edx, byte ptr [ebx+0x14]  ; y
+        movsx ecx, byte ptr [ebx+0x13]  ; x
+        mov  edi, ecx
+        and  edi, 1
+        mov  esi, ecx
+        sub  esi, edi
+        sar  esi, 1
+        sub  edx, esi                   ; cube z
+        shl  edx, 16
+        and  ecx, 0xFFFF
+        or   edx, ecx
+        jmp  qout
+    qno:
+        xor  eax, eax
+        xor  edx, edx
+    qout:
+        pop  ebp
+        pop  edi
+        pop  esi
+        pop  ebx
+        ret
+    """)
+
+    # --- stub_army: TArmy.UpdateUnfog entry (eax = army).
+    #   FLAG (rebuild zeroing pass): record the army if it is a source, zero cache, ret.
+    #   otherwise: if the army's source status or position no longer matches what the
+    #   last rebuild recorded, request a rebuild (PEND) and run UpdateVisibility -- that
+    #   is what makes the aura follow a moving unit. Never from inside UpdateVisibility
+    #   (G_INUV) or while a rebuild is already pending.
+    a = align(nxt)
+    pop_at = a + 6              # pushad(1) + call(5)
+    nxt = asm("stub_army", a, f"""
+        pushad
+        call 0x{pop_at:X}
+        pop  ebp
+        sub  ebp, 0x{pop_at:X}          ; ebp = load delta
+        mov  ebx, eax                   ; army
+        cmp  byte ptr [ebp + 0x{FLAG:X}], 0
+        jne  rec
+        cmp  byte ptr [ebp + 0x{PEND:X}], 0
+        jne  go
+        cmp  byte ptr [ebp + 0x{G_INUV:X}], 0
+        jne  go
+        call 0x{a_qual:X}
+        mov  esi, eax                   ; level | 0
+        mov  edi, edx                   ; packed cube
+        mov  ecx, [ebp + 0x{G_CNT:X}]
+        cmp  ecx, {G_MAX}
+        jbe  fcnt
+        mov  ecx, {G_MAX}
+    fcnt:
+        lea  edx, [ebp + 0x{G_ENT:X}]
+    find:
+        test ecx, ecx
+        jz   notrec
+        cmp  [edx], ebx
+        je   isrec
+        add  edx, 12
+        dec  ecx
+        jmp  find
+    isrec:
+        test esi, esi
+        jz   need                       ; recorded, no longer a source
+        cmp  [edx+4], esi
+        jne  need                       ; changed level
+        cmp  [edx+8], edi
+        jne  need                       ; moved
+        jmp  tsck
+    notrec:
+        test esi, esi
+        jz   tsck                       ; not a source, never was
+        cmp  byte ptr [ebp + 0x{G_OVF:X}], 0
+        jne  tsck                       ; list full: cannot record it anyway
+    need:
+        mov  byte ptr [ebp + 0x{PEND:X}], 1
+        mov  eax, [ebp + 0x{MAPVAR:X}]
+        call 0x{UPDVIS:X}
+        jmp  go
+    tsck:                               ; v5: is its True Seeing entry still right?
+        call 0x{a_tsc:X}
+        test eax, eax
+        jnz  need
+    go:
+        popad
+        push ebx
+        push esi
+        push edi
+        mov  edi, eax
+        jmp  0x5578E22D
+    rec:
+        call 0x{a_qual:X}
+        test eax, eax
+        jz   tsr
+        mov  ecx, [ebp + 0x{G_CNT:X}]
+        cmp  ecx, {G_MAX}
+        jb   store
+        mov  byte ptr [ebp + 0x{G_OVF:X}], 1
+        jmp  tsr
+    store:
+        lea  ecx, [ecx + ecx*2]
+        lea  ecx, [ebp + ecx*4 + 0x{G_ENT:X}]
+        mov  [ecx], ebx
+        mov  [ecx+4], eax
+        mov  [ecx+8], edx
+        inc  dword ptr [ebp + 0x{G_CNT:X}]
+    tsr:
+        call 0x{a_tsr:X}                ; v5: record a True Seeing observer
+    zero:
+        popad
+        mov  byte ptr [eax + 0x17], 0
+        ret
+    """)
     a = align(nxt); nxt = unfog_stub("stub_ps",    a, 0x38, d7, 0x5576122F)
     a = align(nxt); nxt = unfog_stub("stub_pool",  a, 0x38, d7, 0x557D5103)
     a = align(nxt); nxt = unfog_stub("stub_watch", a, 0x0D, d5, 0x5579FCB9)
@@ -490,6 +1153,7 @@ def build():
         call 0x{pop_at:X}
         pop  eax
         sub  eax, 0x{pop_at:X}
+        mov  byte ptr [eax + 0x{G_INUV:X}], 1   ; cleared by uv_end at the body's end
         cmp  byte ptr [eax + 0x{PEND:X}], 0
         jne  wipe
     orig:
@@ -498,6 +1162,10 @@ def build():
         jmp  0x55778425
     wipe:
         mov  byte ptr [eax + 0x{PEND:X}], 0
+        mov  dword ptr [eax + 0x{G_CNT:X}], 0   ; the zeroing pass re-records sources
+        mov  byte ptr [eax + 0x{G_OVF:X}], 0
+        mov  dword ptr [eax + 0x{T_CNT:X}], 0   ; v5: True Seeing list re-recorded too
+        mov  byte ptr [eax + 0x{T_OVF:X}], 0
         mov  byte ptr [eax + 0x{FLAG:X}], 1
         push eax                        ; save load delta
         sub  esp, 0x30
@@ -548,6 +1216,34 @@ def build():
         ret
     """)
 
+    # --- uv_end: UpdateVisibility's closing `call InvalidateMap` (@0x5577844D), retargeted.
+    # Reached by both the wipe and the plain path; clears G_INUV. eax = the map.
+    a = align(nxt)
+    pop_at = a + 6              # push eax(1) + call(5)
+    nxt = asm("uv_end", a, f"""
+        push eax
+        call 0x{pop_at:X}
+        pop  eax
+        sub  eax, 0x{pop_at:X}
+        mov  byte ptr [eax + 0x{G_INUV:X}], 0
+        pop  eax
+        jmp  0x{INVMAP:X}
+    """)
+
+    # --- trig_uv: TPlayerList.SetDiplomaticRelation's `call UpdateVisibility`, retargeted:
+    # a change of war/peace changes who is a gloom source, so ask for a rebuild.
+    a = align(nxt)
+    pop_at = a + 6
+    nxt = asm("trig_uv", a, f"""
+        push eax
+        call 0x{pop_at:X}
+        pop  eax
+        sub  eax, 0x{pop_at:X}
+        mov  byte ptr [eax + 0x{PEND:X}], 1
+        pop  eax
+        jmp  0x{UPDVIS:X}
+    """)
+
     out["_end"] = nxt
 
     # SYMMETRY ASSERTION: fog and unfog filter through one byte-identical code path.
@@ -556,12 +1252,17 @@ def build():
         assert b[0] == 0xE8, k
         tgt = va + 5 + struct.unpack("<i", b[1:5])[0]
         assert tgt == a_los, f"{k} does not call the shared los_core"
+    # ...and fog-on and fog-off both skip on ZF (jz) and then on CF (jc).
+    for k in ("stub_fog", "stub_unfog"):
+        b = out[k][1]
+        assert b[5] == 0x74 and b[7] == 0x72, f"{k}: expected jz rel8 ; jc rel8 after the call"
     return out
 
 
 CAVE_ORDER = ("table", "los_core", "stub_fog", "stub_unfog", "stub_ue", "stub_ex",
-              "stub_army", "stub_ps", "stub_pool", "stub_watch", "stub_gate",
-              "uv_hook", "trig")
+              "qualify", "stub_army", "stub_ps", "stub_pool", "stub_watch", "stub_gate",
+              "uv_hook", "trig", "uv_end", "trig_uv")
+CAVE2_ORDER = ("tsqual", "tslook", "tsrec", "tscheck")
 
 STUB_FOR_SITE = {
     "fill_fog": "stub_fog", "fill_unfog": "stub_unfog", "fill_ue": "stub_ue",
@@ -592,7 +1293,10 @@ def reloc_check(data):
     rd = data[praw:praw + vsize]
     ranges = [(va, va + len(ob)) for _, va, ob, _ in SITES]
     ranges += [(va, va + 5) for _, va in TRIG_SITES]
+    ranges += [(va, va + 5) for _, va, _, _ in CALL_SITES]
+    ranges += [(va, va + len(ob)) for _, va, ob, _ in RAW_SITES]
     ranges.append((CAVE_VA, CAVE_VA + CAVE_LIMIT))
+    ranges.append((CAVE2_VA, CAVE2_VA + CAVE2_LIMIT))
     base = 0x55700000
     i = 0
     while i + 8 <= len(rd):
@@ -704,6 +1408,26 @@ def model_visible(terrain, centre, target):
                for h in model_walk(centre, target, tie_last=tie_last)):
             return True
     return False
+
+
+def model_classify(terrain, sources, centre, target, radius, t_range=0):
+    """Mirror of los_core v5: 'blocked' (ZF), 'gloom' (CF) or 'visible'. A walk costs 1 per
+    step plus 1 per step onto a hex within GLOOM_R of any source (the target included);
+    visible if some terrain-clear walk costs <= radius, or takes <= t_range steps (the
+    observer's True Seeing range, 0 = none)."""
+    def gloomy(h):
+        return any(_dist(h, s) <= GLOOM_R for s in sources)
+    any_clear = False
+    for tie_last in (False, True):
+        inter = model_walk(centre, target, tie_last=tie_last)
+        if any(terrain.get(h) in BLOCKING for h in inter):
+            continue
+        any_clear = True
+        steps = inter + ([target] if target != centre else [])
+        cost = len(steps) + sum(1 for h in steps if gloomy(h))
+        if cost <= radius or len(steps) <= t_range:
+            return "visible"
+    return "gloom" if any_clear else "blocked"
 
 
 def ref_visible(terrain, centre, target):
@@ -896,6 +1620,72 @@ def run_test():
           "accepted permissiveness gap at dist>=3: %d pair(s)" % (n5, gap)
           if not fails else "  [5] random grids: FAIL (see above)")
 
+    # 7. Mantle of Gloom: each hex within GLOOM_R of a source costs 2 sight instead of 1.
+    c = (20, 20)
+    g_checks = [
+        # (sources, target, radius, want, why)
+        ([], (28, 20), 8, "visible", "no sources: distance 8 at radius 8 is visible"),
+        ([(22, 20)], (22, 20), 4, "visible", "source 2 away, radius 4: cost 4 -> visible"),
+        ([(24, 20)], (24, 20), 4, "gloom", "source 4 away, radius 4: cost 8 -> hidden"),
+        ([(24, 20)], (24, 20), 8, "visible", "source 4 away, radius 8: cost 8 -> visible"),
+        ([(40, 20)], (28, 20), 8, "visible", "aura 12+ away from the line: untouched"),
+        ([(34, 20)], (28, 20), 8, "gloom", "line enters the aura at step 8: cost 9 > 8"),
+        ([(34, 20)], (28, 20), 9, "visible", "same line at radius 9: cost 9 -> visible"),
+    ]
+    for srcs, t, r, want, why in g_checks:
+        got = model_classify({}, srcs, c, t, r)
+        ok = got == want
+        if not ok:
+            fails += 1
+        print("  [7] %-58s %s" % (why, "ok" if ok else "FAIL (got %s)" % got))
+    # own hex always visible, even standing in the aura; terrain beats gloom
+    if model_classify({}, [c], c, c, 0) != "visible":
+        fails += 1
+        print("  [7] FAIL: observer's own hex hidden")
+    wall = {(22, y): 7 for y in range(64)}
+    if model_classify(wall, [(24, 20)], c, (24, 20), 20) != "blocked":
+        fails += 1
+        print("  [7] FAIL: terrain block reported as gloom")
+    # no sources => gloom never appears and visible == the v3 terrain rule
+    rng = random.Random(0x6100)
+    for trial in range(40):
+        terrain = {(x, y): rng.choice(BLOCKING) for x in range(12, 29) for y in range(12, 29)
+                   if rng.random() < 0.2 and (x, y) != c}
+        for tx in range(13, 28):
+            for ty in range(13, 28):
+                t = (tx, ty)
+                D = _dist(c, t)
+                k = model_classify(terrain, [], c, t, D)
+                if k == "gloom" or (k == "visible") != model_visible(terrain, c, t):
+                    fails += 1
+                    print("  [7] FAIL: no-source classify %s != v3 rule at %s" % (k, t))
+    # fog-on and fog-off see the same answer: classify is a pure function of the
+    # source list, which only changes inside the rebuild (asserted at build time too).
+    print("  [7] gloom semantics + no-source equivalence to the v3 terrain rule: %s"
+          % ("ok" if not fails else "see FAILs"))
+
+    # 8. v5 True Seeing: within the observer's true range the gloom surcharge is not paid;
+    #    beyond it the army's wider sight is gloomed as before; terrain still blocks.
+    t_checks = [
+        # (sources, target, radius, t_range, want, why)
+        ([(24, 20)], (24, 20), 4, 4, "visible", "gloomed hex at 4, True Seeing 4: visible"),
+        ([(24, 20)], (24, 20), 4, 3, "gloom", "same hex, True Seeing 3: still hidden"),
+        ([(24, 20)], (26, 20), 8, 4, "gloom", "6 away in the aura, radius 8, TS 4: hidden"),
+        ([(24, 20)], (26, 20), 8, 6, "visible", "same hex, True Seeing 6: visible"),
+        ([], (28, 20), 8, 0, "visible", "no sources, no True Seeing: unchanged"),
+    ]
+    for srcs, t, r, tr, want, why in t_checks:
+        got = model_classify({}, srcs, c, t, r, tr)
+        ok = got == want
+        if not ok:
+            fails += 1
+        print("  [8] %-58s %s" % (why, "ok" if ok else "FAIL (got %s)" % got))
+    if model_classify(wall, [(24, 20)], c, (24, 20), 20, 20) != "blocked":
+        fails += 1
+        print("  [8] FAIL: True Seeing saw through Earth")
+    else:
+        print("  [8] True Seeing does not see through Earth/Rock: ok")
+
     # 6. symmetry by construction: one function models both directions; the build
     #    asserts stub_fog/stub_unfog target the same cave entry (run it now).
     build()
@@ -940,15 +1730,18 @@ def main():
     used = cv["_end"] - CAVE_VA
     print("build_los_terrain  blocking={%d,%d}  cave 0x%08X..0x%08X (%d B of %d)"
           % (BLOCKING[0], BLOCKING[1], CAVE_VA, cv["_end"] - 1, used, CAVE_LIMIT))
-    if used > CAVE_LIMIT:
+    used2 = cv["_end2"] - CAVE2_VA
+    print("  cave 2 (True Seeing) 0x%08X..0x%08X (%d B of %d)"
+          % (CAVE2_VA, cv["_end2"] - 1, used2, CAVE2_LIMIT))
+    if used > CAVE_LIMIT or used2 > CAVE2_LIMIT:
         sys.exit("ERROR: cave overflows its reservation")
-    for k in CAVE_ORDER:
+    for k in CAVE_ORDER + CAVE2_ORDER:
         va, b = cv[k]
         print("    %-10s 0x%08X  %4d B" % (k, va, len(b)))
 
     if args.dis:
         print()
-        for k in CAVE_ORDER:
+        for k in CAVE_ORDER + CAVE2_ORDER:
             if k == "table":
                 continue
             va, b = cv[k]
@@ -964,6 +1757,12 @@ def main():
         ob = b"\xE8" + struct.pack("<i", INVMAP - (va + 5))
         nb = b"\xE8" + struct.pack("<i", cv["trig"][0] - (va + 5))
         edits.append((va, ob, nb, name, "call"))
+    for name, va, vanilla_tgt, cave in CALL_SITES:
+        ob = b"\xE8" + struct.pack("<i", vanilla_tgt - (va + 5))
+        nb = b"\xE8" + struct.pack("<i", cv[cave][0] - (va + 5))
+        edits.append((va, ob, nb, name, "call"))
+    for name, va, ob, nb in RAW_SITES:
+        edits.append((va, ob, nb, name, "raw"))
 
     def cur(va, n):
         return bytes(data[off(va):off(va) + n])
@@ -996,7 +1795,8 @@ def main():
             else:
                 st, allok = "FOREIGN", False
             print("  %-20s 0x%08X  %-14s %s" % (lbl, va, c.hex().upper(), st))
-        cave_ok = all(cur(cv[k][0], len(cv[k][1])) == cv[k][1] for k in CAVE_ORDER)
+        cave_ok = all(cur(cv[k][0], len(cv[k][1])) == cv[k][1]
+                      for k in CAVE_ORDER + CAVE2_ORDER)
         vmt_ok = vmt_cur == VMT_ORIG
         print("  %-20s 0x%08X  %-14s %s" % ("vmt_slot", VMT_SLOT, vmt_cur.hex().upper(),
               "vanilla (correct)" if vmt_ok else "LEGACY v1 repoint -- run --apply"))
@@ -1021,6 +1821,7 @@ def main():
                          % (lbl, va, c.hex().upper()))
         data[off(VMT_SLOT):off(VMT_SLOT) + 4] = VMT_ORIG   # vanilla whichever state
         data[off(CAVE_VA):off(CAVE_VA) + CAVE_LIMIT] = b"\x00" * CAVE_LIMIT
+        data[off(CAVE2_VA):off(CAVE2_VA) + CAVE2_LIMIT] = b"\x00" * CAVE2_LIMIT
         if cur(HAND_EDIT_VA, len(HAND_EDIT)) != HAND_EDIT:
             sys.exit("BUG: undo would damage the hand edit -- not writing.")
         open(DLL, "wb").write(data)
@@ -1046,11 +1847,21 @@ def main():
         zone = cur(CAVE_VA, CAVE_LIMIT)
         if zone != b"\x00" * CAVE_LIMIT:
             sys.exit("ABORT: cave zone 0x%08X is not zero -- someone else owns it" % CAVE_VA)
+    # cave 2 (v5) is claimed on its first write, fresh or re-tune: zero or ours only.
+    payload2 = bytearray(CAVE2_LIMIT)
+    for k in CAVE2_ORDER:
+        va, b = cv[k]
+        payload2[va - CAVE2_VA: va - CAVE2_VA + len(b)] = b
+    zone2 = cur(CAVE2_VA, CAVE2_LIMIT)
+    if zone2 != b"\x00" * CAVE2_LIMIT and zone2 != bytes(payload2):
+        sys.exit("ABORT: cave 2 zone 0x%08X is neither zero nor this script's payload -- "
+                 "someone else owns it (or an older cave-2 layout: --undo first)" % CAVE2_VA)
     # non-fresh: the whole 0x800 reservation was claimed (zone-zero-verified) by the
     # first apply; the hook checks above prove the install is ours, so rewriting the
     # full reservation in place is safe (in-place re-tune convention).
 
-    caves_ok = all(cur(cv[k][0], len(cv[k][1])) == cv[k][1] for k in CAVE_ORDER)
+    caves_ok = all(cur(cv[k][0], len(cv[k][1])) == cv[k][1]
+                   for k in CAVE_ORDER + CAVE2_ORDER)
     if done and caves_ok:
         print("Already applied and up to date -- nothing to do.")
         return
@@ -1062,7 +1873,12 @@ def main():
 
     # Backup ONLY from a positively-verified original state -- never from our own
     # output (undo and re-tune paths take none).
-    if fresh and not os.path.exists(BAK):
+    # "fresh" only proves THIS script's sites are original -- after --undo that is exactly
+    # the state this script produced over a DLL carrying every other feature. So the
+    # snapshot also requires a byte-match against the vanilla root copy.
+    vanilla = os.path.join(os.path.dirname(GAME), os.path.basename(DLL))
+    if (fresh and not os.path.exists(BAK) and os.path.isfile(vanilla)
+            and open(vanilla, "rb").read() == bytes(data)):
         os.makedirs(BACKUP_DIR, exist_ok=True)
         shutil.copy2(DLL, BAK)
         print("backup -> %s" % os.path.basename(BAK))
@@ -1072,6 +1888,7 @@ def main():
         va, b = cv[k]
         payload[va - CAVE_VA: va - CAVE_VA + len(b)] = b
     data[off(CAVE_VA):off(CAVE_VA) + CAVE_LIMIT] = payload
+    data[off(CAVE2_VA):off(CAVE2_VA) + CAVE2_LIMIT] = payload2
     for va, ob, nb, _, _ in edits:
         data[off(va):off(va) + len(ob)] = nb
     data[off(VMT_SLOT):off(VMT_SLOT) + 4] = VMT_ORIG   # v2: slot stays vanilla

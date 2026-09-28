@@ -194,8 +194,8 @@ HOOKS -- every site is a 5-byte `call <import thunk>` replaced 1:1 by
 
   ⚠⚠ In particular `--undo` restores the 8 call sites in Ziggurat\AoWDevEd.exe and
   leaves the 8 in Ziggurat\AoWzEd.exe patched, pointing into a cave that is still
-  there but inert. Four sibling editor scripts (build_editor_autosave.py,
-  build_editor_spinners.py, build_deved_levelnav.py, build_editor_framerate.py)
+  there but inert. Three sibling editor scripts (build_editor_spinners.py,
+  build_deved_levelnav.py, build_editor_framerate.py)
   open their docstrings with the same two-step; this one did not, which is the
   whole reason it is spelled out here.
 

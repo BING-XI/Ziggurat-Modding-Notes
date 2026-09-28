@@ -581,13 +581,13 @@ cell `0x55715A54`, `IsClass @0x557010C0`).
 section above for why the other factory silently disables the combat check. Cave `cave_asnreg
 @0x5580E0E0` repoints the last strike `RegisterAbility` call `@0x557675C4`.
 
-**Melee bonus: +5 ATK / +5 DAM per matching bonus, uniform with Monster Slaying and the Champions**
-(a 2026-08-24 re-grade alongside the general DAM/HP doubling pass; the design notes that shaped the
-feature originally proposed +3/+3, superseded — the live cave constants are `MELEE_ATK_BONUS=5`,
+**Melee bonus: +5 ATK / +5 DAM per matching bonus, uniform with the Champions** (a 2026-08-24
+re-grade alongside the general DAM/HP doubling pass; live cave constants `MELEE_ATK_BONUS=5`,
 `MELEE_DAM_BONUS=5`). **Ranged/breath bonus: +2 ATK / +2 DAM per matching bonus**, uniform across
-all four slayer-style bonuses (Assassin, Monster Slaying, Holy Champion, Unholy Champion) — live
-constants `RANGED_ATK_BONUS=2`, `RANGED_DAM_BONUS=2`. Both stack per matching bonus and are
-uncapped.
+Assassin, Holy Champion and Unholy Champion — live constants `RANGED_ATK_BONUS=2`,
+`RANGED_DAM_BONUS=2`. Both stack per matching bonus and are uncapped. Monster Slaying shares these
+caves but has its own rule since 2026-09-26 (DAM + DEF, no ATK; `02-abilities-modded.md`,
+"Monster Slaying").
 
 ### KEY FINDING — melee has TWO parallel strike-creation tables, and a conditional-attack mod must hook both
 

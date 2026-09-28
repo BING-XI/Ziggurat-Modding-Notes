@@ -1,0 +1,86 @@
+=== AoW hang stack one-shot ===
+pid 21296
+
+  module AoWz.exe             base 0x00400000 size 0x247000
+  module AoWz.exe             base 0x00400000 size 0x247000
+  module AoWEPACK.dpl         base 0x00DE0000 size 0x2BD000
+  module Localize.dpl         base 0x010A0000 size 0x77000
+  module aowFXpck.dpl         base 0x012A0000 size 0xB000
+  module AoWTCPCK.dpl         base 0x012B0000 size 0x8B000
+  module aowDPlay.dpl         base 0x013D0000 size 0x10000
+  module ims.dpl              base 0x013F0000 size 0x42000
+  module VCLADDON.dpl         base 0x01490000 size 0x23000
+  module VideoP.dpl           base 0x014C0000 size 0xE000
+  module VCL30.dpl            base 0x41300000 size 0x13F000
+  module vcldb30.dpl          base 0x41700000 size 0xA0000
+  module vclx30.dpl           base 0x41900000 size 0x39000
+  module GFXEPACK.dpl         base 0x55000000 size 0x20000
+  module DCPACK.dpl           base 0x55100000 size 0x1B000
+  module ILPACK.dpl           base 0x55200000 size 0x4B000
+  module SoundP.dpl           base 0x55400000 size 0x1A000
+  module EngineP.dpl          base 0x55500000 size 0x4A000
+  module HSEPack.dpl          base 0x55600000 size 0x62000
+  module Network.dpl          base 0x55800000 size 0x12000
+  module AOWTools.dpl         base 0x59700000 size 0x18000
+  module aowInt.dpl           base 0x59800000 size 0x52000
+
+thread 28392   EIP VCL30.dpl+0x38EE
+           EAX 00000000 EBX 1CEE5C68 ECX 00000000 EDX 001AF6B4 ESI 00000000 EDI 1CEE5C68 EBP 00C7146C ESP 001AF664
+             ret  0x12C1A36C (unknown)
+             ret  AoWEPACK.dpl+0x30DC  (link 0x557030DC)
+             ret  0xC08B00FD (unknown)
+
+thread 6444   EIP win32u.dll+0x11DC
+           EAX 00000001 EBX 0001FDD8 ECX 00000000 EDX 00000000 ESI 0EC2FB5C EDI 1006B120 EBP 0EC2FB00 ESP 0EC2FAC0
+             ret  galaxy.dll+0x631D
+             ret  0x00000098 (unknown)
+
+thread 29088   EIP ntdll.dll+0x7A15C
+           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 00000003 EDI FFFFFFFF EBP 0F8BFE1C ESP 0F8BFC90
+             ret  wdmaud.drv+0x7F6B
+             ret  wdmaud.drv+0x7D4C
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6E1FB
+             ret  ntdll.dll+0x6E181
+
+thread 504   EIP ntdll.dll+0x7A15C
+           EAX 00000000 EBX 00002710 ECX 00000000 EDX 00000000 ESI 65285B00 EDI FFFE92E7 EBP 0FB1FF74 ESP 0FB1FEAC
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6E1FB
+             ret  ntdll.dll+0x6E181
+
+thread 11704   EIP ntdll.dll+0x7A15C
+           EAX 6AA43CD0 EBX 00000000 ECX 00000000 EDX 00000000 ESI 00000002 EDI FFFFFFFF EBP 0E23FF30 ESP 0E23FDA4
+             ret  KERNELBASE.dll+0x15EDB8
+             ret  amdihk32.dll+0x3D01
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6E1FB
+             ret  ntdll.dll+0x6E181
+
+thread 14052   EIP win32u.dll+0x123C
+           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 413A8D00 EDI 413A8D00 EBP 0FF9FF74 ESP 0FF9FF4C
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6E1FB
+             ret  ntdll.dll+0x6E181
+
+thread 16152   EIP ntdll.dll+0x79BCC
+           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 7C5DF230 EDI 00000E3C EBP 0FD5FF40 ESP 0FD5FED4
+             ret  KERNELBASE.dll+0x15E052
+             ret  dplayx.dll+0x2BD30
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6E1FB
+             ret  ntdll.dll+0x6E181
+
+thread 29636   EIP ntdll.dll+0x79BCC
+           EAX 7C5EBC10 EBX 00000000 ECX 00000000 EDX 00000000 ESI 7C5DF230 EDI 00000E3C EBP 00B5FF40 ESP 00B5FED4
+             ret  KERNELBASE.dll+0x15E052
+             ret  dplayx.dll+0x2BD30
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6E1FB
+             ret  ntdll.dll+0x6E181
+
+thread 7324   EIP ntdll.dll+0x7BA0C
+           EAX 8000001A EBX 00801878 ECX 00000000 EDX 00000000 ESI 0080E930 EDI 00801878 EBP 0ED2FF74 ESP 0ED2FDB4
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6E1FB
+             ret  ntdll.dll+0x6E181

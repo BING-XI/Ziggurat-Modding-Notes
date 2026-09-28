@@ -1,12 +1,22 @@
-"""Firmament map level, v3 -- the AoWz.exe / AoWzCompat.exe (UI) half.
+"""Firmament and Abyss map levels, v4 -- the AoWz.exe / AoWzCompat.exe (UI) half.
 
 A 4th map level is stored at index 3 and DISPLAYED ABOVE Surface, captioned "Firmament".
 (The *terrain* on it is still called Sky -- only the level strip's caption is Firmament.)
-Nothing about storage changes here; this script only remaps the World Map level strip's
-slot<->level correspondence in the four exe sites that assume `slot == level`.
+Since v4 (2026-09-27) a 5th is stored at index 4 and DISPLAYED BELOW Depths, captioned
+"Abyss".  Nothing about storage changes here; this script only remaps the World Map level
+strip's slot<->level correspondence in the four exe sites that assume `slot == level`.
 
-    display order (more than 3 levels):   slot 0 1 2 3  ->  level 3 0 1 2      ("Firmament | Surface | Caverns | Depths")
+    display order (5 levels):             slot 0 1 2 3 4 -> level 3 0 1 2 4    ("Firmament | Surface | Caverns | Depths | Abyss")
+    display order (4 levels):             slot 0 1 2 3   -> level 3 0 1 2      ("Firmament | Surface | Caverns | Depths")
     display order (3 levels or fewer):    identity                             ("Surface | Caverns | Depths")
+
+v4 LAYOUT (supersedes the v1-v3 table below, which is kept because the script still recognises
+those builds and re-tunes them in place): the two tables are five dwords each, so
+    0x0062A000  ORDER[5]   = 3, 0, 1, 2, 4        0x0062A030  "Firmament" record (18 B)
+    0x0062A018  RORDER[5]  = 1, 2, 3, 0, 4        0x0062A048  "Abyss" record (14 B)
+    0x0062A060  code: cave_caps 235 B (adds "Abyss" when count > 4), cave_tabsel, cave_setidx,
+                cave_lvlup, cave_lvldn -- 580 of 1024 B.  Every `cmp edx,3 / ja` table guard is
+                `cmp edx,4`.  The five hook sites are unchanged; only their rel32s moved.
 
 The DLL half (level count, generation, serialisation, terrain) lives in
 `build_maplevel4.py` and is NOT touched here.  This script writes only to the canonical mod
@@ -202,18 +212,49 @@ C_DN_C    = 0x004514D6     # call rel32 -> SETSCENEL
 # ---------------------------------------------------------------- cave layout
 CAVE       = 0x0062A000
 CAVE_BLOCK = 0x400
-ORDER      = CAVE + 0x00           # slot  -> level
-RORDER     = CAVE + 0x10           # level -> slot
-CAP_REC    = CAVE + 0x20           # AnsiString header
-CAP_PTR    = CAP_REC + 8           # the char data -- this is the Delphi string pointer
 
-CAPTION      = b"Firmament"        # v3
-CAPTION_OLD  = b"Sky"              # v1 / v2
-CODE_BASE    = CAVE + 0x40         # v3   (the 18-byte caption record ends at 0x0062A031)
-CODE_BASE_12 = CAVE + 0x30         # v1 / v2
 
-ORDER_VALS  = (3, 0, 1, 2)
-RORDER_VALS = (1, 2, 3, 0)
+class Layout:
+    """One build's data layout.  `caps` = [(record VA, text)]: the Firmament caption, then
+    (v4) the Abyss caption.  `maxidx` = the highest index the ORDER/RORDER tables hold."""
+    def __init__(self, name, order, rorder, order_vals, rorder_vals, caps, code_base,
+                 tabsel="v2"):
+        self.name = name
+        self.order, self.rorder = order, rorder
+        self.order_vals, self.rorder_vals = order_vals, rorder_vals
+        self.caps = caps
+        self.code_base = code_base
+        self.maxidx = len(order_vals) - 1
+        self.tabsel = tabsel
+        require(len(order_vals) == len(rorder_vals), "%s: table lengths differ" % name)
+        require(order + 4 * len(order_vals) <= rorder, "%s: ORDER overruns RORDER" % name)
+        end = rorder + 4 * len(rorder_vals)
+        for rec, text in caps:
+            require(rec >= end, "%s: caption record 0x%08X overlaps the data before it"
+                    % (name, rec))
+            end = rec + 8 + len(text) + 1
+        require(end <= code_base, "%s: caption records overrun the code base" % name)
+
+    def cap_ptr(self, i):
+        return self.caps[i][0] + 8          # the Delphi string pointer: the first char
+
+
+# v4 (2026-09-27): five levels, "Abyss" after Depths.  Tables grow to 5 dwords, so RORDER and
+# both captions move and the code base moves 0x0062A040 -> 0x0062A060.
+L4 = Layout("v4", CAVE + 0x00, CAVE + 0x18, (3, 0, 1, 2, 4), (1, 2, 3, 0, 4),
+            [(CAVE + 0x30, b"Firmament"), (CAVE + 0x48, b"Abyss")], CAVE + 0x60)
+# superseded -- kept ONLY to recognise an installed build and re-tune it in place
+L3 = Layout("v3", CAVE + 0x00, CAVE + 0x10, (3, 0, 1, 2), (1, 2, 3, 0),
+            [(CAVE + 0x20, b"Firmament")], CAVE + 0x40)
+L2 = Layout("v2", CAVE + 0x00, CAVE + 0x10, (3, 0, 1, 2), (1, 2, 3, 0),
+            [(CAVE + 0x20, b"Sky")], CAVE + 0x30)
+L1 = Layout("v1", CAVE + 0x00, CAVE + 0x10, (3, 0, 1, 2), (1, 2, 3, 0),
+            [(CAVE + 0x20, b"Sky")], CAVE + 0x30, tabsel="v1")
+
+# the current build's tables, for reporting
+ORDER, RORDER = L4.order, L4.rorder
+ORDER_VALS, RORDER_VALS = L4.order_vals, L4.rorder_vals
+CAPTIONS = [t for _r, t in L4.caps]
 
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
 cs = Cs(CS_ARCH_X86, CS_MODE_32)
@@ -261,7 +302,26 @@ def _add_resource(slot):
     """
 
 
-def src_caps(cap_ptr):
+def _add_literal(cap_ptr):
+    """TStrings.Add of a const AnsiString living in the cave."""
+    return f"""
+        mov  edx, {cap_ptr:#x}               /* the const AnsiString caption */
+        mov  eax, dword ptr [ebx]
+        mov  eax, dword ptr [eax+0x4c]
+        mov  eax, dword ptr [eax+0x114]
+        mov  ecx, dword ptr [eax]
+        call dword ptr [ecx+0x34]            /* TStrings.Add */
+    """
+
+
+def src_caps(lay):
+    abyss = "" if len(lay.caps) < 2 else f"""
+        mov  eax, dword ptr [esi]
+        mov  eax, dword ptr [eax+0x10]
+        cmp  dword ptr [eax+0x14], 4
+        jle  Ldone
+        {_add_literal(lay.cap_ptr(1))}
+"""
     return f"""
         /* entry: eax = ScannerTab, ebx = &TSWindow, esi = &TheMap, ebp = caller frame */
         mov  eax, dword ptr [eax+0x114]
@@ -272,12 +332,7 @@ def src_caps(cap_ptr):
         mov  eax, dword ptr [eax+0x10]
         cmp  dword ptr [eax+0x14], 3
         jle  Lsurface
-        mov  edx, {cap_ptr:#x}               /* the const AnsiString caption */
-        mov  eax, dword ptr [ebx]
-        mov  eax, dword ptr [eax+0x4c]
-        mov  eax, dword ptr [eax+0x114]
-        mov  ecx, dword ptr [eax]
-        call dword ptr [ecx+0x34]            /* TStrings.Add */
+        {_add_literal(lay.cap_ptr(0))}
 Lsurface:
         {_add_resource(RS_SURF)}
 
@@ -292,11 +347,14 @@ Lsurface:
         cmp  dword ptr [eax+0x14], 2
         jle  Ldone
         {_add_resource(RS_DEP)}
+{abyss}
 Ldone:
         jmp  {RET_CAPS:#x}
 """
 
-SRC_TABSEL = f"""
+
+def src_tabsel(lay):
+    return f"""
         /* entry: eax = TSWindow, edx = slot */
         {_tab_read_count('ecx')}
         test edx, edx
@@ -305,9 +363,9 @@ SRC_TABSEL = f"""
         jge  Tret                                       /* not even a cache invalidation.  */
         cmp  ecx, 3
         jle  Tgo
-        cmp  edx, 3
+        cmp  edx, {lay.maxidx}
         ja   Tgo
-        mov  edx, dword ptr [edx*4 + {ORDER:#x}]
+        mov  edx, dword ptr [edx*4 + {lay.order:#x}]
 Tgo:
         mov  ecx, dword ptr [eax+0x5c]                  /* TScanner */
         mov  dword ptr [ecx+0x17c], 0xffffffff          /* invalidate the surface cache */
@@ -319,9 +377,11 @@ Tret:
         jmp  {RET_TAB:#x}
 """
 
+
 # v1, superseded 2026-09-06 -- no slot whitelist, so a tab index of -1 reached ViewLevel.
 # Kept ONLY so the script can identify an installed v1 cave and re-tune it in place.
-SRC_TABSEL_V1 = f"""
+def src_tabsel_v1(lay):
+    return f"""
         mov  ecx, dword ptr [eax+0x5c]
         mov  dword ptr [ecx+0x17c], 0xffffffff
         {_tab_read_count('ecx')}
@@ -329,7 +389,7 @@ SRC_TABSEL_V1 = f"""
         jle  Tgo
         cmp  edx, 3
         ja   Tgo
-        mov  edx, dword ptr [edx*4 + {ORDER:#x}]
+        mov  edx, dword ptr [edx*4 + {lay.order:#x}]
 Tgo:
         mov  eax, dword ptr [{MAPSLOT:#x}]
         mov  eax, dword ptr [eax]
@@ -338,20 +398,22 @@ Tgo:
         jmp  {RET_TAB:#x}
 """
 
-SRC_SETIDX = f"""
+
+def src_setidx(lay):
+    return f"""
         /* entry: eax = ScannerTab, edx = level; ecx is scratch */
         {_tab_read_count('ecx')}
         cmp  ecx, 3
         jle  Sout
-        cmp  edx, 3
+        cmp  edx, {lay.maxidx}
         ja   Sout
-        mov  edx, dword ptr [edx*4 + {RORDER:#x}]
+        mov  edx, dword ptr [edx*4 + {lay.rorder:#x}]
 Sout:
         jmp  {SETIDX:#x}
 """
 
 
-def _src_step(name, up):
+def _src_step(lay, name, up):
     """PgUp / PgDn: level -> slot, step the slot, clamp, slot -> level."""
     step = f"""
         cmp  edx, 0
@@ -379,44 +441,40 @@ def _src_step(name, up):
         {_tab_read_count('ecx')}
         cmp  ecx, 3
         jle  {name}slot
-        cmp  edx, 3
+        cmp  edx, {lay.maxidx}
         ja   {name}slot
-        mov  edx, dword ptr [edx*4 + {RORDER:#x}]       /* level -> slot */
+        mov  edx, dword ptr [edx*4 + {lay.rorder:#x}]   /* level -> slot */
 {name}slot:
         {step}
         cmp  ecx, 3
         jle  {name}out
-        cmp  edx, 3
+        cmp  edx, {lay.maxidx}
         ja   {name}out
-        mov  edx, dword ptr [edx*4 + {ORDER:#x}]        /* slot -> level */
+        mov  edx, dword ptr [edx*4 + {lay.order:#x}]    /* slot -> level */
 {name}out:
         pop  eax
         jmp  {SETSCENEL:#x}
 """
 
 
-SRC_LVLUP = _src_step("U", True)
-SRC_LVLDN = _src_step("D", False)
-
-def _blocks(tabsel_src, cap_ptr):
-    return [("cave_caps",   src_caps(cap_ptr)),
-            ("cave_tabsel", tabsel_src),
-            ("cave_setidx", SRC_SETIDX),
-            ("cave_lvlup",  SRC_LVLUP),
-            ("cave_lvldn",  SRC_LVLDN)]
+def _blocks(lay):
+    tab = src_tabsel_v1(lay) if lay.tabsel == "v1" else src_tabsel(lay)
+    return [("cave_caps",   src_caps(lay)),
+            ("cave_tabsel", tab),
+            ("cave_setidx", src_setidx(lay)),
+            ("cave_lvlup",  _src_step(lay, "U", True)),
+            ("cave_lvldn",  _src_step(lay, "D", False))]
 
 
 BLOCK_NAMES = ["cave_caps", "cave_tabsel", "cave_setidx", "cave_lvlup", "cave_lvldn"]
 
 
 # ---------------------------------------------------------------- assemble
-def build_cave(tabsel_src, caption, code_base):
-    """Assemble every block sequentially from `code_base`.  No forward references exist
-    between blocks, so one pass is exact."""
-    require(CAP_PTR - CAVE + len(caption) + 1 <= code_base - CAVE,
-            "the %d-byte caption record overruns the code base" % (len(caption) + 9))
-    addrs, blobs, va = {}, {}, code_base
-    for name, src in _blocks(tabsel_src, CAP_PTR):
+def build_cave(lay):
+    """Assemble every block sequentially from the layout's code base.  No forward references
+    exist between blocks, so one pass is exact."""
+    addrs, blobs, va = {}, {}, lay.code_base
+    for name, src in _blocks(lay):
         b = bytes(ks.asm(src, va)[0])
         addrs[name] = va
         blobs[name] = b
@@ -426,30 +484,31 @@ def build_cave(tabsel_src, caption, code_base):
             "cave content is %d B, larger than the %d B reserved block" % (va - CAVE, CAVE_BLOCK))
 
     blob = bytearray(CAVE_BLOCK)
-    for i, v in enumerate(ORDER_VALS):
-        struct.pack_into("<I", blob, (ORDER - CAVE) + i * 4, v)
-    for i, v in enumerate(RORDER_VALS):
-        struct.pack_into("<I", blob, (RORDER - CAVE) + i * 4, v)
-    raw = caption + b"\x00"
-    struct.pack_into("<iI", blob, CAP_REC - CAVE, -1, len(caption))
-    blob[(CAP_PTR - CAVE):(CAP_PTR - CAVE) + len(raw)] = raw
+    for i, v in enumerate(lay.order_vals):
+        struct.pack_into("<I", blob, (lay.order - CAVE) + i * 4, v)
+    for i, v in enumerate(lay.rorder_vals):
+        struct.pack_into("<I", blob, (lay.rorder - CAVE) + i * 4, v)
+    for rec, text in lay.caps:
+        struct.pack_into("<iI", blob, rec - CAVE, -1, len(text))
+        o = rec - CAVE + 8
+        blob[o:o + len(text) + 1] = text + b"\x00"
     for name in addrs:
         o = addrs[name] - CAVE
         blob[o:o + len(blobs[name])] = blobs[name]
     return bytes(blob), addrs, blobs, va - CAVE
 
 
-CAVE_BLOB, CAVE_ADDR, CAVE_PARTS, CAVE_USED = build_cave(SRC_TABSEL,    CAPTION,     CODE_BASE)
-V2_BLOB,   V2_ADDR,   _V2_PARTS, V2_USED    = build_cave(SRC_TABSEL,    CAPTION_OLD, CODE_BASE_12)
-V1_BLOB,   V1_ADDR,   _V1_PARTS, V1_USED    = build_cave(SRC_TABSEL_V1, CAPTION_OLD, CODE_BASE_12)
+CAVE_BLOB, CAVE_ADDR, CAVE_PARTS, CAVE_USED = build_cave(L4)
+V3_BLOB,   V3_ADDR,   _V3_PARTS, V3_USED    = build_cave(L3)
+V2_BLOB,   V2_ADDR,   _V2_PARTS, V2_USED    = build_cave(L2)
+V1_BLOB,   V1_ADDR,   _V1_PARTS, V1_USED    = build_cave(L1)
 
-# The growth zone: everything an installed v1 or v2 could have left beyond the v3 body must
-# be zero, so overwriting the cave in place cannot leave stale bytes behind the new one.
-require(V1_USED <= CAVE_USED and V2_USED <= CAVE_USED,
-        "a superseded cave body is longer than v3 -- in-place rewrite unsafe")
-require(set(CAVE_BLOB[CAVE_USED:]) <= {0} and set(V2_BLOB[CAVE_USED:]) <= {0}
-        and set(V1_BLOB[CAVE_USED:]) <= {0},
-        "cave tail beyond the v3 body is not zero")
+# The growth zone: everything an older build could have left beyond the v4 body must be zero,
+# so overwriting the cave in place cannot leave stale bytes behind the new one.
+require(max(V1_USED, V2_USED, V3_USED) <= CAVE_USED,
+        "a superseded cave body is longer than v4 -- in-place rewrite unsafe")
+require(all(set(b[CAVE_USED:]) <= {0} for b in (CAVE_BLOB, V3_BLOB, V2_BLOB, V1_BLOB)),
+        "cave tail beyond the v4 body is not zero")
 
 
 # ---------------------------------------------------------------- patch table
@@ -467,24 +526,27 @@ def _new_bytes(addrs):
             b"\x90" + call_rel(C_DN_C, addrs["cave_lvldn"])]
 
 
-NEW_V3 = _new_bytes(CAVE_ADDR)
+NEW_V4 = _new_bytes(CAVE_ADDR)
+NEW_V3 = _new_bytes(V3_ADDR)
 NEW_V2 = _new_bytes(V2_ADDR)
 NEW_V1 = _new_bytes(V1_ADDR)
 
-require(len(ORIG_CAPS) == H_CAPS_N and len(NEW_V3[0]) == H_CAPS_N, "caption patch length")
-require(len(ORIG_TAB) == H_TAB_N and len(NEW_V3[1]) == H_TAB_N, "tabsel patch length")
+require(len(ORIG_CAPS) == H_CAPS_N and len(NEW_V4[0]) == H_CAPS_N, "caption patch length")
+require(len(ORIG_TAB) == H_TAB_N and len(NEW_V4[1]) == H_TAB_N, "tabsel patch length")
 
-# (label, VA, original bytes, v3 bytes, v2 bytes, v1 bytes)
-SITES = [
-    ("caption fill  0x%08X" % H_CAPS,   H_CAPS,   ORIG_CAPS,   NEW_V3[0], NEW_V2[0], NEW_V1[0]),
-    ("tab change    0x%08X" % H_TAB,    H_TAB,    ORIG_TAB,    NEW_V3[1], NEW_V2[1], NEW_V1[1]),
-    ("SetIndex call 0x%08X" % C_SETIDX, C_SETIDX, ORIG_SETIDX, NEW_V3[2], NEW_V2[2], NEW_V1[2]),
-    ("PgUp  dec+call0x%08X" % C_UP_B,   C_UP_B,   ORIG_UP,     NEW_V3[3], NEW_V2[3], NEW_V1[3]),
-    ("PgDn  inc+call0x%08X" % C_DN_B,   C_DN_B,   ORIG_DN,     NEW_V3[4], NEW_V2[4], NEW_V1[4]),
-]
+# (label, VA, original bytes, {version: bytes}) -- "v4" is the build this script writes
+SITES = []
+for _i, (_label, _va, _orig) in enumerate([
+        ("caption fill  0x%08X" % H_CAPS,   H_CAPS,   ORIG_CAPS),
+        ("tab change    0x%08X" % H_TAB,    H_TAB,    ORIG_TAB),
+        ("SetIndex call 0x%08X" % C_SETIDX, C_SETIDX, ORIG_SETIDX),
+        ("PgUp  dec+call0x%08X" % C_UP_B,   C_UP_B,   ORIG_UP),
+        ("PgDn  inc+call0x%08X" % C_DN_B,   C_DN_B,   ORIG_DN)]):
+    SITES.append((_label, _va, _orig,
+                  {"v4": NEW_V4[_i], "v3": NEW_V3[_i], "v2": NEW_V2[_i], "v1": NEW_V1[_i]}))
 
-KNOWN_SITE_BYTES = [(o, n3, n2, n1) for _, _, o, n3, n2, n1 in SITES]
-KNOWN_CAVES = (CAVE_BLOB, V2_BLOB, V1_BLOB, b"\x00" * CAVE_BLOCK)
+CAVES = {"v4": CAVE_BLOB, "v3": V3_BLOB, "v2": V2_BLOB, "v1": V1_BLOB}
+KNOWN_CAVES = tuple(CAVES.values()) + (b"\x00" * CAVE_BLOCK,)
 
 
 # ---------------------------------------------------------------- file helpers
@@ -515,7 +577,8 @@ class Image:
 
 STATE_TEXT = {
     "orig":       "unpatched",
-    "patched":    "applied (v3 -- caption %r)" % CAPTION.decode(),
+    "patched":    "applied (v4 -- %s)" % " + ".join(t.decode() for t in CAPTIONS),
+    "patched-v3": "applied (v3 -- 'Firmament', no Abyss) -- needs re-tune, run --apply",
     "patched-v2": "applied (v2 -- caption 'Sky') -- needs re-tune, run --apply",
     "patched-v1": "applied (v1 -- 'Sky', NO SLOT WHITELIST) -- needs re-tune, run --apply",
     "partial":    "half-written / mixed -- run --apply to normalise",
@@ -524,34 +587,30 @@ STATE_TEXT = {
 
 
 def state(img):
-    """'orig', 'patched' (v3), 'patched-v2', 'patched-v1', 'partial' or 'unknown'."""
+    """'orig', 'patched' (v4), 'patched-v3' / '-v2' / '-v1', 'partial' or 'unknown'."""
     bad = []
-    orig_all = v3_all = v2_all = v1_all = True
-    for label, va, o, n3, n2, n1 in SITES:
+    all_as = {k: True for k in ("orig", "v4", "v3", "v2", "v1")}
+    for label, va, o, news in SITES:
         cur = img.read(va, len(o))
         if cur != o:
-            orig_all = False
-        if cur != n3:
-            v3_all = False
-        if cur != n2:
-            v2_all = False
-        if cur != n1:
-            v1_all = False
-        if cur not in (o, n3, n2, n1):
+            all_as["orig"] = False
+        for k, b in news.items():
+            if cur != b:
+                all_as[k] = False
+        if cur != o and cur not in news.values():
             bad.append("%s: %s" % (label, cur.hex(" ")))
     cave = img.read(CAVE, CAVE_BLOCK)
     cave_zero = cave == b"\x00" * CAVE_BLOCK
     cave_ours = cave == CAVE_BLOB
     if bad:
         return "unknown", bad, cave_zero, cave_ours
-    if orig_all and cave_zero:
+    if all_as["orig"] and cave_zero:
         return "orig", [], cave_zero, cave_ours
-    if v3_all and cave_ours:
+    if all_as["v4"] and cave_ours:
         return "patched", [], cave_zero, cave_ours
-    if v2_all and cave == V2_BLOB:
-        return "patched-v2", [], cave_zero, cave_ours
-    if v1_all and cave == V1_BLOB:
-        return "patched-v1", [], cave_zero, cave_ours
+    for k in ("v3", "v2", "v1"):
+        if all_as[k] and cave == CAVES[k]:
+            return "patched-" + k, [], cave_zero, cave_ours
     return "partial", [], cave_zero, cave_ours
 
 
@@ -560,11 +619,11 @@ def show_state():
     for path in TARGETS:
         img = Image(path)
         st, bad, cz, co = state(img)
-        print("%-14s  %-10s %s   (cave zero=%s  cave==v3=%s)"
+        print("%-14s  %-10s %s   (cave zero=%s  cave==v4=%s)"
               % (os.path.basename(path), st, STATE_TEXT.get(st, ""), cz, co))
-        for label, va, o, n3, n2, n1 in SITES:
+        for label, va, o, news in SITES:
             cur = img.read(va, len(o))
-            tags = [t for t, b in (("ORIG", o), ("v3", n3), ("v2", n2), ("v1", n1)) if cur == b]
+            tags = (["ORIG"] if cur == o else []) + [k for k, b in news.items() if cur == b]
             print("    %-24s %-9s %s" % (label, "=".join(tags) or "?????", cur.hex(" ")))
         for b in bad:
             print("    !! " + b)
@@ -575,9 +634,11 @@ def disassemble():
                                                           CAVE_USED, CAVE_BLOCK))
     print("  ORDER  slot->level @0x%08X = %s" % (ORDER, list(ORDER_VALS)))
     print("  RORDER level->slot @0x%08X = %s" % (RORDER, list(RORDER_VALS)))
-    print("  caption %r @0x%08X  refcnt=%d len=%d  ptr=0x%08X\n"
-          % (CAPTION.decode(), CAP_REC, struct.unpack_from("<i", CAVE_BLOB, CAP_REC - CAVE)[0],
-             struct.unpack_from("<I", CAVE_BLOB, CAP_REC - CAVE + 4)[0], CAP_PTR))
+    for i, (rec, text) in enumerate(L4.caps):
+        print("  caption %r @0x%08X  refcnt=%d len=%d  ptr=0x%08X"
+              % (text.decode(), rec, struct.unpack_from("<i", CAVE_BLOB, rec - CAVE)[0],
+                 struct.unpack_from("<I", CAVE_BLOB, rec - CAVE + 4)[0], L4.cap_ptr(i)))
+    print()
     for name in BLOCK_NAMES:
         va, b = CAVE_ADDR[name], CAVE_PARTS[name]
         print("---- %s @0x%08X (%d B) ----" % (name, va, len(b)))
@@ -585,12 +646,13 @@ def disassemble():
             print("  %08X  %-22s %s %s" % (i.address, i.bytes.hex(" "), i.mnemonic, i.op_str))
         print()
     print("---- displaced-site replacements ----")
-    for label, va, o, n3, n2, n1 in SITES:
-        print("  %-24s  %s  ->  %s" % (label, o.hex(" "), n3.hex(" ")))
+    for label, va, o, news in SITES:
+        print("  %-24s  %s  ->  %s" % (label, o.hex(" "), news["v4"].hex(" ")))
     print("\n---- superseded layouts (recognised, never written) ----")
     for name in BLOCK_NAMES:
-        print("  %-12s v2 @0x%08X   v1 @0x%08X" % (name, V2_ADDR[name], V1_ADDR[name]))
-    print("  v2 %d B / v1 %d B of %d B used" % (V2_USED, V1_USED, CAVE_BLOCK))
+        print("  %-12s v3 @0x%08X   v2 @0x%08X   v1 @0x%08X"
+              % (name, V3_ADDR[name], V2_ADDR[name], V1_ADDR[name]))
+    print("  v3 %d B / v2 %d B / v1 %d B of %d B used" % (V3_USED, V2_USED, V1_USED, CAVE_BLOCK))
 
 
 # ---------------------------------------------------------------- apply / undo
@@ -633,20 +695,20 @@ def apply_all(undo=False):
             if st == "orig":
                 print("    already unpatched, nothing to do")
                 continue
-            require(st in ("patched", "patched-v2", "patched-v1", "partial"),
+            require(st in ("patched", "patched-v3", "patched-v2", "patched-v1", "partial"),
                     "%s: refusing to undo from state %r" % (path, st))
             cur_cave = img.read(CAVE, CAVE_BLOCK)
             require(cur_cave in KNOWN_CAVES,
                     "%s: cave 0x%08X holds bytes this script did not write -- refusing to zero it"
                     % (path, CAVE))
-            for label, va, o, n3, n2, n1 in SITES:
+            for label, va, o, news in SITES:
                 img.write(va, o)
             img.write(CAVE, b"\x00" * CAVE_BLOCK)
         else:
             if st == "patched":
                 print("    already patched, nothing to do")
                 continue
-            if st in ("patched-v2", "patched-v1"):
+            if st.startswith("patched-"):
                 print("    %s installed -- rewriting the cave in place (no backup touched)"
                       % st.split("-")[1])
             backup(img)
@@ -655,13 +717,13 @@ def apply_all(undo=False):
                     "%s: cave 0x%08X is not zero and is not one of our own builds -- refusing"
                     % (path, CAVE))
             require(set(cur_cave[CAVE_USED:]) <= {0},
-                    "%s: the zone the v3 cave grows into (0x%08X..0x%08X) is not zero"
+                    "%s: the zone the v4 cave grows into (0x%08X..0x%08X) is not zero"
                     % (path, CAVE + CAVE_USED, CAVE + CAVE_BLOCK - 1))
-            for label, va, o, n3, n2, n1 in SITES:
+            for label, va, o, news in SITES:
                 cur = img.read(va, len(o))
-                require(cur in (o, n3, n2, n1),
+                require(cur == o or cur in news.values(),
                         "%s @%08X: verify-before-write failed" % (path, va))
-                img.write(va, n3)
+                img.write(va, news["v4"])
             img.write(CAVE, CAVE_BLOB)
 
         img.save()
@@ -675,9 +737,9 @@ def apply_all(undo=False):
 
 def main():
     args = sys.argv[1:]
-    print("Firmament map level -- UI half (%s + %s), v3" % tuple(zigexe.EXES))
-    print("cave 0x%08X (%d/%d B used)  order=%s  caption=%r\n"
-          % (CAVE, CAVE_USED, CAVE_BLOCK, list(ORDER_VALS), CAPTION.decode()))
+    print("Firmament + Abyss map levels -- UI half (%s + %s), v4" % tuple(zigexe.EXES))
+    print("cave 0x%08X (%d/%d B used)  order=%s  captions=%s\n"
+          % (CAVE, CAVE_USED, CAVE_BLOCK, list(ORDER_VALS), [t.decode() for t in CAPTIONS]))
     if "--dis" in args or "--show" in args:
         disassemble()
         return

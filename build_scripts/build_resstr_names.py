@@ -127,6 +127,10 @@ RENAMES = [
      "0x55707D4C) -- the only refusal the player can still see from the ward. The sibling row "
      "'Cannot dispel when Spell Ward is active' (ResStr.txt:2175) is deliberately left alone: "
      "site 3 of that patch makes it unreachable."),
+    ("Trail Of Darkness", ("", "Gloom Aura"), "Mantle of Gloom",
+     "owner's rename 2026-09-26 with build_los_terrain.py v4 (briefly 'Gloom Aura' the same day): "
+     "enemies see through the 6-hex aura at half range, and the trail still un-explores. "
+     "Ability.pfs record 36 (build_pfs_typos.py) carries the card text."),
 ]
 
 

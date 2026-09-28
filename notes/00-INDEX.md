@@ -63,9 +63,9 @@ safe, and the traps that have cost this project the most time.
 **Retired 2026-09-03:** the standing "never run `build_magebane.py --apply`" warning. That hazard was
 real between 2026-08-26 and 2026-08-29 and was fixed by `ranged_tail()` (`build_magebane.py:207`),
 which detects whether Shield's cave is present and chains into it. Re-applying is now safe in both
-states. ⚠ Still true: re-running `build_assassin.py`, `build_ranged_slayers.py` or
-`build_invis_penalty.py` rebuilds their caves and **silently drops the Magebane chain** — re-run
-Magebane afterwards; `--verify` reports it.
+states. Re-running `build_assassin.py`, `build_ranged_slayers.py` or `build_invis_penalty.py`
+keeps whatever exit jump is installed, so the Magebane chain survives (all three re-applied
+2026-09-26; `build_magebane.py` still reported every chain link intact).
 
 ## ⚠ A third of the scripts cannot be reverted
 
@@ -112,6 +112,8 @@ file carries the specific checklist for its own rows.
   `0x5584B000..0x5584B0FF`, re-tuned in place.
 - HP ceiling 120 → 100 (four places that must move together) — 2026-08-31
 - Morale re-scale (ATK ±4, RES ±6) — 2026-08-26
+- Flyers lose morale underground (−5 Caverns / −10 Depths / −15 Abyss, units only, Cave Crawling exempt) — 2026-09-27
+- Auto-resolve ends after round 200; the attackers retreat (`build_autocombat_roundcap.py`) — 2026-09-27
 - Map-fire dead-code fix (was ~4× too weak) — 2026-08-26
 - Burning / Decay / Turn-Undead-AI damage gap-fix — 2026-08-26
 - Shield — ranged-only scope, magnitude −5 — 2026-08-27
@@ -145,8 +147,13 @@ file carries the specific checklist for its own rows.
 - **The Firmament is exempt from the underground ranged malus** (`build_firmament_rangedmalus.py`)
   — 🔨 APPLIED, UNTESTED (2026-09-24). The −4 ranged ATK without Night Vision fired on every level
   ≠ 0, the Firmament included. The fix is 4 bytes in the unowned cave `0x5580C240`: at
-  `0x5580C27F`, `cmp al,0 / je` → `test al,al / jp`, so the malus applies on levels 1–2 only.
+  `0x5580C27F`, `cmp al,0 / je` → `test al,al / jp`, so the malus applies on levels 1, 2 and 4 (the Abyss: `100`, odd parity).
   Surgical `--undo`. Checklist: `01-combat-maths.md`, "The malus skips the Firmament".
+- **Units see 3 hexes further on the Firmament** (`build_firmament_vision.py`) — 🔨 APPLIED,
+  UNTESTED (2026-09-26). Hook on `VisibilityRange`'s exit `0x55780F79` (6 B) → cave `0x5584F400`
+  (26 B): level 3 → sight +3 after any halving, clamped to 15 (the army's sight nibble). True
+  Seeing holders get it on true sight too. Surgical `--undo`. Checklist: `11-engine-internals.md`,
+  "+3 sight on the Firmament".
 - **Breath and Flame Throwing aim each strike at its own hex** (`build_breath_line.py`) — 🔨 APPLIED,
   UNTESTED (2026-09-24). Each damaging strike's obstruction line now runs to the hex it damages, not
   along the spray angle, so corridors no longer eat strikes. Hook `0x40D5F1` → cave `0x439400`
@@ -160,6 +167,21 @@ file carries the specific checklist for its own rows.
   Checklist: `01-combat-maths.md` §5.
 
 ### Abilities — `02-abilities-modded.md`, `03-abilities-added.md`
+- **Mantle of Gloom (was Trail of Darkness)** — 🔨 APPLIED, UNTESTED (2026-09-26): hexes within 6 of an
+  enemy Trail of Darkness army cost double sight (fog only, not exploration); the aura follows the
+  unit via a fog rebuild per step; the trail un-explores radius 6. **v5 (APPLIED, UNTESTED
+  2026-09-26): True Seeing ignores the gloom out to its true-sight range.** `build_los_terrain.py` v5; name
+  in `build_resstr_names.py`, card text `Ability.pfs` rec 36 in `build_pfs_typos.py`.
+  Checklist: `02-abilities-modded.md`, "Mantle of Gloom (was Trail of Darkness)".
+- **Monster Slaying reworked** — 🔨 APPLIED, UNTESTED (2026-09-26): vs Monsters +4 DAM / +4 DEF in
+  melee, +2 DAM / +2 DEF at range (breath included), no ATK. DEF is −ATK on the Monster's strike,
+  on every melee strike. Shared test `ms_test 0x5584F300`; `build_monster_slaying.py` hooks
+  `StrikeDV`/`CalculateUnitStrikes`, and `build_assassin.py`/`build_ranged_slayers.py` generate the
+  other three sites from `monsterslay.py`. Card text `Ability.pfs` rec 122. Checklist:
+  `02-abilities-modded.md`, "Monster Slaying".
+- **Wall Crushing damage = the unit's DAM** — 🔨 APPLIED (2026-09-27): the flat 12 is gone from
+  the info card, AI estimates, auto-resolve and manual combat; ATK stays 12. Rams are DAM 2.
+  `build_wallcrush_dam.py`; `02-abilities-modded.md`, "Wall Crushing — damage is the unit's DAM".
 - **Command abilities limited** — 🔨 APPLIED, UNTESTED (2026-09-25): seized units stay **Bound**
   (`0xBB`) to their commander and turn independent when it dies, is disbanded or changes sides
   (at once if in the same battle); the commander carries **Commanding N** (`0xBC`), −1 RES per thrall;
@@ -352,6 +374,7 @@ file carries the specific checklist for its own rows.
 - Item-granted HP / MV bonuses — 2026-08-31
 
 ### Spells — `04-spells-modded.md`, `05-spells-added.md`
+- **Warp Party ban** (`build_warpban.py`) — 🔨 APPLIED 2026-09-27. Map Settings > Game "Disable Warp Party" stores id `0x61` (`map+0x193`) in the map/save; Warp Party then cannot be cast. ⚠ An editor re-save of a game `.asg` differs from the game's own save — unverified for live matches. `04-spells-modded.md`, "Warp Party ban".
 - **Lethargy (ex Slow)** (`build_lethargy.py`) — 🔨 APPLIED, UNTESTED (2026-09-25). Movement halved
   (rounded up) for the rest of combat, remaining movement halved on landing, one melee strike fewer
   attacking and defending (never below one); the +2 hex cost is gone. The AI now casts Lethargy and
@@ -394,6 +417,7 @@ file carries the specific checklist for its own rows.
 - Embrittle — the whole spell — 2026-09-01 ⚠ **v1 broke startup; a cave that runs at package init must be proved by launching the exe**
 - Grip of Winter — the spell, its description, and its manual prose — 2026-09-01
 - Storm / Poison Plant debuff — roll vs Resistance — 2026-07-30
+- Magic tab (Main) and the Power Distribution dialog name the research group — "Cosmos II" plus its unresearched members, and the sphere's spell-icon disc with a Roman tier numeral — instead of the representative spell (`build_magictab_tiername.py`, both exes, `.hcol` `0x0062A520`) — 2026-09-27
 - Research Book slot **buttons** now move with their panels (`build_tierresearch_btnfix.py`, hook `0x42F2DC`, cave `0x611F00` in the `.tres` slack, both exes) — 🔨 APPLIED, UNTESTED 2026-09-06 — fixes "some sphere-tiers selectable, others not": `cave_layout` re-pitched the panels for research mode but never moved the sibling `SxBtn` click targets. ⚠ Do **not** retarget the `call` at `0x42F2D7` instead — that is one of `build_tierresearch_exe.py`'s verified hooks and breaks its self-check
 - ⭐⭐ **The Death Altar crash — a STALE `.reloc` ENTRY, not the combat log** (`build_relocfix.py`) — ✅ **CONFIRMED WORKING 2026-09-13** (applied 2026-09-11). The Death/Divine dispatch rewrite in `ExecuteStormDamage` overwrote `mov dx,[0x55780840]` but left its base-relocation at RVA `0x807FB`, so **the loader added the rebase delta to live code on every launch**, smashing `0x557807FD/FE` — the `mov dx,0x20` that is the **Death** arm, and only that arm. Reported as `EExternalException … at 000807FE / External exception 80000003`; `000807FE` is the second corrupted byte and the code varies with the load address. Fixed by flipping the entry type `3 → 0`, plus **ten more** found by the same sweep. ⚠⚠ **Invisible to every static check** — the file, `dasm.py`, the byte-diff and the owning script are all correct. ⚠ The `--audit` needs **all three** of its rules: "dword is not an in-image VA" alone has a systematic false-negative class (an operand at the *end* of the displaced range leaves a residual that still reads as a valid VA — it missed 4 of the 11), and the twin-diff rule that catches those is blind on the editor, which has no vanilla twin. Full decode + the rules in `12-re-toolchain.md` §5.2c; the register of all eleven, the reverse-coupling table and the release-staging caveat in §6.5a
 - Combat-log effect-roll emitter gated to tactical combat only (`build_effectroll_tacticalgate.py`, cave `0x55810500`) — 🔨 APPLIED, UNTESTED 2026-09-06 — the emitter's `CLG1` guard is not a combat gate, so the tactical-only string/ring machinery also ran on the strategic map and in auto-resolve; this confines it. ⚠ It was applied believing it was the Death-altar fix. **It was not** — see the row above. Keep it (running that machinery off the tactical path is still wrong), but it is not known to have fixed anything observable
@@ -404,6 +428,11 @@ file carries the specific checklist for its own rows.
 - Scroll as a permanent per-hero spellbook grant — cave extended 2026-09-03
 
 ### UI — `07-ui.md`
+- **"Unit AI": right-click hands your units to the combat AI** (`build_unit_ai.py`, `AoWTCPCK.dpl`
+  + both exes), applied 2026-09-27. A checkbox beside Auto arms it; right-click an own
+  unit (or one in the selection, for the whole selection); the AI's end-of-turn is diverted.
+  ⚠ Stacks on `build_taskbar_coords.py`'s `TTBWindow` sites, which then refuses to run: **undo this
+  first**. §18.
 - **The taskbar shows the hex under the cursor** (`build_taskbar_coords.py`, both exes) — 🔨 APPLIED,
   UNTESTED (2026-09-25). "X,Y,Z" at the right end of the message box. Grows `.ibnr` to `0xD000` as a
   tenant above `build_itembanner_hpmv.py`, whose `--undo` now refuses while it is there. §16.
@@ -472,6 +501,14 @@ file carries the specific checklist for its own rows.
 - 12 added hero faces moved into the right resolution set (`H_Faces` 79 @103×128, `_H_Faces` 79 @52×64) — 2026-09-04
 
 ### Editor — `08-editor.md`, `Map_Generator.md`
+- Editor **autosave**: every 5 min, if the map was edited since the last one, the open map goes to `Scenario\Autosave\Autosave 1..3.hsm` (oldest overwritten); the user's file, title and modified flag are untouched. Applied 2026-09-27: `build_editor_autosave.py` on `Ziggurat/HSEPack.dpl` only, §8. ⚠⚠ `THSEngine.SaveHSM` clears the modified bit itself (`TAoWHSMap.ReadWrite`), so any cave-made save must restore it.
+- Editor **hex groups + area copy/paste**: Shift+right-click toggles a hex into a group (purple 3-D hex glow, `General.ilb` ids 60/61); Ctrl+C / Ctrl+V keep the group's shape; Esc clears everything, a plain left-click drops the group (vanilla's deselect key is Space, not Esc). Armies, cities and events stay behind. `build_editor_hexgroup.py` on `Ziggurat/HSEPack.dpl` (section `.hxg`), §7. ⚠ `.hxg` sits after `.rgt`: undo it before retuning the render gate.
+  §7.1 adds a cursor-following paste ghost and 60°-per-notch wheel rotation (the wheel arrives via a
+  `SetWindowLongA` subclass of the map window, which only works because nothing above `THSMEdit`
+  has a scroll style). ⚠⚠ §7.2: the first build **double-freed** map objects — a group member that
+  was also plain-clicked landed in the selection twice and Del/Ctrl+X freed it per entry, smashing
+  the Delphi heap free-list (the AV lands in VCL30's allocator, far from the cause). Fixed by making
+  `THexagonSpriteSelection.Select` idempotent.
 - **Developer > Delete Unused Items; several editors at once; negative item stats; the validation
   circle** — 🔨 APPLIED, UNTESTED (2026-09-25): `build_deved_heroprune.py` (now both prune items),
   `build_deved_multi_instance.py`, `build_deved_itemneg.py` + `build_deved_itemhpmv.py` minima,
@@ -653,6 +690,20 @@ file carries the specific checklist for its own rows.
   Never opened in the editor.
 
 ### Terrain & movement — `09-terrain-movement.md`
+- **Snow and Desert cost walkers +1; Frostlings walk Snow and Azracs Desert at the Grass cost**
+  (`build_race_terrain_move.py`) — 🔨 APPLIED, UNTESTED (2026-09-27). Five walking-family tables,
+  Road and Structure exempt, Flying untouched; applies in tactical combat too (AoWTCPCK builds its
+  tables through the same function); race cave `0x55851880` from the entry of
+  `CreateMovePointTable` (`0x5577FDC4`, 6 B). Surgical `--undo`.
+- **Flying between map levels** (`build_fly_levels.py`) — 🔨 APPLIED, UNTESTED (2026-09-26).
+  Clicking Flying flies the selected units one level up (Sky/Chasm above) or down (standing on
+  Sky/Chasm, no Earth/Rock below); each needs 4 MP and spends all, with a wind gust; a
+  Yes/No/Cancel prompt when both are valid. A flying transport (Air Galley, Dwarven Balloon, Guild
+  Zeppelin) carries non-flyers: only the transport is checked (2026-09-27). Card text row in
+  `build_pfs_typos.py`.
+  VMT `+0x98`/`+0xB4` of `TMovementAbility`, `ValidPath` epilogue `0x55746979`, `MovedTo` clamp
+  `0x55780343`; cave `0x5584F800`, BSS `0x558FAA30..0x558FAAF8`. Surgical `--undo`. Checklist:
+  `09-terrain-movement.md`, "Flying between map levels".
 - **World-map group move: plan front-first, pass over parties that are leaving**
   (`build_group_move_map.py`) — 🔨 APPLIED, UNTESTED (2026-09-25). Parties are planned in route-length
   order, and a later party may route through an earlier one that leaves its hex this turn. Merging
@@ -911,6 +962,8 @@ file carries the specific checklist for its own rows.
   **In-game checklist:** reproduce the bug, dismiss the stock dialog, read the second one, decode,
   then `--undo`
 - Firmament map level — a 4th map level at index 3, filled with Sky terrain `0x0E`, surface-like vision, global-target spells, storm spells and Bird's View. 🔨 APPLIED, UNTESTED 2026-09-06 (v2): `build_maplevel4.py` (cap byte `0x5577768E` `03→04`, cave `0x55844000`, 250 B, 8 hooks) + in-place cave re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6: earth elementals excluded from the Firmament, air elementals included); UI half `build_skylevel_ui.py` (v3, caption "Firmament") + editor Level Up/Down display order `build_deved_levelnav.py` (`AoWDevEd.exe`, `AoWEd.exe`). Target binaries: `Ziggurat/AoWEPACK.dpl` + `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe`, not the DLL alone. Editor New-Map dialog and the map-gen tools still to do
+- **Abyss map level** — a 5th map level at index 4, a third cave level **below Depths** (order Firmament 3 / Surface 0 / Caverns 1 / Depths 2 / Abyss 4). 🔨 APPLIED, UNTESTED 2026-09-27. `build_maplevel4.py` **v3**: cap byte `04→05`; all twelve `TCave` level±1 sites (CanPlace, PlaceHX ×4, Destroy ×2, MoveExclusive ×2, EnterMovePoints, CanEnterSelection, EnterEx, ArmyPlaced) routed through one order helper at `0x55844100`, so caves link Depths↔Abyss and never touch the Firmament. In-place re-tunes: `build_skylevel_ui.py` v4 (strip "… \| Depths \| Abyss"), `build_deved_levelnav.py` v2 + `build_zigeditor.py` (Level Down reaches it; underground palette), `build_shipyard_income.py` (`MAX_LEVELS 5`, else no water income on a 5-level map), `build_townquake_retune.py` (Abyss counts as underground). Surgical `--undo` on each. **Checklist:** `11-engine-internals.md` "Abyss map level"
+- **Disabled map levels + the editor's Map Levels popup** — any set of levels, Surface always on; a left-out level below the highest is a disabled placeholder (mask `[TAoWHSMap+0x41C]`, saved as id `0x60`). 🔨 APPLIED, UNTESTED in game 2026-09-27 (editor half driven live). `build_maplevel4.py` v4 (mask + caves skip disabled levels), `build_fly_levels.py` relaid out (`fly_next`), `build_levelset.py` (new: Options > Map Levels replaces Add/Remove Level; New Map level checkboxes), `build_deved_levelnav.py` v3 (Level Up/Down skip). Warp Party's destination levels follow the flying order (`build_fly_levels.py` `cave_warp`, hook `0x557EB2CE`). ⚠ Vanilla Remove Level deleted the *viewed* level and renumbered the rest; it is retired. **Not done:** the game strip as two rows with unexplored/disabled cells blank. **Checklist:** `11-engine-internals.md` "Disabled levels"
 
 ---
 
@@ -943,6 +996,9 @@ file carries the specific checklist for its own rows.
    and neither script mentions the other.
 5. Several strategic-map hazard DAM immediates (Town Quake, Poison Plant, both Grounds) are confirmed
    doubled only by a stage-count, not by an individual address. Byte-diff to confirm.
+6. **Drill digs cave entrances — feasibility only, nothing built (2026-09-27).** Route: two new
+   Construct-ability controls; the engine's structure build timer, gold check and exe build dialog
+   already exist. Settled by five owner rulings listed in `10-ai-and-structures.md` §13 / Open items.
 
 ## Settled this session — do not re-litigate
 
@@ -959,4 +1015,6 @@ file carries the specific checklist for its own rows.
 | `<root>/backups/` | **deleted 2026-09-10** (29 `.pre-*` snapshots, 52 MB, sitting inside the pristine vanilla install). `Ziggurat/backups/` is where scripts mint now, and it does not exist yet — it is created on demand. |
 | Does any `.pre-*` binary snapshot survive? | **No.** Zero `*.exe.pre-*` and zero `*.dpl.pre-*` anywhere in the tree (measured 2026-09-10). Only 10 **data-file** snapshots remain — `.ILB`, `.pfs`, `.ail` — and each exists twice, once at the root and once in `Ziggurat/`. Revert is always the script's surgical `--undo`. |
 | Zip or installer? | **Installer** — owner ruling 2026-09-11 supersedes the 2026-09-07 "plain zip" decision, which is now deleted from `12-re-toolchain.md` §13.3. Inno Setup 7, `installer/Ziggurat.iss`. A zip cannot copy the player's own vanilla data into `Ziggurat\` (that is what keeps the download 18 MB instead of 370) and cannot write the `Age of Wonders Z` registry key. |
+| Offline or web installer? | **Both**, owner ruling 2026-09-27. `/DWeb` builds `Ziggurat Web Setup.exe`, which downloads and signature-checks `Ziggurat-payload.7z` from the latest release; `installer/build_installer.py <ver>` builds all four assets. ⚠⚠ Every release must carry the `.7z` + `.7z.issig`, and the private key lives outside this tree. `12-re-toolchain.md` §13.3a. |
+| What is the version number? | **The release date**, owner ruling 2026-09-28: `build_version_stamp.py <AppVer> --apply` writes `Version: Ziggurat <AppVer>` into `Dict/ResStr` before staging; `build_installer.py` refuses a mismatch. The engine's own 20.21.78 (`SetVersion` in `TAoWEngine.Create`) stays fixed for the MP handshake. `12-re-toolchain.md` §13.5. |
 | Does the installer ship the manual? | **No** — the Pages site is the manual and the changelog. Nor its **builder**: `build_ziggurat_manual.py` + `Ziggurat Manual.html.build.json` joined `NEVER_SHIP` on 2026-09-13, payload 347 → 345. |

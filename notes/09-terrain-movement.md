@@ -27,6 +27,8 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Chasm & Sky — structures: Sky reads as Chasm at the pad | ✅ CONFIRMED WORKING (2026-09-20) | `build_pad_skyalias.py` | AoWEPACK.dpl |
 | Chasm & Sky — structures: no ground under a pad on Water/Lava/CaveWater/Chasm | ✅ CONFIRMED WORKING (2026-09-20) | `build_pad_transparent.py` | Release/Release.hss + 6 ILBs |
 | **Firmament map level** — a 4th map level (index 3) filled with SKY terrain `0x0E`; surface-like vision, global-target spells, storm spells and Bird's View, `TCave.PlaceHX` guarded. Full record in `11-engine-internals.md` §"Firmament map level" | 🔨 APPLIED, UNTESTED (2026-09-06, v2) | `build_maplevel4.py` (+ in-place re-tunes of `build_shipyard_income.py`, `build_waterheal.py` v6; UI half `build_skylevel_ui.py`) | AoWEPACK.dpl + AoWz.exe + AoWzCompat.exe |
+| **Abyss map level** — a 5th map level (index 4), an ordinary cave level below Depths; caves link Depths↔Abyss through the level order instead of level±1. Full record in `11-engine-internals.md` §"Abyss map level" | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_maplevel4.py` v3 (+ in-place re-tunes of `build_skylevel_ui.py` v4, `build_deved_levelnav.py` v2, `build_shipyard_income.py`, `build_townquake_retune.py`) | AoWEPACK.dpl + AoWz.exe + AoWzCompat.exe + AoWDevEd.exe → AoWzEd.exe |
+| Flying between map levels — click Flying to fly the party up/down; Sky/Chasm rule, all movement spent | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_fly_levels.py` | AoWEPACK.dpl |
 | Terrain rolls draw from the synced RNG (3 sites) | 🔨 APPLIED, UNTESTED (2026-08-31) | `build_rng_lockstep.py` (owned by the RNG/core-engine doc; two of the three sites are caves this file covers) | AoWEPACK.dpl |
 | Ice Storm: Lava → Wasteland + per-proc gate | 🔨 APPLIED, UNTESTED — base redirect + 50% skip ✅ confirmed 2026-07-07. Since 2026-09-25 each proc **takes effect** 25% of the time (owner ruling; one byte, `0x5580DB4E` `je`→`jne`) | `build_icestorm_lava.py` — **⚠ never run `--apply` again**, see below; the rate flip is `build_icestorm_gate25.py` | AoWEPACK.dpl |
 | Raise Terrain: lava → 50% dirt, no mountain (surface) | ✅ CONFIRMED WORKING (2026-07-08) | `build_raiseterrain_lavadirt.py` | AoWEPACK.dpl |
@@ -37,7 +39,7 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Movement predictor fix (v1→v4) | 🔨 APPLIED, UNTESTED (2026-07-05) | `build_patch.py` — **⚠ never run `--apply`**, see below | AoWEPACK.dpl |
 | Path abilities: radius +1, 25% outer-ring proc | ✅ CONFIRMED WORKING (2026-07-08) | `build_path_outerring.py` | AoWEPACK.dpl |
 | Move-cost: Sandworm/tunneler faster on desert | SPECULATIVE — feasible (85%/75%), not built | none written | — |
-| Move-cost: Frostling/Azrac racial terrain bonus | SPECULATIVE — feasible (80%), not built | none written | — |
+| Move-cost: Snow/Desert +1 for walkers; Frostlings on Snow, Azracs on Desert at the Grass cost | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_race_terrain_move.py` | AoWEPACK.dpl |
 
 ## Reference: terrain, overlay and hex geometry
 
@@ -108,8 +110,8 @@ Haste-like ability `0x98`, cost−1 clamped ≥2; ability `0x84`, +2 to positive
 `build_lethargy.py` turned its `je` at `0x5577FF9E` into a `jmp`). Both real MP
 deduction (`TAbstractUnit.MovedTo` → `MovePointCost @0x55780848`, `buf[1+terrain*0x10+road]`) and
 the move-predictor cave (below) call exactly this function — **anything hooked here is consistent
-between executed movement and the on-screen prediction for free**, which is why it is the injection
-point for the two still-speculative move-cost features (Sandworm/desert, Frostling·Azrac/racial).
+between executed movement and the on-screen prediction for free**. Its entry is hooked by
+`build_race_terrain_move.py` (below).
 
 ⚠ **Terrain, road/overlay and cost bytes in these tables are all `MOVSX`'d — signed chars, not
 unsigned.** Road/overlay `−1` = no road; that is why every lookup adds `+1` (column 0 = the
@@ -1324,11 +1326,39 @@ it — any static mutable scratch belongs in DATA/BSS.**
 distance-keyed mechanic — write-up of the RE technique itself (not repeated here) is in
 `12-re-toolchain.md`.
 
-### Speculative, not built: two move-cost features
+### Built: Snow/Desert +1, Frostlings and Azracs at home — `build_race_terrain_move.py`
 
-Both would hook the tail of `TAbstractUnit.CreateMovePointTable @0x5577FDC4` (the single
-authoritative per-unit table builder — see Reference above), so either stays automatically
-consistent between executed movement and the move predictor, exactly like the fixes above.
+🔨 APPLIED, UNTESTED (2026-09-27). Owner rulings the same day: +1 for walking only (not the Flying
+table); the home race pays the Grass cost (Frostling 3 on Snow, Azrac 1 on Desert); Road and
+Structure hexes exempt.
+
+- **Tables:** Desert and Snow rows of the five walking-family tables (Walking, Forestry, Cave
+  Crawling, Mountaineering, Tunneling) get +1 on every passable cell except the Road and Structure
+  columns. All five, because `SUB_55744B2C` takes the MIN over a unit's tables: a penalty on
+  Walking alone is lifted by any second walking ability. Plain Snow/Desert is 5 for a walker, 6
+  for Cave Crawling, 7 for Tunneling.
+- **Race cave** `0x55851880`, from a 6-byte entry hook on `CreateMovePointTable` (`0x5577FDC4`,
+  prologue replayed, the function's `ret` returns into the cave). After the function has applied
+  every modifier, the cave calls VMT `+0xA4` `GetRace` (AL only) and copies the Grass row over the
+  home row. It hooks the entry, not the epilogue, because the dormant ability-`0x84` loop reuses
+  ESI and would lose the unit if `build_lethargy.py`'s jmp were undone.
+- **Tactical combat is covered too, with no AoWTCPCK patch.** AoWTCPCK builds every combat move
+  table through the imported `CreateMovePointTable` on the strategic unit `[TCombatUnit+0x4C]`
+  (player path `0x41FEE5`/`0x41D926`, six sites in `TCAI.EvalBattle`), and
+  `TTacticalCombatUnitHS.CanMoveOn` reads it at `0x420B0C` with the world-map layout. Combat hexes
+  use the world-map terrain ids (`TCombatHexagon.TerrainChanged` special-cases the same
+  `{0,6,0xE}`).
+- **Coupling:** the copy assumes Grass is the pre-penalty cost of Snow and Desert. A future edit
+  to the Grass row alone moves Frostling snow and Azrac desert costs with it.
+- Unproven: an army's cost is the MAX over its units, so one non-Frostling in the stack pays the
+  +1 for everyone. `TAIMoveControl.Initialize` (`+0x130` object) and
+  `TFortifyAGC.GetSurroundingEnemyStrength` read the raw per-move-type tables, so those AI
+  estimates see the +1 for the home race too. Deterministic, so MP is unaffected.
+
+### Speculative, not built: Sandworm move-cost
+
+Would hook `TAbstractUnit.CreateMovePointTable @0x5577FDC4` like the feature above (chain onto
+`build_race_terrain_move.py`'s entry cave rather than hooking the prologue again).
 
 **Sandworm/tunneler faster through desert** (SPECULATIVE, feasible 85% tunneling-keyed / 75%
 exact-id-keyed): after the table is built, subtract N from the copied Desert row
@@ -1337,13 +1367,6 @@ unit-type index via `[[unit+0x40]+0x18]` — but **the Sandworm's numeric id is 
 must be read once from live game data; (B) gate on the Tunneling move-type bit (`0x80`, ability
 `0x2A`) instead, no lookup needed — in vanilla the Sandworm is the archetypal tunneler, so "all
 tunnelers move faster on desert" is nearly equivalent.
-
-**Frostling↔snow / Azrac↔desert racial move-cost** (SPECULATIVE, feasible 80%): a genuinely new
-modifier axis (cost is currently move-type based only). After the table is built,
-`race=[[unit+0x40]+0x20]` reduces the Snow row for Frostling, the Desert row for Azrac. **Neither
-race's byte value is a DLL constant** (races are resourcestring names only; the index is assigned
-at resource-load time) — read both from a known unit of each race once, or walk the race list via
-`TRaceResource.GetRaceIndex @0x55759CD8` (`[raceRes+0x14]`).
 
 ## World-map group move — plan front-first, pass over parties that are leaving
 
@@ -1387,19 +1410,75 @@ party's movement.
 4. If the front party is stopped short (a hidden enemy), the one behind stops where it is blocked.
 5. Road building still refuses a road the party cannot finish this turn.
 
+## Flying between map levels
+
+🔨 **APPLIED, UNTESTED (2026-09-26).** Owner's design. `build_fly_levels.py` (its docstring holds
+the addresses, cave layout and both engine gates). `AoWEPACK.dpl` only; no exe patch.
+
+- **Click Flying** (unit banner icon or unit window Use button) to fly the whole party one level up
+  or down at the same x,y. Level order, top to bottom: Firmament 3, Surface 0, Caverns 1, Depths 2,
+  a future Abyss 4 (table rows already present; inert until the map has a fifth level).
+- **Up** needs Sky or Chasm on the hex above. **Down** needs Sky or Chasm on the hex you stand on
+  and anything but Earth, Rock or the border ring below, so every down-flight reverses an allowed
+  up-flight.
+- **Only the selected units fly** (owner ruling 2026-09-26); each needs Flying (ability id 1) and
+  at least **4 MP**. Unselected units stay behind, as in a split move. The target hex must be
+  empty or hold something of the mover's own. The flight costs **all** remaining movement and
+  plays the Winds of Fury wind gust (`SFX\ATTACK\WIND.WAV`, spell `0x7E`'s sound 0) for the mover,
+  at half volume (`0x32`; owner ruling 2026-09-27).
+- **A flying transport carries its passengers** (owner ruling 2026-09-27). When the selection holds
+  a transport (`TArmy.Transporter(army, mask)` @`0x5578E00C`, capacity > 0), only the transport
+  needs Flying and 4 MP — vanilla's own rule, since `TArmy.MoveTypes` / `MovePoints` /
+  `ValidTerrainEx` consult only that unit when there is one. Flying transports in the data: Air
+  Galley (7), Dwarven Balloon (5), Guild Zeppelin (7). A transport cannot strand passengers on
+  Sky: `TSelectedArmy.SetSelection` already drops it from a selection that leaves carried units
+  behind (`TArmy.ValidateMoveSelection`), so the non-flyers left selected are refused. Capacity is
+  not re-checked at the flight, as vanilla does not re-check it at a move. Passengers end at 0 MP
+  too (owner ruling 2026-09-27; `cave_mv` drains every unit on the vertical move, although vanilla
+  transport moves charge passengers nothing).
+- Card text: `Ability.pfs` record 11 tag 5 gains "Click to fly one map level up or down (needs 4
+  MP, spends all)." — a row in `build_pfs_typos.py`. The record's last field now sits at offset
+  246 of the u8 ceiling 255, so that text can grow by only 9 more bytes.
+- One valid direction → it flies at once. Both → a Yes/No/Cancel prompt ("Fly up to the X? Choose
+  No to fly down to the Y."). Refusals put a message in the unit window; the banner stays silent.
+- The move is vanilla cave travel: a two-node path through `MoveArmyEx`, so multiplayer sync,
+  animation, fog and merging are the engine's. `TMoveControl.ValidPath` is widened to accept a
+  two-node vertical path that obeys the terrain rule, and `TAbstractUnit.MovedTo` charges 127
+  (→ 0 movement) for a vertical move touching Sky or Chasm.
+- ⚠ A cave entrance on a Sky or Chasm hex would drain all movement too. None exist today.
+- ⚠ **`0x20217` is the `TArmyHS` class id, asked of a MAP FIELD** (`[hsobj+4] → vmt+0x80`, i.e.
+  `TAoWMapField.GetArmyHS`), not a "selected army" control on the map. v1 sent it to the map
+  object and the click only played its sound. Get the army from a unit as
+  `TSelectedArmy.SelectBuildRoad` does (`[unit+4]` → `IsClass(TArmy)` → `TArmy.GetArmyHS`), or the
+  selection from `TSelectedArmy.GetArmyHS([map+0xD8])`.
+- The AI never uses it; its pathfinder has no vertical links outside caves.
+- Revert: `build_fly_levels.py --undo` (surgical).
+
+In-game checklist:
+1. On a map with only one level, Flying is not clickable. On a multi-level map it is, on both the
+   unit banner and in the unit window.
+2. A flying party on the Surface under Firmament Sky: clicking Flying flies it up at once with a
+   wind gust. The view follows to the Firmament, and the party has no movement left.
+3. Back down: on the Firmament over Surface grassland it flies down at once. Over Surface Earth or
+   Rock the unit window says "There is nowhere to fly from here."
+4. A party standing on Surface Sky with Firmament Sky above and cave floor below: the prompt
+   appears; Yes goes up, No goes down, Cancel does nothing.
+5. Select a non-flyer along with a flyer (no transport): "Every selected unit must be able to
+   fly." Select a flyer with under 4 MP: "Every selected unit needs 4 movement points." A Dwarven
+   Balloon with non-flyers selected flies them all.
+6. Two flyers, one with 0 MP: select only the other and click Flying — it alone changes level and
+   the unselected one stays put.
+7. Target hex holding an enemy army: refused. Holding your own army: they merge (or the move is
+   refused if the stack would exceed eight).
+8. Multiplayer or hotseat: the other seat sees the party arrive on the new level, with no desync.
+9. Save and reload after flying: the party is on the new level with zero movement.
+10. Walk through an ordinary cave entrance: the cost is unchanged (the drain must not fire).
+
 ## Open items
 
 - **Sandworm's numeric unit-type id** — not derivable from the DLL. Read `[[unit+0x40]+0x18]`
   (GFX-resource index) off a placed Sandworm, or the editor's unit list, before building the
   exact-id variant.
-- ~~Frostling/Azrac race byte values~~ **ANSWERED 2026-09-08** from `Release/HERORES.PFS` tag `0x0B`
-  (38 hero resources, 3 per race). The full enum, read off the live file: **0** Human, **1** Azrac,
-  **2** Lizardman, **3** Frostling, **4** Elf, **5** Halfling, **6** Dwarf, **7** High Men,
-  **8** Dark Elf, **9** Orc, **10** Goblin, **11** Undead, **255** raceless (Mind Vessel, Dragon
-  Golem). ⚠ The authoritative read is `[[unit+0x40]+0x20]` — the **chassis's** race, which is what
-  `THero.GetRace @0x55786F9C` returns. `hero[+0x68]` (tag `0x0C`) is a parallel field with a `0xFF`
-  "any" sentinel used by `THero.CanJoin @0x55786D86`; it can legitimately be `0xFF` where the chassis
-  has a real race, so **never key a race table off `+0x68`**.
 - **Raise Terrain underground: does the overlay-non-zero gate actually block casting on a Dirt
   floor hex?** `ValidTargetMapF`/`ValidTargetSelectionMapF` both require `field+0x15 != 0` on top of
   rejecting terrain 0/6/A/D. A third-party modder's unpatched install passed this, but that is his

@@ -12,9 +12,11 @@ NEW RULES (Inioch's, adopted 2026-09-25)
     * walls: wood 80%, stone 50%; underground +10% each (90% / 60%); no walls -> nothing to destroy.
     * unit damage: underground cities with no wall or a wooden wall are hit at ATK 18 instead of 14
       (his +2 on vanilla's 7, doubled); stone walls keep 14.
-    "Underground" = map level 1 or 2 ([city+0x12]).  His test was level != 0, which would also count
-    our Firmament (level 3); ours does not.  Wall type [city+0x4C]: 0 none, 1 wood, 2 stone, 3 the
-    editor's "Random" (replaced on the first day; treated as none).
+    "Underground" = any map level except the surface (0) and the Firmament (3), i.e. Caverns 1,
+    Depths 2 and the Abyss 4 ([city+0x12]).  His test was level != 0, which would also count our
+    Firmament; ours does not.  (Until 2026-09-27 the test was "level 1 or 2", which left the Abyss
+    out; re-tuned in place, same cave VAs, same hook bytes.)  Wall type [city+0x4C]: 0 none,
+    1 wood, 2 stone, 3 the editor's "Random" (replaced on the first day; treated as none).
 
 THE PATCH
     A. 0x557B1E79 `mov edx,0Ah / call Random` (10 B) -> cave_walls: the same single synced
@@ -62,10 +64,12 @@ def cave_walls(va):
         pop eax
         push ecx
         movzx ecx, byte ptr [ebx + 0x12]
-        dec ecx
-        cmp ecx, 1
+        test ecx, ecx
+        je w_lvl
+        cmp ecx, 3
+    w_lvl:
         pop ecx
-        ja w_store
+        je w_store
         test edx, edx
         je w_ug
         add edx, {UG_BONUS}

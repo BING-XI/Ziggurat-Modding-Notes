@@ -69,25 +69,30 @@ class Img(object):
         raise ValueError('no VMT whose -0x20 slot names %s' % cls)
 
     def resource(self, name):
+        # Every directory, name and data-entry offset is relative to the resource
+        # directory's RVA, and the loader resolves it in the MAPPED image -- so it may
+        # land in another section. build_combatlog_exe.py moves the RCDATA name dir into
+        # .clog; adding the offset to the .rsrc FILE offset reads garbage there.
         rrva = struct.unpack_from('<I', self.d, self.opt + 96 + 2 * 8)[0]
-        ro = self.rva2off(rrva)
         hits = []
 
+        def at(off):
+            return self.rva2off(rrva + off)
+
         def nm_at(v):
-            off = ro + (v & 0x7FFFFFFF)
+            off = at(v & 0x7FFFFFFF)
             n = struct.unpack_from('<H', self.d, off)[0]
             return self.d[off + 2:off + 2 + 2 * n].decode('utf-16le')
 
         def walk(diroff, path):
-            nn, ni = struct.unpack_from('<HH', self.d, ro + diroff + 12)
+            nn, ni = struct.unpack_from('<HH', self.d, at(diroff + 12))
             for i in range(nn + ni):
-                eo = ro + diroff + 16 + i * 8
-                v, off = struct.unpack_from('<II', self.d, eo)
+                v, off = struct.unpack_from('<II', self.d, at(diroff + 16 + i * 8))
                 label = nm_at(v) if v & 0x80000000 else '#%d' % v
                 if off & 0x80000000:
                     walk(off & 0x7FFFFFFF, path + [label])
                 elif any(p.upper() == name.upper() for p in path + [label]):
-                    hits.append(struct.unpack_from('<II', self.d, ro + off))
+                    hits.append(struct.unpack_from('<II', self.d, at(off)))
 
         walk(0, [])
         assert len(hits) == 1, '%s: %d resource entries' % (name, len(hits))
