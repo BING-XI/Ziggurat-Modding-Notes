@@ -22,43 +22,40 @@ WHY THIS EXISTS
   path resolution -- keep it that way.
 
 WHICH NAME IS WHICH
-  AoWz.exe / AoWzCompat.exe   the CANONICAL mod exes, in `Ziggurat\`.  PATCH THESE.
-                              ⚠ Nothing runs them directly.  The runnable pair at the
-                              game ROOT is a DERIVED artefact -- follow every exe patch
-                              ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
+  AoWz.exe                    the mod game exe, in `Ziggurat\`.  PATCH THIS.  Live as soon
+                              as it is written: it runs from `Ziggurat/`.
   AoWzEd.exe                  the LIVE editor, in `Ziggurat\`, built by build_zigeditor.py
                               from AoWDevEd.exe.
   AoWDevEd.exe                the SOURCE editor, in `Ziggurat\`.  Patch this; AoWzEd.exe
                               is rebuilt from it.
   AoW.exe / AoWCompat.exe     ⚠⚠ VANILLA, at the game ROOT.  NEVER a patch target.
                               Named here only so a script can compare against stock.
-                              (GOG ships the two byte-identical; the COMPAT_BYTE split
-                              below is a Ziggurat property, not a vanilla one.)
+                              GOG ships the two byte-identical: AoWCompat.exe exists only
+                              so GOG can pin Windows compatibility layers (NT4SP5
+                              DISABLEDWM HIGHDPIAWARE, keyed by path) to the copy it
+                              launches.  The mod's twin, AoWzCompat.exe, carried no layers
+                              and was retired 2026-09-28.
 
 Needs no third-party packages.
 """
 
 # --- the mod's own binaries (all live in <root>\Ziggurat\) --------------------
 GAME_EXE = "AoWz.exe"                 # canonical mod exe -- patch target
-COMPAT_EXE = "AoWzCompat.exe"         # its lockstep twin -- patch target
 SRC_EDITOR = "AoWDevEd.exe"           # editor patch source
 LIVE_EDITOR = "AoWzEd.exe"            # editor the owner actually runs
 
-#: the pair every exe feature patches, in lockstep, in this order
-EXES = [GAME_EXE, COMPAT_EXE]
+#: every game exe an exe feature patches.  One since AoWzCompat.exe was retired
+#: (2026-09-28); scripts still loop over it, so a list rather than a name.
+EXES = [GAME_EXE]
 
 #: every mod executable, for "is this file locked / does this name exist" sweeps
-ALL_EXES = [GAME_EXE, COMPAT_EXE, SRC_EDITOR, LIVE_EDITOR]
-
-#: AoWzCompat.exe is AoWz.exe with exactly this file offset changed (0x0F -> 0x05,
-#: build number 15 -> 5).  A lockstep check asserts the diff is exactly [COMPAT_BYTE].
-COMPAT_BYTE = 0x3BB7C
+ALL_EXES = [GAME_EXE, SRC_EDITOR, LIVE_EDITOR]
 
 # --- vanilla, at the game ROOT -- reference only, NEVER a write target --------
 VANILLA_EXE = "AoW.exe"
-VANILLA_COMPAT = "AoWCompat.exe"
+VANILLA_COMPAT = "AoWCompat.exe"      # byte-identical to AoW.exe; see WHICH NAME IS WHICH
 
 #: process names that hold a lock on the game files (bare, no .exe) -- kill these
 #: before writing.  Standing authorization; see CLAUDE.md.
-LOCKING_PROCESSES = ["AoW", "AoWz", "AoWCompat", "AoWzCompat",
+LOCKING_PROCESSES = ["AoW", "AoWz", "AoWCompat",
                      "AoWDevEd", "AoWzEd", "AoWEd", "AoWSetup"]

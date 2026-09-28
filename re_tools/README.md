@@ -10,7 +10,7 @@ file patches keep caves position-independent (rel32/register only) or reuse a sl
 has a `.reloc` entry. See the parent-folder docs for the actual findings.
 
 ⚠⚠ **Never write an exe name as a literal here.** `AoW.exe` / `AoWCompat.exe` at the game root are
-**vanilla**; the mod is `AoWz.exe` / `AoWzCompat.exe`, editor `AoWzEd.exe`. A tool that scans for a
+**vanilla**; the mod is `AoWz.exe`, editor `AoWzEd.exe`. A tool that scans for a
 process named `AoW.exe` reports "not running" against the mod — and, if vanilla happens to be
 running, attaches to *it* and reports vanilla state with no error. Names come from
 `build_scripts/zigexe.py`, reached here as `from zignames import zigexe` (`zigexe.GAME_EXE`,

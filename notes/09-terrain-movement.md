@@ -26,8 +26,8 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Chasm & Sky — per-hex animation | SPECULATIVE — fully designed 2026-07-30, declined by the user | none written | — |
 | Chasm & Sky — structures: Sky reads as Chasm at the pad | ✅ CONFIRMED WORKING (2026-09-20) | `build_pad_skyalias.py` | AoWEPACK.dpl |
 | Chasm & Sky — structures: no ground under a pad on Water/Lava/CaveWater/Chasm | ✅ CONFIRMED WORKING (2026-09-20) | `build_pad_transparent.py` | Release/Release.hss + 6 ILBs |
-| **Firmament map level** — a 4th map level (index 3) filled with SKY terrain `0x0E`; surface-like vision, global-target spells, storm spells and Bird's View, `TCave.PlaceHX` guarded. Full record in `11-engine-internals.md` §"Firmament map level" | 🔨 APPLIED, UNTESTED (2026-09-06, v2) | `build_maplevel4.py` (+ in-place re-tunes of `build_shipyard_income.py`, `build_waterheal.py` v6; UI half `build_skylevel_ui.py`) | AoWEPACK.dpl + AoWz.exe + AoWzCompat.exe |
-| **Abyss map level** — a 5th map level (index 4), an ordinary cave level below Depths; caves link Depths↔Abyss through the level order instead of level±1. Full record in `11-engine-internals.md` §"Abyss map level" | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_maplevel4.py` v3 (+ in-place re-tunes of `build_skylevel_ui.py` v4, `build_deved_levelnav.py` v2, `build_shipyard_income.py`, `build_townquake_retune.py`) | AoWEPACK.dpl + AoWz.exe + AoWzCompat.exe + AoWDevEd.exe → AoWzEd.exe |
+| **Firmament map level** — a 4th map level (index 3) filled with SKY terrain `0x0E`; surface-like vision, global-target spells, storm spells and Bird's View, `TCave.PlaceHX` guarded. Full record in `11-engine-internals.md` §"Firmament map level" | 🔨 APPLIED, UNTESTED (2026-09-06, v2) | `build_maplevel4.py` (+ in-place re-tunes of `build_shipyard_income.py`, `build_waterheal.py` v6; UI half `build_skylevel_ui.py`) | AoWEPACK.dpl + AoWz.exe |
+| **Abyss map level** — a 5th map level (index 4), an ordinary cave level below Depths; caves link Depths↔Abyss through the level order instead of level±1. Full record in `11-engine-internals.md` §"Abyss map level" | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_maplevel4.py` v3 (+ in-place re-tunes of `build_skylevel_ui.py` v4, `build_deved_levelnav.py` v2, `build_shipyard_income.py`, `build_townquake_retune.py`) | AoWEPACK.dpl + AoWz.exe + AoWDevEd.exe → AoWzEd.exe |
 | Flying between map levels — click Flying to fly the party up/down; Sky/Chasm rule, all movement spent | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_fly_levels.py` | AoWEPACK.dpl |
 | Terrain rolls draw from the synced RNG (3 sites) | 🔨 APPLIED, UNTESTED (2026-08-31) | `build_rng_lockstep.py` (owned by the RNG/core-engine doc; two of the three sites are caves this file covers) | AoWEPACK.dpl |
 | Ice Storm: Lava → Wasteland + per-proc gate | 🔨 APPLIED, UNTESTED — base redirect + 50% skip ✅ confirmed 2026-07-07. Since 2026-09-25 each proc **takes effect** 25% of the time (owner ruling; one byte, `0x5580DB4E` `je`→`jne`) | `build_icestorm_lava.py` — **⚠ never run `--apply` again**, see below; the rate flip is `build_icestorm_gate25.py` | AoWEPACK.dpl |
@@ -35,7 +35,7 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Raise Terrain: mountain art matches underlying terrain | 🔨 BUILT, NOT APPLIED (2026-07-07) — premise disproved in-game the same day; cave address now foreign, see below | `build_raiseterrain_mtn.py` — shelved, do not apply as written | AoWEPACK.dpl (would-be) |
 | Raise Terrain underground → temporary Earth | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_raiseterrain_ug_earth.py` | AoWEPACK.dpl |
 | Elemental terrain heal (Water/Air/Earth/Fire) | ✅ CONFIRMED WORKING (2026-08-30, v4) · 🔨 v6 Firmament (Earth excluded, Air included) APPLIED, UNTESTED (2026-09-06) | `build_waterheal.py` | AoWEPACK.dpl |
-| Fire heals fire units (226/228) | ✅ CONFIRMED WORKING (v1 2026-07-07, v2 2026-08-29) | `build_firefeed.py` | AoWEPACK.dpl + AoWz.exe + AoWzCompat.exe |
+| Fire heals fire units (226/228) | ✅ CONFIRMED WORKING (v1 2026-07-07, v2 2026-08-29) | `build_firefeed.py` | AoWEPACK.dpl + AoWz.exe |
 | Movement predictor fix (v1→v4) | 🔨 APPLIED, UNTESTED (2026-07-05) | `build_patch.py` — **⚠ never run `--apply`**, see below | AoWEPACK.dpl |
 | Path abilities: radius +1, 25% outer-ring proc | ✅ CONFIRMED WORKING (2026-07-08) | `build_path_outerring.py` | AoWEPACK.dpl |
 | Move-cost: Sandworm/tunneler faster on desert | SPECULATIVE — feasible (85%/75%), not built | none written | — |
@@ -1027,7 +1027,7 @@ them.
 **✅ CONFIRMED WORKING** — v1 (heal + "+N" popup) validated in-game 2026-07-07 for both Firestorm and
 map-hex fire/Fire Barrier; **v2 (no to-hit roll) validated 2026-08-29.** Script `build_firefeed.py`
 patches **three** files: `AoWEPACK.dpl` (3 caves + 3 redirects),
-`AoWz.exe` + `AoWzCompat.exe` (1 five-byte patch each, byte-identical site). No automated `--undo`;
+`AoWz.exe` (1 five-byte patch each, byte-identical site). No automated `--undo`;
 surgical revert restores the 3 `AoWEPACK.dpl` redirects, the 1-byte patch at `0x436BFF` in each exe,
 and zeroes the 3 caves (`cave_fireheal@0x5580DA20` 89 B, `cave_plusnum@0x5580DA80` 68 B,
 `cave_mapfire_gate@0x5580DAD0` 71 B). ⚠ **No `.pre-firefeed` snapshot exists any more** — every

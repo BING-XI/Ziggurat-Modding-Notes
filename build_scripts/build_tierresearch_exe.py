@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""
 AoW1 TIER RESEARCH -- EXE presentation layer, on the canonical mod exes
-`Ziggurat\AoWz.exe` + `Ziggurat\AoWzCompat.exe` (names from `zigexe.py`).
+`Ziggurat\AoWz.exe` (names from `zigexe.py`).
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 Turns the Research Book (TSpellBook modes 2/3) into a per-(sphere,tier) picker:
@@ -61,7 +61,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                       # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                       # mod binary names (AoWz.exe)
 EXES = list(zigexe.EXES)
 BACKUP_DIR = os.path.join(GAME, "backups")   # ⚠ backups/, never the game root -- rule 2026-09-03
 
@@ -69,7 +69,7 @@ IB = 0x00400000
 
 SEC_VA   = 0x00611000
 SEC_RVA  = SEC_VA - IB
-SEC_FOFF = 0x20B200          # current EOF of both exes (asserted)
+SEC_FOFF = 0x20B200          # current EOF of the exe (asserted)
 EXP_NSEC = 8
 EXP_SOI  = 0x211000
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 r"""
 build_customize_name.py -- in a multiplayer session, the name typed at leader customisation is
-saved as the player name, so the next lobby already shows it.  AoWz.exe + AoWzCompat.exe.
+saved as the player name, so the next lobby already shows it.  AoWz.exe.
 
 From Inioch's share8 patch_customize_name_registry_v1.py (v2 design; customize-name-registry.md).
 
@@ -26,7 +26,7 @@ THE FIX
     7 bytes (split at 0x416DD8 / 0x416DDF).
 
 Rolls: none.  Exe caves may use absolute addresses (fixed base).  .hcol slot 0x0062A480-0x0062A51F,
-exclusive.  Both exes in lockstep via exe_patch.py.  Surgical --undo.
+exclusive.  Via exe_patch.py.  Surgical --undo.
 """
 import sys
 sys.dont_write_bytecode = True

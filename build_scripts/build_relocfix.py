@@ -103,7 +103,7 @@ import zigexe
 HIGHLOW, ABSOLUTE = 3, 0
 
 #: modules whose vanilla twin at the ROOT has a different name
-TWIN = {zigexe.GAME_EXE: zigexe.VANILLA_EXE, zigexe.COMPAT_EXE: zigexe.VANILLA_COMPAT}
+TWIN = {zigexe.GAME_EXE: zigexe.VANILLA_EXE}
 #: no vanilla twin exists -- rule B cannot see these
 NO_TWIN = {zigexe.SRC_EDITOR, zigexe.LIVE_EDITOR}
 
@@ -131,7 +131,6 @@ TABLE = {
                              "padding"),
     ],
     zigexe.GAME_EXE:   list(EXE_ENTRIES),
-    zigexe.COMPAT_EXE: list(EXE_ENTRIES),
     zigexe.SRC_EDITOR: [
         (0x0013CA, 0x03D0E0, "build_editor_timerres.py e9 @0x4013C8 over the Sleep thunk.  "
                              "RVA+2 is the MSB of that rel32 -- NOT padding-dead."),

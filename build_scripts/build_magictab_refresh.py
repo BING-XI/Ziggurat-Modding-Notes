@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 r"""
-build_magictab_refresh.py -- the Magic tab's research overview refreshes mid-turn.  AoWz.exe +
-AoWzCompat.exe (lockstep, exe_patch.py).
+build_magictab_refresh.py -- the Magic tab's research overview refreshes mid-turn.  AoWz.exe (exe_patch.py).
 
 From Inioch's share8 patch_spellbook_discounts_v1.py, its v3 and v4 only.  Nothing else in that
 script is taken; 0x42ED93 belongs to build_tierresearch_exe.py.

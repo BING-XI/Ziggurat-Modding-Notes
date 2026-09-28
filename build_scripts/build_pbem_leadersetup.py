@@ -57,7 +57,7 @@ AoWEPACK.dpl (PIC; the package never loads at its preferred base):
               -- vanilla's own mode-2 raise at 0x55756BEA.
   0x5577C3FF  1 B 4B -> 47: TPlayerMagicEventLog.Execute treats modes >= 3 like mode 2 (only
               the re-execution path; every vanilla creator uses modes 0/1/2).
-AoWz.exe + AoWzCompat.exe (fixed base, absolutes fine):
+AoWz.exe (fixed base, absolutes fine):
   0x0044F183  the rel32 of `jmp 0x44F51E` (TheMapExecuteEventLog, modes >= 3) -> C_SHOW.
   C_SHOW      mode 3 only; stores event (AddRef) + completion TMethod; ctrl =
               TLeaderSetupControl.Create; [ctrl+0x0C].Assign(leader); [ctrl+0x14].Assign(
@@ -144,7 +144,7 @@ PLACE in that script rather than chained from here: a chain would retarget that 
 fully absent.
 
 ================================================================================
-STAGE 2 -- PART 4: OFFER ROLL (C_OFFER, AoWz.exe + AoWzCompat.exe)
+STAGE 2 -- PART 4: OFFER ROLL (C_OFFER, AoWz.exe)
 ================================================================================
 0x004161C9, 6 B (`mov edx,[esi+0x2E4]`) -> E9 C_OFFER + nop, in TLeaderSetupWin's available
 loop after the mask test (je 0x416251 at 0x4161AF) and before CanExpand (0x4161D1).  EAX =
@@ -1360,17 +1360,6 @@ def check_panels(pe):
             sys.exit("ABORT: %s: %s.%s is not published at +0x%X" % (pe.name, cls, pnl, fld))
 
 
-def lockstep_ok():
-    a = open(os.path.join(GAME, zigexe.GAME_EXE), "rb").read()
-    b = open(os.path.join(GAME, zigexe.COMPAT_EXE), "rb").read()
-    if len(a) != len(b):
-        return False, "size mismatch %d vs %d" % (len(a), len(b))
-    diff = [i for i in range(len(a)) if a[i] != b[i]]
-    if diff == [zigexe.COMPAT_BYTE]:
-        return True, "lockstep ok: the pair differs at file 0x%X only" % zigexe.COMPAT_BYTE
-    return False, "LOCKSTEP BROKEN: %d differing bytes %s" % (len(diff), [hex(x) for x in diff[:8]])
-
-
 # ============================================================== reporting ======
 NAMES = {
     F_GETPLAYERS: "TPlayerList.GetPlayers", F_PMEL_CREATE: "TPlayerMagicEventLog.Create",
@@ -1423,7 +1412,7 @@ def disassemble(dblob, dlab, xblob, xlab):
                         ("C_PANEL", xlab["C_PANEL"], xlab["C_OFFER"]),
                         ("C_OFFER", xlab["C_OFFER"], xlab["PANELS"])):
         body = xblob[a - X_SPAN:b - X_SPAN]
-        dump("%s  AoWz.exe / AoWzCompat.exe" % title, body.rstrip(b"\xcc") if title != "C_OFFER"
+        dump("%s  AoWz.exe" % title, body.rstrip(b"\xcc") if title != "C_OFFER"
              else body.rstrip(b"\xcc"), a)
         if title == "C_OFFER":
             for blob, nm in blobs.items():
@@ -1481,9 +1470,6 @@ def main():
 
     targets = [dll_target(dblob)] + [exe_target(n, xblob, xlab, strict="--apply" in args)
                                      for n in zigexe.EXES]
-    ok, msg = lockstep_ok()
-    if not ok:
-        sys.exit("ABORT: %s" % msg)
     deps = dependencies(targets[0].pe) + [hsr_dependency(t.pe) for t in targets[1:]]
     if "--apply" in args and not all(ok for _n, ok, _d in deps):
         for n, ok, d in deps:
@@ -1498,7 +1484,7 @@ def main():
             sys.exit("ABORT: foreign or partial bytes in %s -- nothing written" % ", ".join(bad))
         exe_states = {states[n] for n in zigexe.EXES}
         if len(exe_states) != 1:
-            sys.exit("ABORT: the exe pair is in different states %s" % exe_states)
+            sys.exit("ABORT: the exes are in different states %s" % exe_states)
 
     if "--apply" in args:
         if any(t.state() != "applied" for t in targets):
@@ -1520,7 +1506,6 @@ def main():
             t.apply()
             t.pe.save()
             print("%s: applied" % t.pe.name)
-        print(lockstep_ok()[1])
         targets = [dll_target(dblob)] + [exe_target(n, xblob, xlab) for n in zigexe.EXES]
     elif "--undo" in args:
         for t in targets:
@@ -1538,7 +1523,6 @@ def main():
                 t.pe.save()
                 print("%s: undone (sites restored, %d B zeroed, no backup touched)"
                       % (t.pe.name, len(t.blob)))
-        print(lockstep_ok()[1])
         targets = [dll_target(dblob)] + [exe_target(n, xblob, xlab) for n in zigexe.EXES]
     else:
         disassemble(dblob, dlab, xblob, xlab)

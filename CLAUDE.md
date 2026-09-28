@@ -9,7 +9,7 @@ traps are in `Zig notes/12-re-toolchain.md`.
 
 ```
 <game root>\         VANILLA. Never patch. Also the byte-diff reference for "is this vanilla?"
-   Ziggurat\         AoWz.exe, AoWzCompat.exe, AoWzEd.exe + all 33 packages  <-- PATCH TARGETS
+   Ziggurat\         AoWz.exe, AoWzEd.exe + all 33 packages  <-- PATCH TARGETS
       Release\ …     the mod's data root
       Modding Resources\   scripts, notes, RE toolkit
       Ziggurat release\    release staging (mod_manifest.py --stage) — not a patch source
@@ -30,9 +30,8 @@ traps are in `Zig notes/12-re-toolchain.md`.
 - One `build_*.py` per feature in `build_scripts/`: dry run by default, `--apply`, surgical `--undo`,
   verify-before-write, idempotent. Re-tune by rewriting the cave in place.
 - `.dpl` caves must be position-independent (they rebase). Exe caves may use absolute addresses.
-- `AoWzCompat.exe` is `AoWz.exe` with one byte changed (file `0x3BB7C`, `0x0F` → `0x05`): patch both
-  in lockstep. Different exes often call different functions for the same feature — verify per
-  binary.
+- `AoWz.exe` is the only game exe; `AoWzCompat.exe` was retired 2026-09-28 (`12-re-toolchain.md`
+  §11.2). Different exes often call different functions for the same feature — verify per binary.
 - New cave space goes in the ownership table in `12-re-toolchain.md`. Record couplings between
   features as forward hazards ("X and Y share cave N; undo X first").
 - A cave that runs at package init is only proved by launching the exe.
@@ -40,7 +39,7 @@ traps are in `Zig notes/12-re-toolchain.md`.
   Snapshots are not a revert path.
 - **Never run `build_patch.py --apply`**: its cave is not PIC (verify-before-write aborts today).
 - Running AoW binaries lock the files. Kill them without asking:
-  `Get-Process | Where-Object { $_.ProcessName -match '^(AoW|AoWz|AoWCompat|AoWzCompat|AoWDevEd|AoWzEd|AoWEd|AoWSetup)$' } | Stop-Process -Force`
+  `Get-Process | Where-Object { $_.ProcessName -match '^(AoW|AoWz|AoWCompat|AoWDevEd|AoWzEd|AoWEd|AoWSetup)$' } | Stop-Process -Force`
 
 ## Things that go wrong silently
 

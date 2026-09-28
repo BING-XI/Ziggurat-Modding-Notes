@@ -7,8 +7,8 @@ WHY THIS EXISTS
 `build_tcablist_ceiling.py` raised ONE such ceiling (the in-combat unit panel, `CreateTCAbList
 @0x00423430`) and is confirmed working. The id-ceiling audit of 2026-08-28
 (`Zig notes/ID_Ceilings.md`) found that the same vanilla idiom occurs at **seven** distinct VAs in total and
-that only that one had ever been raised. The other six are patched here -- eight file sites,
-because AoWz.exe's two are mirrored into AoWzCompat.exe, so nine across the two scripts.
+that only that one had ever been raised. The other six are patched here -- six file sites, seven across
+the two scripts.
 
 Vanilla's highest ability id was 0xA9, so every "iterate ids 1..N, ask GetAbilityEnabled" loop was
 written with the terminator `cmp <counter>, 0xAA` -- "one past the last id", exactly big enough.
@@ -72,7 +72,6 @@ THE SITES -- all six verified byte-for-byte on the live files 2026-08-28
     AoWz.exe      0x00455DE1  81 fb aa 00 00 00      cmp ebx,0xAA          unit hover popup
 
 One byte each -- the immediate, at +3 in the `[ebp-disp8]` form and at +2 in the register form.
-`AoWzCompat.exe` takes the AoWz.exe pair in lockstep.  ⚠ Follow --apply with
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 ⚠ NOT AN OUT-OF-BOUNDS RISK, and the reason matters. Over-iterating is safe:
@@ -163,7 +162,7 @@ except Exception:                                                        # noqa:
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 SUFFIX = ".pre-abilceilings"
 BACKUP_DIR = os.path.join(GAME, "backups")      # ⚠ backups/, never the game root -- rule 2026-09-03
 
@@ -198,10 +197,7 @@ SITES = [
     (zigexe.GAME_EXE, 0x00406DEF, "81fe",   2, "TItemBanner.IBannerPopupShow"),
     (zigexe.GAME_EXE, 0x00455DE1, "81fb",   2, "unit hover banner popup"),
 ]
-# identical bytes, applied together or not at all
-LOCKSTEP = {zigexe.GAME_EXE: zigexe.COMPAT_EXE}
-BASES = {"AoWTCPCK.dpl": 0x00400000,
-         zigexe.GAME_EXE: 0x00400000, zigexe.COMPAT_EXE: 0x00400000}
+BASES = {"AoWTCPCK.dpl": 0x00400000, zigexe.GAME_EXE: 0x00400000}
 
 
 def va2off(d, va, base):
@@ -229,13 +225,8 @@ def highest_ability_id():
 
 
 def targets():
-    """-> [(filename, va, immoff, opcode_hex, desc)] including the lockstep twins."""
-    out = []
-    for fn, va, opc, immoff, desc in SITES:
-        out.append((fn, va, immoff, opc, desc))
-        if fn in LOCKSTEP:
-            out.append((LOCKSTEP[fn], va, immoff, opc, desc + " (lockstep)"))
-    return out
+    """-> [(filename, va, immoff, opcode_hex, desc)]"""
+    return [(fn, va, immoff, opc, desc) for fn, va, opc, immoff, desc in SITES]
 
 
 def main(argv):

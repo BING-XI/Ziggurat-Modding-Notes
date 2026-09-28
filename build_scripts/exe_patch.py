@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 r"""
-exe_patch.py -- shared helpers for small hook scripts on the mod game exe PAIR (2026-09-25).
+exe_patch.py -- shared helpers for small hook scripts on the mod game exe (2026-09-25).
 
-Every run patches Ziggurat\AoWz.exe AND Ziggurat\AoWzCompat.exe (names from zigexe.EXES) in
-lockstep, then asserts the two still differ at exactly zigexe.COMPAT_BYTE.  Conventions as in
+Every run patches Ziggurat\AoWz.exe (zigexe.EXES).  Conventions as in
 aowepack_patch.py: dry run by default, verify-before-write, in-place r+b writes of owned bytes only,
 surgical --undo (no snapshot), kill any running AoW binary before writing.
 
@@ -60,7 +59,7 @@ def relocs_in(d, lo, hi):
 
 def run(title, hooks, caves, slot, argv=None, targets=None):
     """hooks: [(va, vanilla, installed)]; caves: [(name, va, blob)]; slot: (lo, hi) owned zone.
-    targets: exe names in GAME; default zigexe.EXES, which also gets the lockstep check.
+    targets: exe names in GAME; default zigexe.EXES.
     Returns "apply" / "undo" when it wrote, else None."""
     targets = targets or zigexe.EXES
     import argparse
@@ -120,13 +119,5 @@ def run(title, hooks, caves, slot, argv=None, targets=None):
                 f.seek(va2off(d, va))
                 f.write(new if a.apply else van)
     verb = "APPLIED to" if a.apply else "UNDONE on"
-    if list(targets) != list(zigexe.EXES):
-        print("\n%s %s" % (verb, ", ".join(targets)))
-        return "apply" if a.apply else "undo"
-    x, y = (open(os.path.join(GAME, e), "rb").read() for e in zigexe.EXES)
-    diff = [i for i in range(len(x)) if x[i] != y[i]] if len(x) == len(y) else None
-    assert diff == [zigexe.COMPAT_BYTE], "lockstep broken: %s vs %s differ at %s" % (
-        zigexe.EXES[0], zigexe.EXES[1], diff if diff is None else [hex(i) for i in diff[:8]])
-    print("\n%s both exes; lockstep holds (they differ only at file 0x%X)"
-          % (verb, zigexe.COMPAT_BYTE))
+    print("\n%s %s" % (verb, ", ".join(targets)))
     return "apply" if a.apply else "undo"

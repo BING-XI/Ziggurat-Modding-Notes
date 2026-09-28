@@ -36,7 +36,7 @@ canonical cross-project cave-ownership map is `12-re-toolchain.md`.
 | Bound (`0xBB`) and Commanding (`0xBC`) — the command-ability bond and its RES cost; design and checklist in `02-abilities-modded.md` "Command abilities — bound thralls" | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_command_bond.py` + `build_command_bond_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Copper Medal — rank ladder, stat bonus, icon | ✅ CONFIRMED WORKING (2026-07-30) | `build_copper_medal.py` | AoWEPACK.dpl + `Images/*Combat.ILB` |
 | Copper Medal — 4th ability-owner slot (copper bonus abilities) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_copper_medal.py` (`COPPER_GRANTS_ABILITIES=True`) | AoWEPACK.dpl + `AoWDevEd.exe` |
-| Ability-id ceiling — 4× `TCAI.EvalBattle` scans + item/hover banner popups | 🔨 APPLIED, UNTESTED (ladder at `0xB3`, 2026-09-01) | `build_abilityid_ceilings.py` | AoWTCPCK.dpl + AoWz.exe + AoWzCompat.exe |
+| Ability-id ceiling — 4× `TCAI.EvalBattle` scans + item/hover banner popups | 🔨 APPLIED, UNTESTED (ladder at `0xB3`, 2026-09-01) | `build_abilityid_ceilings.py` | AoWTCPCK.dpl + AoWz.exe |
 | Ability-id ceiling — in-combat unit panel (`CreateTCAbList`) | 🔨 APPLIED, UNTESTED (ladder at `0xB2`, 2026-08-28) | `build_tcablist_ceiling.py` | AoWTCPCK.dpl |
 | `AbilTypes` relocation — 170→256-entry table, bound `{0,169}`→`{0,255}` | ✅ CONFIRMED WORKING (2026-09-02) | `build_abiltypes_relocate.py` | AoWTCPCK.dpl |
 
@@ -210,8 +210,7 @@ usable in tactical combat*, and it bit this project in-game on 2026-09-01.
 
 Vanilla's highest ability id was `0xA9`, so every "iterate ids 1..N, ask `GetAbilityEnabled`" loop
 in `AoWTCPCK.dpl` and `AoWz.exe` was written with the terminator `cmp <counter>, 0xAA` — exactly big
-enough, never revisited. Seven such loops exist across the two binaries (nine sites counting
-`AoWzCompat.exe`'s lockstep copy): four `TCAI.EvalBattle` battle-scoring scans, the in-combat unit
+enough, never revisited. Seven such loops exist across the two binaries: four `TCAI.EvalBattle` battle-scoring scans, the in-combat unit
 panel (`CreateTCAbList`), and the item-banner and unit-hover popups. **`build_tcablist_ceiling.py`**
 raised the panel's terminator alone (diagnosed 2026-08-27 from the user's report that Shield was
 missing from the embedded in-combat card while present in the full Unit dialog);

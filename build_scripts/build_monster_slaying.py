@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 r"""
-AoW1 mod -- Monster Slaying rework (owner's design, 2026-09-26).
+AoW1 mod -- Monster Slaying rework (owner's design, 2026-09-26; melee +4 -> +5 on 2026-09-28).
 
-    melee   +4 DAM against a Monster, +4 DEF when a Monster strikes the unit   (was +5 ATK / +5 DAM)
+    melee   +5 DAM against a Monster, +5 DEF when a Monster strikes the unit   (was +5 ATK / +5 DAM)
     ranged  +2 DAM against a Monster, +2 DEF against a Monster's shot/breath   (was +2 ATK / +2 DAM)
 
 The DEF applies to every melee strike -- deliberate, retaliation, opportunity, Round Attack -- and
@@ -30,6 +30,9 @@ blocks target their first byte.
 The other three sites live in caves owned by build_assassin.py (cave_melee, cave_melee3) and
 build_ranged_slayers.py (cave_rng); their generators switch on monsterslay.REWORK. Apply all three
 scripts; order does not matter, because each one installs ms_test before writing a caller.
+
+RE-TUNE: change the numbers in monsterslay.py and re-run --apply here and in build_assassin.py.
+Both accept their own bodies built with any number in monsterslay.RETUNE.
 
 USAGE
     build_monster_slaying.py            dry run: verify state, print the caves
@@ -73,12 +76,21 @@ def jmp(src, dst): return b"\xE9" + struct.pack("<i", dst - (src + 5))
 
 def asm(src, va): return bytes(ks.asm(src, va)[0])
 
-cave_sdv = asm(ms.call_text("edi", "esi", 0xA8)
-               + ms.apply_text("_sd", "byte ptr [esp]", "bl", ms.MELEE_DAM, ms.MELEE_DEF, clamp=True)
+def build_sdv(dam, dfn):
+    return asm(ms.call_text("edi", "esi", 0xA8)
+               + ms.apply_text("_sd", "byte ptr [esp]", "bl", dam, dfn, clamp=True)
                + f"\n    jmp 0x{SDV_CONT:X}\n", CAVE_SDV)
-cave_cus = asm(ms.call_text("esi", "edi", 0x148)
-               + ms.apply_text("_cu", "dword ptr [ebx+4]", "dword ptr [ebx]", ms.MELEE_DAM, ms.MELEE_DEF, clamp=False)
+
+def build_cus(dam, dfn):
+    return asm(ms.call_text("esi", "edi", 0x148)
+               + ms.apply_text("_cu", "dword ptr [ebx+4]", "dword ptr [ebx]", dam, dfn, clamp=False)
                + f"\n    jmp 0x{CUS_CONT:X}\n", CAVE_CUS)
+
+cave_sdv = build_sdv(ms.MELEE_DAM, ms.MELEE_DEF)
+cave_cus = build_cus(ms.MELEE_DAM, ms.MELEE_DEF)
+# our bodies at every re-tunable number: an installed one is rewritten in place, not refused
+VARIANTS = {va: {f(d, e) for d in ms.RETUNE for e in ms.RETUNE}
+            for va, f in ((CAVE_SDV, build_sdv), (CAVE_CUS, build_cus))}
 assert CAVE_SDV + len(cave_sdv) <= CAVE_CUS, "cave_sdv overruns cave_cus"
 assert CAVE_CUS + len(cave_cus) <= ms.ZONE_VA + ms.ZONE_LIMIT, "cave_cus overruns the zone"
 assert len(ms.blob()) <= CAVE_SDV - ms.MS_TEST
@@ -102,7 +114,8 @@ def process(path):
         except PermissionError: print("[x] LOCKED -- close AoW binaries"); return False
         return True
 
-    # (va, original, new, desc). A cave accepts zeros or itself; a hook accepts stock or our jmp.
+    # (va, original, new, desc). A cave accepts zeros or any of its VARIANTS; a hook accepts stock
+    # or our jmp.
     own = [
         (CAVE_SDV, cave_sdv, "cave_sdv (StrikeDV)"),
         (CAVE_CUS, cave_cus, "cave_cus (CalculateUnitStrikes)"),
@@ -114,7 +127,7 @@ def process(path):
     bad = False
     for va, new, desc in own:
         cur = rd(va, len(new))
-        if cur != new and any(cur):
+        if any(cur) and cur not in VARIANTS[va]:
             print(f"[x] {va:08X} {desc}: occupied by something else\n     {cur.hex(' ')}"); bad = True
     for va, new, desc in hooks:
         cur = rd(va, 5)

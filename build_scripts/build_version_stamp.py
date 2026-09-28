@@ -7,7 +7,8 @@ r"""The release date as the version number -- `Dict/ResStr.mld` + `Dict/ResStr.t
     python build_scripts/build_version_stamp.py --undo                # back to "Ziggurat %s"
 
 Owner ruling 2026-09-28: the version number is the release date, the same `YYYY.MM.DD` string as
-the installer's AppVer and the release tag. Run it in §13.1a before staging;
+the installer's AppVer and the release tag. A second release on the same day takes a letter:
+2026.09.28b (owner, 2026-09-28). Run it in §13.1a before staging;
 `installer/build_installer.py` refuses to build when the STAGED dictionary carries another date.
 
 WHERE THE VERSION TEXT COMES FROM
@@ -47,7 +48,7 @@ import build_resstr_names as R   # noqa: E402  (walk / find / slot helpers, MLD 
 NATIVE = "Version: %s"
 TEMPLATE = "Version: Ziggurat %s"          # pre-stamp text, and what --undo restores
 STAMP = "Version: Ziggurat {}"
-DATE = re.compile(r"\d{4}\.\d{2}\.\d{2}")
+DATE = re.compile(r"\d{4}\.\d{2}\.\d{2}[a-z]?")
 
 
 def read(game=None):
@@ -67,7 +68,7 @@ def read(game=None):
 def stamped_version(game=None):
     """-> the date in the [US] slot, or None when it is not stamped."""
     cur = read(game)[-1]
-    m = re.fullmatch(r"Version: Ziggurat (\d{4}\.\d{2}\.\d{2})", cur)
+    m = re.fullmatch(r"Version: Ziggurat (%s)" % DATE.pattern, cur)
     return m.group(1) if m else None
 
 
@@ -89,11 +90,11 @@ def main():
         new = TEMPLATE
     else:
         if not a.version or not DATE.fullmatch(a.version):
-            sys.exit("usage: build_version_stamp.py YYYY.MM.DD [--apply] | --undo | --check VER")
+            sys.exit("usage: build_version_stamp.py YYYY.MM.DD[x] [--apply] | --undo | --check VER")
         new = STAMP.format(a.version)
 
     mld, txt, d, lines, fields, j, cur = read()
-    ok_before = cur == TEMPLATE or re.fullmatch(r"Version: Ziggurat \d{4}\.\d{2}\.\d{2}", cur)
+    ok_before = cur == TEMPLATE or re.fullmatch(r"Version: Ziggurat " + DATE.pattern, cur)
     if not ok_before:
         sys.exit(f"ABORT: [US] of {NATIVE!r} is {cur!r} -- neither the template nor a stamp")
     print(f"[US] {NATIVE!r}: {cur!r} -> {new!r}")

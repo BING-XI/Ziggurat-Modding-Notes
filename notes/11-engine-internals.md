@@ -15,31 +15,31 @@ features all had to learn about the engine underneath them.
 |---|---|---|---|
 | Item system (shared RE: `TItem`, ability-query APIs, equip slots) | reference material | — | — |
 | Scrolls — restore as playable data | SPECULATIVE (nothing authored) | none (data-only) | `Release/ITEMS.PFS`, `ITEMGFX.PFS` |
-| Scroll as a permanent per-hero spellbook grant | 🔨 APPLIED, UNTESTED (2026-07-31; cave extended 2026-09-03) | `build_scroll_spellbook.py` | `AoWz.exe`, `AoWzCompat.exe`, `AoWEPACK.dpl` |
+| Scroll as a permanent per-hero spellbook grant | 🔨 APPLIED, UNTESTED (2026-07-31; cave extended 2026-09-03) | `build_scroll_spellbook.py` | `AoWz.exe`, `AoWEPACK.dpl` |
 | Scroll icon fix (retype `ITEMGFX.PFS` 316–319) | 🛑 **DO NOT APPLY** — confirmed harmful in-game (2026-08-01) | `build_scroll_gfx.py` | `Release/ITEMGFX.PFS` |
 | Scroll "cast once" alternative design | SPECULATIVE, not built | none | `AoWEPACK.dpl` |
 | Item ability fixes, 4 groups (Healing/Dispel owner, ranged item-aware, immunity/protection/movetype, flat ATK/DEF/DAM/RES bytes) | 🔨 APPLIED, UNTESTED (2026-08-02) | `build_useitems.py` | `AoWEPACK.dpl`, `AoWDevEd.exe`, `AoWEd.exe` |
-| Item-granted ability usable from the overland unit window | ✅ CONFIRMED WORKING (2026-08-28) | `build_unitwin_ability.py` + a dispatch fix inside `build_spellcast_multiturn.py`'s `cave_tiergate` | `AoWz.exe`, `AoWzCompat.exe`, `AoWEPACK.dpl` |
+| Item-granted ability usable from the overland unit window | ✅ CONFIRMED WORKING (2026-08-28) | `build_unitwin_ability.py` + a dispatch fix inside `build_spellcast_multiturn.py`'s `cave_tiergate` | `AoWz.exe`, `AoWEPACK.dpl` |
 | Turn-event re-check gate (Healing/Dispel Magic) | ✅ CONFIRMED WORKING (2026-08-28) | `build_abilityte_itemgrant.py` | `AoWEPACK.dpl` |
 | Healing per-turn re-arm | ✅ CONFIRMED WORKING (2026-08-28) | `build_healing_rearm.py` | `AoWEPACK.dpl` |
 | Item-granted HP / MV bonuses | 🔨 APPLIED, UNTESTED (2026-08-31) | `build_item_hpmv.py` + `build_item_hpmv_data.py` | `AoWEPACK.dpl`, `User/Zig.ail` |
 | Item HP/MV via the ability system instead (Route 2) | SPECULATIVE, not built | none | `AoWEPACK.dpl` |
-| Item banner shows Hits + Moves (two more icon+value pairs) | 🔨 APPLIED, UNTESTED (2026-09-13) | `build_itembanner_hpmv.py` — full record in `07-ui.md` §9 | `AoWz.exe`, `AoWzCompat.exe` |
+| Item banner shows Hits + Moves (two more icon+value pairs) | 🔨 APPLIED, UNTESTED (2026-09-13) | `build_itembanner_hpmv.py` — full record in `07-ui.md` §9 | `AoWz.exe` |
 | Renaming spells / abilities / UI text | ✅ CONFIRMED WORKING (2026-08-29) | `build_resstr_names.py` | `Dict/ResStr.mld`, `Dict/ResStr.txt` |
 | `.pfs` string/typo edits (generic tool) | tool, not a feature | `build_pfs_typos.py` | any `.pfs` |
 | `Unitres.pfs` ability-record-list repair | ✅ CONFIRMED WORKING (2026-08-14) | `build_unitres_reclist.py` | `Release/Unitres.pfs` |
 | Mind Decay — MP determinism + nil-check | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_minddecay_oos.py` | `AoWEPACK.dpl` |
-| Stack size 8 → 12 | SPECULATIVE / **SHELVED** (2026-08-16, owner decided against it) | none | `AoWEPACK.dpl`, `AoWz.exe`, `AoWzCompat.exe`, `AoWTCPCK.dpl`, `AoWDevEd.exe`, `AoWEd.exe` |
-| `TGeneral` slot-array overflow (vanilla bug, found while researching the above) | SPECULATIVE — fix fully specified, nothing built | `build_generalslots.py` (does not exist yet) | `AoWz.exe`, `AoWzCompat.exe` |
+| Stack size 8 → 12 | SPECULATIVE / **SHELVED** (2026-08-16, owner decided against it) | none | `AoWEPACK.dpl`, `AoWz.exe`, `AoWTCPCK.dpl`, `AoWDevEd.exe`, `AoWEd.exe` |
+| `TGeneral` slot-array overflow (vanilla bug, found while researching the above) | SPECULATIVE — fix fully specified, nothing built | `build_generalslots.py` (does not exist yet) | `AoWz.exe` |
 | Movement-predictor fix (context only — see the booby trap below) | 🔨 APPLIED, UNTESTED (2026-07-05, never retested) | `build_patch.py` — **never re-`--apply`** | `AoWEPACK.dpl` |
 | Seduce / Charm / Dominate → two stacks on one hex | SPECULATIVE — mechanism diagnosed (v2), unconfirmed in-game | none | `AoWEPACK.dpl` |
 | Transport-boarding "units vanish" bug | SPECULATIVE — static analysis only | none | `AoWEPACK.dpl` |
 | Map/save instances are frozen ability snapshots | informational — ruled "not a bug" | none | `.hsm` / `.asg` / `.csm` |
-| Firmament map level (a 4th map level, index 3) | 🔨 APPLIED, UNTESTED (2026-09-06) — DLL half, v2; editor New-Map dialog and the map-gen tools still to do | `build_maplevel4.py` (v2), plus in-place re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6); UI half `build_skylevel_ui.py` | `AoWEPACK.dpl` (+ `AoWz.exe`/`AoWzCompat.exe` for the UI half) |
-| Abyss map level (a 5th map level, index 4, below Depths) + disabled levels / Map Levels popup | 🔨 APPLIED, UNTESTED (2026-09-27); editor half driven live, game strip rework not yet done | `build_maplevel4.py` (v3), plus in-place re-tunes of `build_skylevel_ui.py` (v4), `build_deved_levelnav.py` (v2, then `build_zigeditor.py`), `build_shipyard_income.py` (`MAX_LEVELS 5`) and `build_townquake_retune.py` | `AoWEPACK.dpl`, `AoWz.exe`, `AoWzCompat.exe`, `AoWDevEd.exe` → `AoWzEd.exe` |
+| Firmament map level (a 4th map level, index 3) | 🔨 APPLIED, UNTESTED (2026-09-06) — DLL half, v2; editor New-Map dialog and the map-gen tools still to do | `build_maplevel4.py` (v2), plus in-place re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6); UI half `build_skylevel_ui.py` | `AoWEPACK.dpl` (+ `AoWz.exe` for the UI half) |
+| Abyss map level (a 5th map level, index 4, below Depths) + disabled levels / Map Levels popup | 🔨 APPLIED, UNTESTED (2026-09-27); editor half driven live, game strip rework not yet done | `build_maplevel4.py` (v3), plus in-place re-tunes of `build_skylevel_ui.py` (v4), `build_deved_levelnav.py` (v2, then `build_zigeditor.py`), `build_shipyard_income.py` (`MAX_LEVELS 5`) and `build_townquake_retune.py` | `AoWEPACK.dpl`, `AoWz.exe`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Registry isolation — own settings tree, so a Ziggurat install can sit beside vanilla | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_regiso.py` | `AoWEPACK.dpl`, `AoWSetup.exe` |
 | AoWSetup install-check `'.'` fallback (companion to the above) | ✅ CONFIRMED WORKING (2026-09-09) | `build_aowsetup_installcheck.py` | `AoWSetup.exe` |
-| Ziggurat exe icon — purple, mirrored | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_icon_purple.py` | `AoWz.exe`, `AoWzCompat.exe` |
+| Ziggurat exe icon — purple, mirrored | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_icon_purple.py` | `AoWz.exe` |
 | Overlay layout — Ziggurat runs entirely out of `Ziggurat\` over a vanilla root | 🔨 APPLIED, UNTESTED (2026-09-09) — launch-verified, not yet played | none (no patch needed; registry only) | `Ziggurat\AoWz.exe` + registry |
 | Ziggurat-oriented editor, purple hexes | 🔨 APPLIED, UNTESTED (2026-09-09) — launches, no map opened | `build_zigeditor.py` | `Ziggurat\AoWzEd.exe` |
 
@@ -320,7 +320,7 @@ never calls `UseItem` at all (UI-only), so this is human-player-only regardless.
 | | |
 |---|---|
 | build script | `build_scripts/build_scroll_spellbook.py` |
-| binaries | `AoWz.exe`, `AoWzCompat.exe` (cave in `.sc`), `AoWEPACK.dpl` (3 gate bytes) |
+| binaries | `AoWz.exe` (cave in `.sc`), `AoWEPACK.dpl` (3 gate bytes) |
 | revert (drop everything, both this feature and the 2026-09-03 hero-tier ruling) | `python build_scripts/build_spellcast_herotier.py --undo --apply` (DLL first) **then** `python build_scripts/build_scroll_spellbook.py --undo --apply` (exes second) |
 | revert (drop only scrolls, keep the 2026-09-03 hero-tier exemption) | **not possible via `--undo`** — re-apply this script with `--append-upto=0` instead, which keeps the current (hero-exempt) prune and emits no scroll append |
 
@@ -484,7 +484,7 @@ the button's visibility is irrelevant on that route.
 
 | stage | reported after | root cause | fix | script |
 |---|---|---|---|---|
-| 1 | (initial report) | `TUnitWindow.UseAbility@0x00409EF7` gates on the **self-only** `ability.vmt+0x74`, with no item leg at all | one site hooked → 27-byte cave `0x0062D000` in `.hcol`; runs the original virtual first, falls back to item-aware `+0x148` only on false | `build_unitwin_ability.py` (AoWz.exe + AoWzCompat.exe) |
+| 1 | (initial report) | `TUnitWindow.UseAbility@0x00409EF7` gates on the **self-only** `ability.vmt+0x74`, with no item leg at all | one site hooked → 27-byte cave `0x0062D000` in `.hcol`; runs the original virtual first, falls back to item-aware `+0x148` only on false | `build_unitwin_ability.py` (AoWz.exe) |
 | 2 | spellbook now opens, but casting a listed spell still silently fails | `cave_tiergate` (`build_spellcast_multiturn.py` M2, in `THero.CanCastSpell`) fetched the caster's Spell Casting level via a **static call to the BASE `TAbstractUnit.GetAbilityLevel`**, bypassing `THero`'s item-aware `+0x144` override entirely — item-granted level resolves to 0, every spell fails `level>=tier`, fail arm returns with no message | dispatch through the vtable slot instead of calling the base statically (+1 byte, re-tuned in place) | `build_spellcast_multiturn.py` (DLL) |
 | 3 | Healing: "I can issue a heal order but it does nothing" | `Activate` only opens targeting; the actual apply runs in a **turn event** (`THealingTE.Execute`/`TDispelMagicAbilityTE.Execute`) which re-resolves the ability and **re-tests the same self-only gate** a second time | one shared 27-byte cave `0x55818240`, same run-original-then-fall-back-to-`+0x148` shape, on both TE `Execute`s | `build_abilityte_itemgrant.py` (DLL) |
 | 4 | Healing works once, then sticks at "Healing (used)" forever | `TAbilityOwner.TriggerNewTurn` enumerates **self-only** (`GetAbCount`/`GetAbSet`) to decide which abilities get `NewTurn()` — the hero holds the per-turn-flag *record* but not the ability *bit* (that's on the item), so `THealingAbility.NewTurn` is never invoked with the hero | re-arm via the hero's **data-record chain** directly (`owner+0x10` list, walk via `GetAbilityID` to the `0x2F` record, `record+0xC=1`) — no ability object, fully PIC | `build_healing_rearm.py`: `E9` hook on `TriggerNewTurn`'s prologue → 44-byte cave `0x55818260` |
@@ -688,7 +688,7 @@ cave from an item patch** — it has its own documented landmine, an MV twin at 
 returns a dirty EAX). The two routes are not exclusive; Route 1's getter-cave hook point is the same
 one Route 2 would use.
 
-**Display — `TItemBanner` (AoWz.exe/AoWzCompat.exe) — BUILT 2026-09-13, `build_itembanner_hpmv.py`;
+**Display — `TItemBanner` (AoWz.exe) — BUILT 2026-09-13, `build_itembanner_hpmv.py`;
 full record in `07-ui.md` §9.** The paint routine (`TItemBanner.IBannerPopupShow @0x00406AE8`) hides
 all eight stat controls, then runs four ~0x7A-byte identical blocks, one icon+label per **non-zero**
 byte among ATK/DAM/DEF/RES. It is a **2-column × N-row flow layout** (`cmp esi,0x82` after
@@ -1001,8 +1001,7 @@ making side-by-side impossible. Moving Ziggurat off it is what makes the copy-pa
 **⚠ Which key a folder uses is a property of the FILES in it, not of its path.** Copy the Ziggurat
 folder today and you get two `Age of Wonders Z` installs sharing one data root again. The vanilla side
 needs unpatched binaries — which then use the plain key with no patch at all. That is more than
-restoring `AoWEPACK.dpl`: `aowInt.dpl`, `AoWTCPCK.dpl`, `HSEPack.dpl`, `Dcpack.dpl`, `AoWz.exe`,
-`AoWzCompat.exe`, `AoWDevEd.exe` and `AoWEd.exe` are all modified here too. A fresh vanilla install into
+restoring `AoWEPACK.dpl`: `aowInt.dpl`, `AoWTCPCK.dpl`, `HSEPack.dpl`, `Dcpack.dpl`, `AoWz.exe` , `AoWDevEd.exe` and `AoWEd.exe` are all modified here too. A fresh vanilla install into
 the second folder is cleaner than reconstructing one.
 
 **Nothing else is required to coexist.** The packages resolve from the exe's own directory, so two
@@ -1132,7 +1131,6 @@ from Ziggurat's `1Scenario\`.
    AoWEPACK.dpl  …          vanilla packages, SHARED
    Release\ Dict\ Images\   vanilla data, SHARED
    AoWz.exe                 Ziggurat (purple dragon)    -> plays Ziggurat
-   AoWzCompat.exe
    Ziggurat\
       AoWEPACK.dpl  AoWTCPCK.dpl  HSEPack.dpl  Ilpack.dpl  aowInt.dpl  vcl30.dpl
       Release\ Dict\ Images\ Int\ Sfx\ 1Scenario\ User\ Save\
@@ -1207,9 +1205,8 @@ Alpha is untouched.
 ### The exe icon — purple, mirrored
 
 **Status: 🔨 APPLIED, UNTESTED (2026-09-09).** `build_icon_purple.py`, backups
-`Ziggurat/backups/AoWz.exe.pre-purpleicon` + `AoWzCompat.exe.pre-purpleicon`, `--undo` exact (the flip is its own
-inverse; round-tripped byte-identical). Applied to **both** exes in lockstep — the script asserts they
-differ only at `0x3BB7C` before and after.
+`Ziggurat/backups/AoWz.exe.pre-purpleicon`, `--undo` exact (the flip is its own
+inverse; round-tripped byte-identical).
 
 One icon: `RT_ICON` id 1, file `0x00073AEC`, **744 bytes**, from `RT_GROUP_ICON` id 6360. 32×32 4bpp,
 `biHeight` 64 (32 image + 32 mask), bottom-up, 40 B header + 64 B palette + 512 B XOR + 128 B AND.
@@ -1584,8 +1581,7 @@ structure while garbage sits there, leaving a dangling pointer in an open window
 8-control unit bar (`TControlWin` has exactly 8 DFM component sets), so units 9–12 have nowhere to draw
 regardless; displaying them is a separate, much larger UI feature (below). Hook budget: 15
 `.reloc`-free bytes at `0x0044EC89..0x0044EC97`, entered only by fall-through — `E9 rel32` + NOPs into a
-small cave (an in-place `cmp/jae` needs 17–19 bytes and doesn't fit). Patch `AoWzCompat.exe` in
-lockstep. If the array is ever widened instead of merely bounded: instance size lives at
+small cave (an in-place `cmp/jae` needs 17–19 bytes and doesn't fit). If the array is ever widened instead of merely bounded: instance size lives at
 `[0x00453FC4-0x1C]` (`0xCC→0xFC`, 12 dwords), and 18 further read/write sites across the slot painter,
 mouse handlers and prev/next-click wraparound would need repointing — not needed for the bugfix alone.
 
@@ -1842,7 +1838,7 @@ Storage is unchanged: the Firmament is level index 3; only the strip's ordering 
 
 Count is read live every time, from `[[[0x0045DF7C]] + 0x10] + 0x14` (`0x0045DF7C` is the
 import slot holding **&TheMap**, `+0x10` its `TMapContainer`, `+0x14` the level count), so a
-3-level map is untouched by this patch. Written to **`AoWz.exe` and `AoWzCompat.exe`**, byte-identical.
+3-level map is untouched by this patch. Written to **`AoWz.exe`**, byte-identical.
 
 **Sites** (AoWz.exe VAs, base `0x400000`; all byte-verified against the live file before patching):
 
@@ -1908,7 +1904,7 @@ entry in `0x00454FE0..0x00455000`, and it is `0x00454FFC`. `0x00451BDC..0x00451B
 **`--undo`** is surgical and touches no backup: it restores the 11 displaced bytes, the 5 displaced
 bytes, `4a`, `42`, all three rel32s, and zeroes the 1024-byte cave — refusing if the cave holds bytes
 the script did not write. Round-tripped 2026-09-06: the undone files are SHA-256-identical to
-`Ziggurat\backups\AoWz.exe.pre-skylevelui` / `Ziggurat\backups\AoWzCompat.exe.pre-skylevelui`.
+`Ziggurat\backups\AoWz.exe.pre-skylevelui`.
 
 **In-game checklist (needs the user):**
 
@@ -1921,7 +1917,7 @@ the script did not write. Round-tripped 2026-09-06: the undone files are SHA-256
 - [ ] **PgUp** from Surface goes to the Firmament; **PgDn** from the Firmament returns to Surface.
 - [ ] **PgUp** while on the Firmament does nothing; **PgDn** while on Depths does nothing.
 - [ ] On a 3-level map PgUp/PgDn still walk Surface ↔ Caverns ↔ Depths and stop at the ends.
-- [ ] Both `AoWz.exe` and `AoWzCompat.exe` still launch.
+- [ ] Both `AoWz.exe` still launch.
 
 ---
 
@@ -1935,7 +1931,7 @@ built on it**, as they can on every level — the tower gate is dead on this ins
 
 ### UI half, v3 — the caption is "Firmament"
 
-`build_skylevel_ui.py` v3 (`AoWz.exe` + `AoWzCompat.exe`). Status `🔨 APPLIED, UNTESTED
+`build_skylevel_ui.py` v3 (`AoWz.exe`). Status `🔨 APPLIED, UNTESTED
 (2026-09-06)`. The level strip's 4th tab now reads **Firmament**. The *terrain* on that
 level is still called **Sky** — only the World Map tab caption changed.
 
@@ -1975,9 +1971,7 @@ every site and rewrites the cave in place; the report calls v1 and v2 "needs re-
 "patched". `--undo` restores the five original byte-runs and zeroes the 0x400-byte cave, and
 refuses if the cave holds bytes none of the three builds would have written.
 
-Hashes: `AoWz.exe` `6cac62eb…b096b` (v2) → `70eb5570…a924c` (v3); `AoWzCompat.exe`
-`6dc0f192…cf4b6b` (v2) → `8b9d87eb…fd0d70` (v3). The two files still differ in exactly one
-byte, file offset `0x0003BB7C` (the script asserts this after every write). A full
+Hashes: `AoWz.exe` `6cac62eb…b096b` (v2) → `70eb5570…a924c` (v3). A full
 `--undo` / `--apply` round trip was run and reproduced the pre-feature backups exactly
 (`3cde90f2…` / `c3cd753f…`).
 
@@ -2116,7 +2110,7 @@ timerres re-apply and the loss of both `.nmg` and this cave. Do not weaken it.
 
 Nothing below can be checked without launching the binaries.
 
-**Game (`AoWz.exe`, and `AoWzCompat.exe` if used):**
+**Game (`AoWz.exe`):**
 1. Open a map with 4 levels. The World Map level strip reads
    **Firmament | Surface | Caverns | Depths**, in that order, left to right.
 2. Click each of the four tabs: the view goes to Firmament / Surface / Caverns / Depths
@@ -2339,7 +2333,7 @@ level-3 predicate. Re-applying an **old revision** of waterheal alone silently r
 Firmament-skip *and* the air Firmament-heal, and nothing in `build_maplevel4.py` will notice.
 
 Not touched: HSEPack.dpl, EngineP.dpl, coordinates, AI, fog, save format, `SetSceneL`, and the
-`AoWz.exe`/`AoWzCompat.exe` UI half (`build_skylevel_ui.py`, exe cave `0x0062A000`).
+`AoWz.exe` UI half (`build_skylevel_ui.py`, exe cave `0x0062A000`).
 
 Still to do, unchanged from the original analysis: `build_deved_newmapgen.py` (fourth
 `TRadioButton`, field table +1, `t_level` 3→4, elimination read at `:680-688`, `:1164-1176`);
@@ -2579,7 +2573,7 @@ the re-applied DLL is SHA-256-identical to the pre-undo one (`1fb61a7c…`). `bu
 
 | script | change |
 |---|---|
-| `build_skylevel_ui.py` **v4** | World Map strip reads **Firmament \| Surface \| Caverns \| Depths \| Abyss** on a 5-level map: 5-entry tables, an "Abyss" const-string record, `Add("Abyss")` when count > 4, every table guard `cmp edx,4`. Layout in the UI-half table above. AoWz/AoWzCompat still differ in one byte; round trip bit-identical |
+| `build_skylevel_ui.py` **v4** | World Map strip reads **Firmament \| Surface \| Caverns \| Depths \| Abyss** on a 5-level map: 5-entry tables, an "Abyss" const-string record, `Add("Abyss")` when count > 4, every table guard `cmp edx,4`. Layout in the UI-half table above. AoWz still differ in one byte; round trip bit-identical |
 | `build_deved_levelnav.py` **v2** | Level Down from Depths reaches the Abyss; both palette flips become "surface page for 0 or 3" (v1's "1 or 2 is underground" would have given the Abyss the surface palette). Then `build_zigeditor.py --apply` rebuilt `AoWzEd.exe`; its `.tres` window matches `AoWDevEd.exe`'s |
 | `build_shipyard_income.py` | `MAX_LEVELS 4 → 8`. The limit is the size of a per-level table (width, height, label offset), not the coordinate system; a map with more levels than rows fails entry's sanity guard and earns **no water income at all**. 8 is above the editor's own z ≤ 7 ceiling, so it no longer follows the cap byte. BSS header `0xA8` B, window grown `0x80 → 0x100` (`0x558FAB00..0x558FABFF`, next claim `0x558FAC00`). `--sim` 57/57 |
 | `build_townquake_retune.py` | "underground" was `level 1 or 2`; now `level ∉ {0, 3}`. `cave_walls` 89 → 92 B, `cave_atk` stays at `0x5584D75C`, so the hook bytes did not move. Same single synced `map.Random(10)` (`rng_audit --owners`: `ok`) |

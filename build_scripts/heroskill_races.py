@@ -2,12 +2,12 @@
 r"""heroskill_races.py -- per-race offer probabilities for the hero level-up dialog.
 
 ⚠ EDITING THIS FILE CHANGES NOTHING ON ITS OWN. The 16x256 table is baked into `Ziggurat\AoWz.exe`
-and `Ziggurat\AoWzCompat.exe` (zigexe.EXES) by `build_heroskill_race.py`. After any change here,
+(zigexe.EXES) by `build_heroskill_race.py`. After any change here,
 re-run
 
     python "Ziggurat/Modding Resources/build_scripts/build_heroskill_race.py" --apply
 
-which rewrites both executables in lockstep, then regenerates the RUNNABLE pair at the game root.
+which rewrites the executable, then regenerates the RUNNABLE pair at the game root.
 Skipping either leaves the old table live with no error anywhere. (Exactly the `herodlg_cats.py`
 DEFAULT_CAT trap that cost QA a finding on 2026-08-27.)
 

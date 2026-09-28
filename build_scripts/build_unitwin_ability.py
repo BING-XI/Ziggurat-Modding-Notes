@@ -94,13 +94,12 @@ then this. See that script's docstring for the `.syd` / SizeOfImage hazard aroun
 
 LOCKSTEP
 --------
-Targets are the canonical mod exes `Ziggurat\AoWz.exe` and `Ziggurat\AoWzCompat.exe` (names from
-`zigexe.py`). ⚠ Follow --apply with ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.) `AoWzCompat.exe` is `AoWz.exe` with one byte different (file 0x3BB7C), so both get the
-identical patch and both are verified before either is written.
+Targets the mod exe `Ziggurat\AoWz.exe` (name from
+`zigexe.py`). ⚠ Follow --apply with ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 Usage:
   python build_scripts/build_unitwin_ability.py           dry run + report current state
-  python build_scripts/build_unitwin_ability.py --apply   patch both exes
+  python build_scripts/build_unitwin_ability.py --apply   patch the exe
   python build_scripts/build_unitwin_ability.py --undo    surgical revert (restore site, zero cave)
   python build_scripts/build_unitwin_ability.py --dis     disassemble the cave as it would be built
 """
@@ -112,7 +111,7 @@ import sys
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 
 EXES = zigexe.EXES
 DLL = "AoWEPACK.dpl"
@@ -332,7 +331,7 @@ def main(argv):
         return 0
 
     if state == "applied":
-        print("\nalready applied -- cave verified byte-for-byte in both exes")
+        print("\nalready applied -- cave verified byte-for-byte in the exe")
         return 0
 
     missing = check_useitems()
@@ -374,7 +373,7 @@ def main(argv):
     for pe in pes:
         again = PE(pe.path)
         assert state_of(again, blob) == "applied", "read-back failed for %s" % pe.path
-    print("\nread-back verified in both exes.")
+    print("\nread-back verified in the exe.")
     print("IN-GAME TEST NEEDED -- this script cannot confirm anything:")
     print("  1. hero with NO innate Spell Casting, give them e.g. Wizard Ring (0x34 level 4);")
     print("     the ability was already listed -- now clicking it must open the spellbook.")

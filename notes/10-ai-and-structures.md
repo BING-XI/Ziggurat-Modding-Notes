@@ -54,10 +54,10 @@ at length below because it exists nowhere else; the build script itself only sho
 | Arena: persistent state, real battle, flat gold/XP/item rewards (Stages 1–3) | ✅ CONFIRMED WORKING (2026-07-31) | `build_arena.py` | `AoWEPACK.dpl` |
 | Arena: three selectable categories + box art (Stage 4a/4b) | 🔨 APPLIED, UNTESTED (2026-07-31) | `build_arena.py` | `AoWEPACK.dpl` |
 | Arena: empty-state map sprite + notice (part of G1/G2) | 🔨 APPLIED, UNTESTED (2026-07-31) | `build_arena.py` | `AoWEPACK.dpl` |
-| Arena: dialog re-layout, three category rows | 🔨 APPLIED, UNTESTED (2026-08-02) | `build_arenadlg.py` | `AoWz.exe` + `AoWzCompat.exe` |
+| Arena: dialog re-layout, three category rows | 🔨 APPLIED, UNTESTED (2026-08-02) | `build_arenadlg.py` | `AoWz.exe` |
 | Arena: tactical combat | SPECULATIVE — hardening contract designed (§5.5), nothing built | — | — |
 | Shipyard water income (1 gold / 5 hexes, divided per water body) | ✅ CONFIRMED WORKING (2026-08-26) · 🔨 v2 MAX_LEVELS=4 re-tune APPLIED, UNTESTED (2026-09-06) | `build_shipyard_income.py` | `AoWEPACK.dpl` |
-| Shipyard income display (map panel gate + Realm-window row) | ✅ CONFIRMED WORKING (2026-08-26) | `build_shipyard_income_display.py` | `AoWz.exe` + `AoWzCompat.exe` |
+| Shipyard income display (map panel gate + Realm-window row) | ✅ CONFIRMED WORKING (2026-08-26) | `build_shipyard_income_display.py` | `AoWz.exe` |
 | Terror — one cast per combat, per side | 🔨 APPLIED, UNTESTED (2026-08-31, v2 per-side) | `build_terror_oncepercombat.py` | `AoWEPACK.dpl` |
 | AI combat-spell anti-spam — Turn Undead / Terror / Slow / Ooze | reference only — a third party's confirmed build; no build script here, nothing applied | — | — |
 | Combat create/destroy + raze diagnostic file logger | diagnostic tool, additive; current live/removed state not re-verified for this merge | `build_combatdiag.py` | `AoWEPACK.dpl` |
@@ -2134,7 +2134,7 @@ militia is another instance of the identical hidden/never-activated-defender pat
 generic (not Arena-specific) by reproducing the identical assert on a guarded exploration site's
 replay before the fix, and confirming the same one-byte fix resolves both.
 
-**Dialog re-layout — `build_arenadlg.py`, `AoWz.exe` + `AoWzCompat.exe` lockstep.** Reuses the
+**Dialog re-layout — `build_arenadlg.py`, `AoWz.exe` lockstep.** Reuses the
 `HeroUpgradeDlg`-style in-place DFM edit recipe verbatim (imported functions, not copied): the dialog
 grows 328→420 px tall, the eight checkboxes collapse to three labelled rows (`U4..U8` hidden), the
 info panel moves beside the column and switches to left-aligned multi-line text, captions become
@@ -2273,7 +2273,7 @@ own against ~3.5 KB of slack) — the cave uses the Delphi heap instead (module-
 `@FreeMem`/`@ReallocMem`/`@FillChar` thunks), allocating and freeing per pass, leaving only a small
 fixed header in BSS.
 
-### 6.4 Display half — `build_shipyard_income_display.py`, `AoWz.exe`+`AoWzCompat.exe`, ✅ CONFIRMED WORKING
+### 6.4 Display half — `build_shipyard_income_display.py`, `AoWz.exe`, ✅ CONFIRMED WORKING
 
 ⚠⚠ **A dry run of this script reports `FAILED pre-checks -- nothing written`, and that is a FALSE
 NEGATIVE, not a broken feature.** Both exes print `mixed  .syd present but nsec=12`. The feature is
@@ -2982,7 +2982,7 @@ the far end, so only a tunneller can leave it until the Drill tunnels onward.
 - **Drill-dug caves (§13) await five owner rulings:** Drill only, or any Tunnelling + Construct
   unit (adds Dwarf Miner 118, Earth Elemental 225); whether the Drill may also build Tower,
   Shipyard, Roads and Rebuild once it has Construct; the turn count; show-and-refuse or hide the
-  cave rows for other Construct units (hiding needs `AoWz.exe` + `AoWzCompat.exe` at `0x43176D`);
+  cave rows for other Construct units (hiding needs `AoWz.exe` at `0x43176D`);
   dig only the far mouth hex or its six neighbours too.
 
 - **AI non-city scorched-earth raze (v6, §3.4): the isolating test was never run.** Re-run the

@@ -57,7 +57,7 @@ lockstep is unaffected (Zig notes 12-re-toolchain.md S4.10).
 ================================================================================
 THE PATCH -- two imm8 bytes, no cave, nothing displaced
 ================================================================================
-Target: `Ziggurat\AoWTCPCK.dpl` (tactical combat package; NOT an exe, so no AoWz/AoWzCompat
+Target: `Ziggurat\AoWTCPCK.dpl` (tactical combat package; NOT an exe, so no AoWz
 lockstep pair applies here).
 
   VA          file off   enc            scan
@@ -90,7 +90,7 @@ Of the ~0.7 s inter-move stall, **0.5 s+ is gone**. No stutter, no change in how
 
 The residue (~0.2 s) is the floor this knob cannot reach: states 3, 4, 5 and 0 each cost exactly
 one frame per action no matter what the budget is, so ~4 x 33.3 ms is structural at FrameRate 30.
-Shortening that further means the frame clock itself -- `AoWz.exe` / `AoWzCompat.exe` DFM
+Shortening that further means the frame clock itself -- `AoWz.exe` DFM
 `FrameRate` 30 at file offset 0x12F8D4 -- which scales the strategic map identically and is a
 separate decision.
 """
@@ -193,7 +193,7 @@ def main():
     try:
         open(path, "wb").write(data)
     except PermissionError:
-        sys.exit("LOCKED -- close AoWz.exe / AoWzCompat.exe / AoWzEd.exe and retry")
+        sys.exit("LOCKED -- close AoWz.exe / AoWzEd.exe and retry")
     print("written.  Re-run with no arguments to verify.")
 
 

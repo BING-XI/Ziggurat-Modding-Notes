@@ -16,7 +16,7 @@ than vanishing from the dialog.
 ⚠ EDITING THIS FILE CHANGES NOTHING ON ITS OWN. The 256-byte table is baked into AoW.exe and
 AoWCompat.exe by `build_herodlg_columns.py` (`exe.wr(D["cattbl"], CATS.lookup_table())`). After
 any change here, re-run `python build_scripts/build_herodlg_columns.py --apply` -- it rewrites
-both executables in lockstep. Skipping it leaves the old table live and the ability lands in
+the executable. Skipping it leaves the old table live and the ability lands in
 DEFAULT_CAT (Magic) with no error anywhere. (Cost QA a finding on 2026-08-27, for Shield.)
 
 ⚠ The 100 vanilla ids are exactly the Ability.pfs records carrying tag 6. Mod-added ids are

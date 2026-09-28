@@ -9,7 +9,7 @@ feature (`06-unit-spellcasting.md`, built from `06-unit-spellcasting.md` and its
 do not duplicate that material here).
 
 All addresses are `AoWEPACK.dpl` preferred-base VAs (base `0x55700000`) unless a section says
-otherwise; `AoWz.exe`/`AoWzCompat.exe` addresses are fixed-base `0x400000` absolutes. The DPL never
+otherwise; `AoWz.exe` addresses are fixed-base `0x400000` absolutes. The DPL never
 loads at its preferred base at runtime, so every DLL cave below is position-independent (rel32
 jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 
@@ -17,8 +17,8 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 
 | Feature | Status | Owning script(s) | Binary/file |
 |---|---|---|---|
-| Sphere-tier spell research (grant-whole-tier, flat cost, grouped picker UI) | ✅ **CONFIRMED WORKING (2026-07-18)** | `build_tierresearch_dll.py`, `build_tierresearch_exe.py`, `build_glowilb.py` | `AoWEPACK.dpl`, `AoWz.exe` + `AoWzCompat.exe`, `Int\Scenes\BookWin.ILB` |
-| Magic tab + Power Distribution name the tier group, not the representative spell | applied 2026-09-27 | `build_magictab_tiername.py` | `AoWz.exe` + `AoWzCompat.exe` |
+| Sphere-tier spell research (grant-whole-tier, flat cost, grouped picker UI) | ✅ **CONFIRMED WORKING (2026-07-18)** | `build_tierresearch_dll.py`, `build_tierresearch_exe.py`, `build_glowilb.py` | `AoWEPACK.dpl`, `AoWz.exe`, `Int\Scenes\BookWin.ILB` |
+| Magic tab + Power Distribution name the tier group, not the representative spell | applied 2026-09-27 | `build_magictab_tiername.py` | `AoWz.exe` |
 | Spellbook hover-glow 2× boost (double-composite redraw) | 🛑 **WITHDRAWN (2026-07-18) — do not apply** | `build_glowboost.py` (script still on disk, never run) | `aowInt.dpl` |
 | Sphere Mastery casting-cost rework (opposed ×1.50 / own ×0.75) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_mastery_cost.py` | `AoWEPACK.dpl` |
 | Vanilla instant-cast raw-cost bug (coupled to Mastery, see below) | ✅ CONFIRMED WORKING (2026-08-27), per its own doc — owned elsewhere | `build_caster_cost.py` — **not one of this file's scripts**; full spec in `03-abilities-added.md` | `AoWEPACK.dpl` |
@@ -27,11 +27,11 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Storm debuff hard protection-block (design not shipped) | superseded pre-build by the roll-vs-RES design | — never built — | — |
 | Animate Dead — permanent undead (`0x82` grant nop-ed) + Archer/Swordsman unit-type cave | 🔨 APPLIED, UNTESTED (recorded 2026-09-04) — **pre-convention hand-edit, no owning script, no `--undo`** | *(none)* — cave `0x5580C290` | `AoWEPACK.dpl` |
 | Astral Ward (ex Spell Ward) — rescoped to block Town Gate + Warp Party only, and renamed | ✅ **CONFIRMED WORKING (2026-09-07)** (rename applied same day, untested) | `build_spellward_rescope.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
-| Power Leech (ex Power Leak) — steal 25% of rival node power | 🔨 APPLIED, UNTESTED (2026-09-07; income row 2026-09-09) | `build_powerleech.py`, `build_powerleech_ui.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `AoWz.exe`+`AoWzCompat.exe`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
+| Power Leech (ex Power Leak) — steal 25% of rival node power | 🔨 APPLIED, UNTESTED (2026-09-07; income row 2026-09-09) | `build_powerleech.py`, `build_powerleech_ui.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `AoWz.exe`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Terror — spell ATK 16 → 12 (five immediates, all move together) | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_terror_atk12.py` | `AoWEPACK.dpl` |
 | Lethargy (ex Slow) — halved movement, one strike fewer, AI value in both combat modes (Embrittle too); Haste +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Warp Party ban — per-map "Disable Warp Party" switch (cast only; research untouched) | 🔨 APPLIED 2026-09-27; editor half driven live | `build_warpban.py` (+ `build_zigeditor.py`) | `AoWEPACK.dpl`, `AoWDevEd.exe` → `AoWzEd.exe` |
-| Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe`/`AoWzCompat.exe` |
+| Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe` |
 | HP/MV casting cost (extra sacrifice on top of points) | SPECULATIVE (85% "in addition", 60% "instead of") | none | `AoWEPACK.dpl` |
 | Unit-enchantment cost/upkeep scaled by target level | SPECULATIVE (85% upkeep, 55% cast-cost) | none | `AoWEPACK.dpl` |
 
@@ -110,7 +110,7 @@ Cosmos has none.
 Caves end `0x5580EEEA` (zone limit `0x5580F400`). Globals (`[0x558FA044]` AoWHSSet,
 `[0x558FA040]` AoWHSMap) reached via the call/pop rebase-delta idiom; in-module calls rel32.
 
-### As built — EXE layer (`build_tierresearch_exe.py`, both exes, backup `.pre-tierresearch`)
+### As built — EXE layer (`build_tierresearch_exe.py`, backup `.pre-tierresearch`)
 
 New section **`.tres`** @ VA `0x611000` (9th section, RVA `0x211000`, `SizeOfImage`
 `0x211000→0x212000`, `NumberOfSections` 8→9). Blob `0x390` B: ROMTAB (8 ptrs) @`0x611000`,
@@ -127,7 +127,7 @@ Roman-numeral literals @`0x611020`+, ICONTAB @`0x61105C` (`0,27,30,33,36,42,39,0
 | `cave_costskip` | `0x6113B0` | 7 B @`0x42EAB1` → jmp+2nop | modes 2/3: skip the "Cost:"/"Upkeep:" mana sections |
 | nil-pushes | — | 4 byte patches @`0x42EDA7`/`AD`/`0x42EE0D`/`13` | research turns label reads just "Turns: N" |
 
-### Magic tab + Power Distribution name the group (`build_magictab_tiername.py`, both exes, 2026-09-27)
+### Magic tab + Power Distribution name the group (`build_magictab_tiername.py`, 2026-09-27)
 
 Four `call TAOWLabel.SetGText` operands retargeted (nothing displaced) plus one 5-byte `jmp` in
 `TMagicWin.SpellIcnDraw`; caves in `.hcol` `0x0062A520..0x0062A9FF`.
@@ -286,7 +286,7 @@ with nothing clickable behind it. Tier research didn't introduce this; it made i
 visible, because one entry now stands for a whole tier's worth of spells.
 
 Byte-verified **vanilla**: `0x42EB40`–`0x42EC10` is identical to `Ziggurat upload/AoW.exe` and
-between `AoWz.exe`/`AoWzCompat.exe`. Why vanilla does it: `TPlayerMagicControl` has exactly **one**
+between `AoWz.exe`. Why vanilla does it: `TPlayerMagicControl` has exactly **one**
 progress counter (`+0x38`) — no per-spell progress map exists anywhere in the serialization
 (`ReadWrite @0x5577C748` only emits ids `0x14` mana / `0x16` researched list / `0x17` current /
 `0x18` points) — so `ExecuteResearchSpell` overwrites `+0x38` unconditionally on a switch,
@@ -300,7 +300,7 @@ revisited (the user's call): *fully clickable* = **one byte**, `0x0042EB9E` `75`
 **short** `jne`, `75 6f` — not the 6-byte near form `dasm.py`'s mnemonic printout might suggest;
 byte-check before quoting a size), silently forfeiting progress on every switch. *Greyed but
 still clickable* = NOP **10 bytes** `0x0042EBFC`–`0x05`, `33 d2 8b 45 1c 8b 08 ff 51 6c`→`90`×10.
-Both exe-only, must move in lockstep across `AoWz.exe`/`AoWzCompat.exe`; neither preserves progress
+Both exe-only; neither preserves progress
 (that needs a new per-spell field + a ReadWrite tag, a materially bigger feature).
 
 ⭐⭐ **Ask this first on any future research complaint — there are THREE cases, not two:**
@@ -358,8 +358,7 @@ DFM's sibling hierarchy, and it is precisely wrong: it writes a page-level Y int
 field. Measured result — identical symptom, row 0 only. The button must be positioned relative to
 its **panel**, i.e. `Top = 0`.
 
-**Fixed by `build_tierresearch_btnfix.py`** 🔨 APPLIED, UNTESTED (2026-09-08), `AoWz.exe` +
-`AoWzCompat.exe`. 6-byte hook at **`0x0042F2DC`** (`mov esi,eax / dec esi / cmp esi,0`,
+**Fixed by `build_tierresearch_btnfix.py`** 🔨 APPLIED, UNTESTED (2026-09-08), `AoWz.exe` . 6-byte hook at **`0x0042F2DC`** (`mov esi,eax / dec esi / cmp esi,0`,
 `.reloc`-free) → cave at **`0x00611F00`** with a slot table at `0x00611EE0`, both in the `.tres`
 section's 288-byte slack. In research modes only, it makes each button exactly fill its own panel
 — `Top = 0`, `TopOffset = 0`, `Height = panel height` — then replays the three displaced
@@ -1342,7 +1341,7 @@ address below still applies. Owner: `build_scripts/build_spellward_rescope.py`.
 Target: **`AoWEPACK.dpl` only** — `TSpell.CanActivate` is reached solely through the spell VMT
 inside the DLL, and the exe's imported `THero.CastSpell` re-runs `CanActivate` at execution, so
 the offer gate and the execution gate are the same function. No exe patch, so no
-`AoWz.exe`/`AoWzCompat.exe` lockstep concern.
+`AoWz.exe` lockstep concern.
 
 ### Vanilla mechanism
 
@@ -1451,7 +1450,7 @@ one may be active map-wide, which was **already vanilla** and needed no code. Co
 unchanged.
 
 Owner: `build_powerleech.py` (the mechanic, `AoWEPACK.dpl`) and `build_powerleech_ui.py` (the
-Magic-window income row, `AoWz.exe` + `AoWzCompat.exe`). Text: `build_resstr_names.py` (name),
+Magic-window income row, `AoWz.exe`). Text: `build_resstr_names.py` (name),
 `build_pfs_typos.py` (description), `build_ziggurat_manual.py` (`NEWMECH_POWERLEECH`).
 
 ### What was written
@@ -1651,7 +1650,7 @@ follows the new value automatically. `GetAIUpkeepPriority @0x557F1078` returns 7
 
 ### The income row — 🔨 APPLIED, UNTESTED (2026-09-09)
 
-Owner: `build_powerleech_ui.py`, on **`AoWz.exe` + `AoWzCompat.exe`**. `AoWEPACK.dpl` is not
+Owner: `build_powerleech_ui.py`, on **`AoWz.exe`**. `AoWEPACK.dpl` is not
 touched by it, and it knows nothing about magic nodes.
 
 The Magic window's tab 4 gains **one row at the end** of the power breakdown:
@@ -1778,9 +1777,7 @@ installed; only the script's self-check is stale.
 `build_powerleech_ui.py --undo --apply` is surgical and touches no backup: `0x0042CFD9` goes back
 to `8B C3 E8 44 56 FD FF` and `0x0062D100..0x0062D2FF` is zeroed, in **both** exes. Round-tripped
 2026-09-09 to files byte-identical to the pre-apply snapshots, and the re-apply reproduced the
-same SHA-256 in both exes. The script refuses to write when the two exes are in different states,
-and re-proves after writing that `AoWz.exe` and `AoWzCompat.exe` differ in exactly one byte, at
-`0x3BB7C`.
+same SHA-256 in both exes.
 
 ### Text and manual, as applied
 
@@ -1826,7 +1823,6 @@ Live `Spells.pfs` record 58: mana 100, upkeep 10, research 110, sphere 0, tier 4
 - [ ] Scroll the list with enough power sources to overflow it — the label and value columns stay
       in step and the new row scrolls with them.
 - [ ] `Power Base`, `Net Mana` and `Research` above the list still read as before.
-- [ ] Repeat once in **AoWzCompat.exe**.
 
 ---
 

@@ -45,6 +45,7 @@ safe, and the traps that have cost this project the most time.
 | **Randomness: five patterns, one selection test.** P1 SYNCED DRAW / P2 COMBAT RAW / P3 COSMETIC RAW / **P5 RESEED-FROM-STATE** (vanilla's own reproducibility idiom — prefer it) / P4 DERIVED HASH (**this project's invention**, only when the decided set can shrink so draw order is unstable) — the set is **closed**; name the pattern in the build script's docstring rather than designing a roll from scratch. P4 makes no draw: `build_scripts/rngstd.py` emits FNV-1a → `fmix32` → multiply-shift as literal bytes, salted from the per-game constant `map[+0x22C]`. ⚠ P4 sites are invisible to `rng_audit.py --owners` by construction — check them with `--hash`. | `12-re-toolchain.md` §4.10 (test, salt evidence, 9 anti-patterns); repo-root `CLAUDE.md` | 2026-09-09 |
 | ⚠⚠ **A moved install keeps loading from the OLD folder.** The engine takes its data root from `HKCU\…\Age of Wonders Z\General\Startup Directory`, not from the exe's location, so copying an installed `Ziggurat\` elsewhere gives hundreds of `Error loading:` dialogs for files that are all present. ⭐ **The tell is that the path in the dialog is not the folder the exe was launched from** — same-folder means missing files, different-folder means stale registry. Caused by `createvalueifdoesntexist` on the installer's two `[Registry]` lines, which meant re-running it could never update the path; **removed 2026-09-15**, so re-running now fixes it. Installers before that need the key deleted by hand. ⭐ Open: an exe-relative data root would remove the class entirely — `TAoWRegistry` in `AoWEPACK.dpl` is the single choke point (`Get/SetStartupDirectory` `0x55705298`/`0x55705248`, rw helper `0x55703D08`). | `12-re-toolchain.md` §13.3 | 2026-09-15 |
 | **The public repo carries a HANDLE.** `BING-XI/Ziggurat-Engine-Mod` commits as **`Ziggurat Mason <156740625+BING-XI@users.noreply.github.com>`** (set globally), never the owner's real name. **Commit messages are player-facing: interesting gameplay changes only, or nothing — no bugfixes, no RE detail, no attribution trailers.** ⚠ GitHub's "Keep my email address private" does **not** stop `git push` exposing an address — the separate "Block command line pushes that expose my email" does, and it is off. ⚠⚠ Force-pushing does not remove a commit from GitHub; get it right before the first push. ⚠⚠ The `$USERNAME` leak scans **miss the git identity** (`<user>` ≠ `<git-name>` ≠ the lowercase gmail) — it hid in `gh-repo/.git/logs/`; clear with `git reflog expire --expire=now --all && git gc --prune=now`. | repo-root `CLAUDE.md`; `12-re-toolchain.md` §13.1a step 6 | 2026-09-14 |
+| **One game exe: `AoWz.exe`.** `AoWzCompat.exe` is retired: deleted, `zigexe.EXES == [GAME_EXE]`, lockstep checks removed, and the installer's `[InstallDelete]` clears old copies. Its one differing byte (`0x3BB7C`) was the city Upgrade relation display (+5 against the engine's +15), not an MP build number. The root `AoWCompat.exe` is GOG's Windows-shim copy of `AoW.exe` (compatibility layers are keyed by path). | `12-re-toolchain.md` §11.2 | 2026-09-28 |
 
 ---
 
@@ -173,7 +174,7 @@ file carries the specific checklist for its own rows.
   2026-09-26): True Seeing ignores the gloom out to its true-sight range.** `build_los_terrain.py` v5; name
   in `build_resstr_names.py`, card text `Ability.pfs` rec 36 in `build_pfs_typos.py`.
   Checklist: `02-abilities-modded.md`, "Mantle of Gloom (was Trail of Darkness)".
-- **Monster Slaying reworked** — 🔨 APPLIED, UNTESTED (2026-09-26): vs Monsters +4 DAM / +4 DEF in
+- **Monster Slaying reworked** — 🔨 APPLIED, UNTESTED (2026-09-26; melee +5 from 2026-09-28): vs Monsters +5 DAM / +5 DEF in
   melee, +2 DAM / +2 DEF at range (breath included), no ATK. DEF is −ATK on the Monster's strike,
   on every melee strike. Shared test `ms_test 0x5584F300`; `build_monster_slaying.py` hooks
   `StrikeDV`/`CalculateUnitStrikes`, and `build_assassin.py`/`build_ranged_slayers.py` generate the
@@ -235,7 +236,7 @@ file carries the specific checklist for its own rows.
   Halfling / Dwarf and raceless at 25 %, Lizardman / Frostling / Orc / Goblin 0 %; Elves see Archery
   and Forestry at 60 % each; **15.6–22.1** of 103 offered per level-up on average, table `818757b6`,
   baked). 🔨 APPLIED, UNTESTED (2026-09-09):
-  `build_heroskill_race.py` on `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe` (6 B displaced at `cf_gate`, today
+  `build_heroskill_race.py` on `Ziggurat/AoWz.exe` (6 B displaced at `cf_gate`, today
   `0x00623E53` — **it moves on every `build_herodlg_columns.py --apply`**, so never hard-code it;
   cave `0x00628000..0x0062A000`, 201 B code + a 16×256 table at `0x00629000`;
   snapshots in `backups\`; surgical `--undo`). Percentages live in **`heroskill_races.py`, which is
@@ -363,7 +364,7 @@ file carries the specific checklist for its own rows.
   `GetLevel` but inherit the base `GetInherentLevel` (`return 0`), so the grant compared 0 vs 0 and
   skipped the record copy — points deducted, no level. ⚠ Also changes the hero level-up dialog's
   Cost column and **Remove** button for these two, through four `GetInherentAbilityLevel` sites in
-  `AoWz.exe`/`AoWzCompat.exe` that a DLL-only scan missed — checklist item 3 in `02-abilities-modded.md`
+  `AoWz.exe` that a DLL-only scan missed — checklist item 3 in `02-abilities-modded.md`
   §B′ exists to close that. ⭐ `--audit` is the reusable sweep for the whole defect class
 - Terror — one cast per combat, per side (v2) — 2026-08-31
 - Leadership — aura instant-refresh on level-up — 2026-07-20
@@ -412,12 +413,12 @@ file carries the specific checklist for its own rows.
   (2026-09-24). The animation pinned the raw seed, so every cast repeated its rolls. The damage pass
   now re-anchors `System.RandSeed` from one synced draw, as the other storms do. Cave `0x5584D240`.
   Surgical `--undo`. Checklist: `04-spells-modded.md`, "Vortex".
-- **Power Leech (ex Power Leak)** — the halving is gone; the caster steals 25% of the power of every magic node owned by another player, and that owner loses the same. 🔨 APPLIED, UNTESTED (2026-09-07): `build_powerleech.py` on `AoWEPACK.dpl` (4 B at `0x5577CEC5`, 1 B at `0x5577CED8`, `cave_powerleech @0x55848000`), plus the rename, the `Spells.pfs` record 58 description and `NEWMECH_POWERLEECH` in the manual. One-at-a-time is **already vanilla** and was verified, not built. The **income row** is a separate patch: `build_powerleech_ui.py` on `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe` (7 B at `0x0042CFD9`, `cave_powerleech_ui @0x0062D100`) adds a "Power Leech (gained)" / "Power Leech (lost)" row to the Magic window's power breakdown — 🔨 APPLIED, UNTESTED (2026-09-09)
+- **Power Leech (ex Power Leak)** — the halving is gone; the caster steals 25% of the power of every magic node owned by another player, and that owner loses the same. 🔨 APPLIED, UNTESTED (2026-09-07): `build_powerleech.py` on `AoWEPACK.dpl` (4 B at `0x5577CEC5`, 1 B at `0x5577CED8`, `cave_powerleech @0x55848000`), plus the rename, the `Spells.pfs` record 58 description and `NEWMECH_POWERLEECH` in the manual. One-at-a-time is **already vanilla** and was verified, not built. The **income row** is a separate patch: `build_powerleech_ui.py` on `Ziggurat/AoWz.exe` (7 B at `0x0042CFD9`, `cave_powerleech_ui @0x0062D100`) adds a "Power Leech (gained)" / "Power Leech (lost)" row to the Magic window's power breakdown — 🔨 APPLIED, UNTESTED (2026-09-09)
 - **Terror — spell ATK 16 → 12** — 🔨 APPLIED, UNTESTED (2026-09-09): `build_terror_atk12.py` on `AoWEPACK.dpl`, pure immediate rewrite, no cave/hook (`0x557F9A81` w1, `0x557F9887`/`0x557F9A0B`/`0x557F9CA6`/`0x557F9D8F` w4; snapshot `backups\AoWEPACK.dpl.pre-terroratk12`; surgical `--undo` restores **16**, not vanilla 6). ⚠ **Terror's power is encoded FIVE times — a partial edit is silent** (different powers in tactical vs auto-resolve vs the AI estimate). ⚠ Vanilla was **6**: the recorded "8 → 16" doubled an undocumented pre-convention Ziggurat value, so **`live / 2` is not the vanilla number** — see the trap in `01-combat-maths.md` §3
 - Embrittle — the whole spell — 2026-09-01 ⚠ **v1 broke startup; a cave that runs at package init must be proved by launching the exe**
 - Grip of Winter — the spell, its description, and its manual prose — 2026-09-01
 - Storm / Poison Plant debuff — roll vs Resistance — 2026-07-30
-- Magic tab (Main) and the Power Distribution dialog name the research group — "Cosmos II" plus its unresearched members, and the sphere's spell-icon disc with a Roman tier numeral — instead of the representative spell (`build_magictab_tiername.py`, both exes, `.hcol` `0x0062A520`) — 2026-09-27
+- Magic tab (Main) and the Power Distribution dialog name the research group — "Cosmos II" plus its unresearched members, and the sphere's spell-icon disc with a Roman tier numeral — instead of the representative spell (`build_magictab_tiername.py`, `.hcol` `0x0062A520`) — 2026-09-27
 - Research Book slot **buttons** now move with their panels (`build_tierresearch_btnfix.py`, hook `0x42F2DC`, cave `0x611F00` in the `.tres` slack, both exes) — 🔨 APPLIED, UNTESTED 2026-09-06 — fixes "some sphere-tiers selectable, others not": `cave_layout` re-pitched the panels for research mode but never moved the sibling `SxBtn` click targets. ⚠ Do **not** retarget the `call` at `0x42F2D7` instead — that is one of `build_tierresearch_exe.py`'s verified hooks and breaks its self-check
 - ⭐⭐ **The Death Altar crash — a STALE `.reloc` ENTRY, not the combat log** (`build_relocfix.py`) — ✅ **CONFIRMED WORKING 2026-09-13** (applied 2026-09-11). The Death/Divine dispatch rewrite in `ExecuteStormDamage` overwrote `mov dx,[0x55780840]` but left its base-relocation at RVA `0x807FB`, so **the loader added the rebase delta to live code on every launch**, smashing `0x557807FD/FE` — the `mov dx,0x20` that is the **Death** arm, and only that arm. Reported as `EExternalException … at 000807FE / External exception 80000003`; `000807FE` is the second corrupted byte and the code varies with the load address. Fixed by flipping the entry type `3 → 0`, plus **ten more** found by the same sweep. ⚠⚠ **Invisible to every static check** — the file, `dasm.py`, the byte-diff and the owning script are all correct. ⚠ The `--audit` needs **all three** of its rules: "dword is not an in-image VA" alone has a systematic false-negative class (an operand at the *end* of the displaced range leaves a residual that still reads as a valid VA — it missed 4 of the 11), and the twin-diff rule that catches those is blind on the editor, which has no vanilla twin. Full decode + the rules in `12-re-toolchain.md` §5.2c; the register of all eleven, the reverse-coupling table and the release-staging caveat in §6.5a
 - Combat-log effect-roll emitter gated to tactical combat only (`build_effectroll_tacticalgate.py`, cave `0x55810500`) — 🔨 APPLIED, UNTESTED 2026-09-06 — the emitter's `CLG1` guard is not a combat gate, so the tactical-only string/ring machinery also ran on the strategic map and in auto-resolve; this confines it. ⚠ It was applied believing it was the Death-altar fix. **It was not** — see the row above. Keep it (running that machinery off the tactical path is still wrong), but it is not known to have fixed anything observable
@@ -429,23 +430,21 @@ file carries the specific checklist for its own rows.
 
 ### UI — `07-ui.md`
 - **"Unit AI": right-click hands your units to the combat AI** (`build_unit_ai.py`, `AoWTCPCK.dpl`
-  + both exes), applied 2026-09-27. A checkbox beside Auto arms it; right-click an own
+  ), applied 2026-09-27. A checkbox beside Auto arms it; right-click an own
   unit (or one in the selection, for the whole selection); the AI's end-of-turn is diverted.
   ⚠ Stacks on `build_taskbar_coords.py`'s `TTBWindow` sites, which then refuses to run: **undo this
   first**. §18.
-- **The taskbar shows the hex under the cursor** (`build_taskbar_coords.py`, both exes) — 🔨 APPLIED,
+- **The taskbar shows the hex under the cursor** (`build_taskbar_coords.py`) — 🔨 APPLIED,
   UNTESTED (2026-09-25). "X,Y,Z" at the right end of the message box. Grows `.ibnr` to `0xD000` as a
   tenant above `build_itembanner_hpmv.py`, whose `--undo` now refuses while it is there. §16.
 - **The name typed at leader customisation becomes the player name** in network games
-  (`build_customize_name.py`, both exes) — 🔨 APPLIED, UNTESTED (2026-09-25). Cave `0x0062A480`. §15.
+  (`build_customize_name.py`) — 🔨 APPLIED, UNTESTED (2026-09-25). Cave `0x0062A480`. §15.
 - **The mouse wheel scrolls an open lobby dropdown** (`build_wheel_combo.py`, aowInt) — 🔨 APPLIED,
   UNTESTED (2026-09-25). Wheel helper slot 3, latch 7. §17.
-- **The event tab stays put while the cursor is over it** (`build_eventlog_hover.py`, `AoWz.exe` +
-  `AoWzCompat.exe`) — 🔨 APPLIED, UNTESTED (2026-09-25). Retargets the scroll-to-newest call at
+- **The event tab stays put while the cursor is over it** (`build_eventlog_hover.py`, `AoWz.exe` ) — 🔨 APPLIED, UNTESTED (2026-09-25). Retargets the scroll-to-newest call at
   `0x0042336A` to a 22 B cave at `0x0062A400` that skips it when `build_wheel_aowint.py`'s hover
   latch holds this list. Checklist: `07-ui.md` §13.
-- **The Magic tab's research line refreshes mid-turn** (`build_magictab_refresh.py`, `AoWz.exe` +
-  `AoWzCompat.exe`) — 🔨 APPLIED, UNTESTED (2026-09-25). The refresh at `0x0042D2CC` also rebuilds
+- **The Magic tab's research line refreshes mid-turn** (`build_magictab_refresh.py`, `AoWz.exe` ) — 🔨 APPLIED, UNTESTED (2026-09-25). The refresh at `0x0042D2CC` also rebuilds
   the research overview (cave `0x0062A440`), and `0x0042D497`'s current-player gate is NOPed.
   Checklist: `07-ui.md` §14.
 - **Resuming a multiplayer save with Customize Leaders ticked no longer hangs**
@@ -474,7 +473,7 @@ file carries the specific checklist for its own rows.
   `'MAINICON'` literal come from **vcl30.dpl** via the rebase delta `[<GetExeName IAT slot>] −
   0x4133C0F8` — `LoadIconA` is in no exe's IAT. (`SendMessageA` *is* in the editor's, 1 of 19 user32
   imports; it goes through vcl30 anyway to keep one cave body across all four files.) `07-ui.md` §8.
-  `build_taskbar_icon.py` on `Ziggurat/AoWz.exe` + `AoWzCompat.exe` + `AoWDevEd.exe`, then
+  `build_taskbar_icon.py` on `Ziggurat/AoWz.exe` + `AoWDevEd.exe`, then
   **`build_zigeditor.py --apply`**.
 - **Hero level-up dialog: Add now acts on the column that actually holds the selection** — 2026-09-10.
   ⚠⚠ `cave_fill` (= `PopulateLists`, which Add **and** Remove call) reset the cached `activecol` to 0
@@ -486,7 +485,7 @@ file carries the specific checklist for its own rows.
   dead Add after an Add+Remove. **Rule: derive the active column by scanning for `Selected ≠ −1`;
   never cache which column a button acts on.** ⚠ Not caused by the same day's `cave_setfmax` scroll
   sync, which was kept — byte-proved by diffing `.hcol` against the 2026-09-09 staged exe. `07-ui.md`
-  §2.4a. `build_herodlg_columns.py` on `Ziggurat/AoWz.exe` + `AoWzCompat.exe`.
+  §2.4a. `build_herodlg_columns.py` on `Ziggurat/AoWz.exe`.
 - **Hero level-up dialog: 960×525 (8 rows/column), and each column now owns its own scrollbar**
   — 2026-09-10. ⚠⚠ One DFM ident fixed three bugs at once: the four cloned Cost lists carried the
   donor's `VScrollBar = AvailableAbilitiesSB`, so the wheel over any Cost column drove column 0,
@@ -494,7 +493,7 @@ file carries the specific checklist for its own rows.
   positioned or made visible (only the list that *references* a bar runs `TAOWListBox.SetSize`'s
   show/place/feed path). **When cloning a DFM component, audit its ident properties for references
   to the donor's siblings** — handler names are meant to be shared, control references are not.
-  `07-ui.md` §2.2a. `build_herodlg_columns.py` on `Ziggurat/AoWz.exe` + `AoWzCompat.exe`.
+  `07-ui.md` §2.2a. `build_herodlg_columns.py` on `Ziggurat/AoWz.exe`.
 - Unit-window party arrows, every entry path — 2026-09-03
 - Combat log — spell labelling (live tactical), touch attacks, effect-landing roll
 - Mouse wheel — editor Win32 scrollbars — 2026-09-02
@@ -639,8 +638,8 @@ file carries the specific checklist for its own rows.
   `.mtb` VirtualSize and MEM_EXECUTE, so `build_deved_listarrows.py --undo` breaks it; undo this
   first. ⚠⚠ Two-step: `--apply` / `--undo`, then **`build_zigeditor.py --apply`**.
 - In-game **item banner shows Hits / Moves bonuses** beside the four combat ones. 🔨 APPLIED,
-  UNTESTED (2026-09-13): `build_itembanner_hpmv.py` on `AoWz.exe` + `AoWzCompat.exe`, `07-ui.md` §9.
-  `TItemBanner` lives **only in the exe pair** — not in any `.dpl`, not in the editor.
+  UNTESTED (2026-09-13): `build_itembanner_hpmv.py` on `AoWz.exe`, `07-ui.md` §9.
+  `TItemBanner` lives **only in the game exe** — not in any `.dpl`, not in the editor.
   `IBannerPopupShow @0x00406AE8` renders the four bonuses as four **unrolled** ~0x7A-byte blocks on a
   2-column grid (`esi` from `0x1E`, `+0x32`, wrap at `0x82`; `y` from `0x64`, `+0x14` per row), so
   this is a cave, not a table edit. New RWX section `.ibnr`; `TITEMBANNER` grown 7411 → 9469 B by four
@@ -961,7 +960,7 @@ file carries the specific checklist for its own rows.
   design. Ported from Inioch's v2; full record + cave + RTL deltas in `12-re-toolchain.md` §3a.
   **In-game checklist:** reproduce the bug, dismiss the stock dialog, read the second one, decode,
   then `--undo`
-- Firmament map level — a 4th map level at index 3, filled with Sky terrain `0x0E`, surface-like vision, global-target spells, storm spells and Bird's View. 🔨 APPLIED, UNTESTED 2026-09-06 (v2): `build_maplevel4.py` (cap byte `0x5577768E` `03→04`, cave `0x55844000`, 250 B, 8 hooks) + in-place cave re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6: earth elementals excluded from the Firmament, air elementals included); UI half `build_skylevel_ui.py` (v3, caption "Firmament") + editor Level Up/Down display order `build_deved_levelnav.py` (`AoWDevEd.exe`, `AoWEd.exe`). Target binaries: `Ziggurat/AoWEPACK.dpl` + `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe`, not the DLL alone. Editor New-Map dialog and the map-gen tools still to do
+- Firmament map level — a 4th map level at index 3, filled with Sky terrain `0x0E`, surface-like vision, global-target spells, storm spells and Bird's View. 🔨 APPLIED, UNTESTED 2026-09-06 (v2): `build_maplevel4.py` (cap byte `0x5577768E` `03→04`, cave `0x55844000`, 250 B, 8 hooks) + in-place cave re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6: earth elementals excluded from the Firmament, air elementals included); UI half `build_skylevel_ui.py` (v3, caption "Firmament") + editor Level Up/Down display order `build_deved_levelnav.py` (`AoWDevEd.exe`, `AoWEd.exe`). Target binaries: `Ziggurat/AoWEPACK.dpl` + `Ziggurat/AoWz.exe`, not the DLL alone. Editor New-Map dialog and the map-gen tools still to do
 - **Abyss map level** — a 5th map level at index 4, a third cave level **below Depths** (order Firmament 3 / Surface 0 / Caverns 1 / Depths 2 / Abyss 4). 🔨 APPLIED, UNTESTED 2026-09-27. `build_maplevel4.py` **v3**: cap byte `04→05`; all twelve `TCave` level±1 sites (CanPlace, PlaceHX ×4, Destroy ×2, MoveExclusive ×2, EnterMovePoints, CanEnterSelection, EnterEx, ArmyPlaced) routed through one order helper at `0x55844100`, so caves link Depths↔Abyss and never touch the Firmament. In-place re-tunes: `build_skylevel_ui.py` v4 (strip "… \| Depths \| Abyss"), `build_deved_levelnav.py` v2 + `build_zigeditor.py` (Level Down reaches it; underground palette), `build_shipyard_income.py` (`MAX_LEVELS 5`, else no water income on a 5-level map), `build_townquake_retune.py` (Abyss counts as underground). Surgical `--undo` on each. **Checklist:** `11-engine-internals.md` "Abyss map level"
 - **Disabled map levels + the editor's Map Levels popup** — any set of levels, Surface always on; a left-out level below the highest is a disabled placeholder (mask `[TAoWHSMap+0x41C]`, saved as id `0x60`). 🔨 APPLIED, UNTESTED in game 2026-09-27 (editor half driven live). `build_maplevel4.py` v4 (mask + caves skip disabled levels), `build_fly_levels.py` relaid out (`fly_next`), `build_levelset.py` (new: Options > Map Levels replaces Add/Remove Level; New Map level checkboxes), `build_deved_levelnav.py` v3 (Level Up/Down skip). Warp Party's destination levels follow the flying order (`build_fly_levels.py` `cave_warp`, hook `0x557EB2CE`). ⚠ Vanilla Remove Level deleted the *viewed* level and renumbered the rest; it is retired. **Not done:** the game strip as two rows with unexplored/disabled cells blank. **Checklist:** `11-engine-internals.md` "Disabled levels"
 

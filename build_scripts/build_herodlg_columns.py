@@ -11,7 +11,7 @@ SUPERSEDES `build_herodlg_tall.py`.
   ones. They no longer size the dialog: see "How tall" below.)
 
 ⚠ RE-RUN --apply AFTER ANY EDIT TO herodlg_cats.py. That file is only the source; the 256-byte
-  lookup table lives in the two executables and is written here by `exe.wr(D["cattbl"], ...)`.
+  lookup table lives in the executable and is written here by `exe.wr(D["cattbl"], ...)`.
   An edit there with no --apply here leaves the old table live and the ability silently lands in
   DEFAULT_CAT (Magic). Caught by QA on 2026-08-27 for build_shield.py's id 176.
 
@@ -152,7 +152,7 @@ New published fields (bound by the DFM reader once the field table is extended; 
     +0x1E0..0x1EC AvailAb2..5   +0x1F0..0x1FC AvailCost2..5   +0x200..0x20C AvailSB2..5
     +0x210..0x21C AvailSort2..5 +0x220..0x22C AvailCSort2..5
 
-Hooks (`Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe`, in lockstep; names from `zigexe.py`.
+Hooks (`Ziggurat/AoWz.exe`; name from `zigexe.py`.
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
     0x446972..0x446A53  whole available-abilities fill loop -> cave_fill (distribute by category)
     0x446BB2..0x446BD1  SetFMax on one scrollbar            -> cave_setfmax (all five, then
@@ -172,7 +172,7 @@ not /DYNAMICBASE so they are never applied in practice, but stale relocs are not
 
 ## Usage
 
-    (no args)                        verify the state of both exes
+    (no args)                        verify the state of the exe
     --apply                          patch (an UNPATCHED exe is first snapshotted to
                                      backups/<exe>.pre-herodlgcolumns; a patched one is not)
     --apply --width W --height H     re-tune the size in place (default 960x525 = 8 list rows)
@@ -202,7 +202,7 @@ import herodlg_cats as CATS
 import build_herodlg_tall as TALL
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
 
-EXES = list(zigexe.EXES)                          # AoWz.exe + AoWzCompat.exe
+EXES = list(zigexe.EXES)                          # AoWz.exe
 BACKUP_SUFFIX = ".pre-herodlgcolumns"
 BACKUP_DIR = os.path.join(GAME, "backups")        # ⚠ never the game root -- rule 2026-09-03
 SECNAME = b".hcol\0\0\0"

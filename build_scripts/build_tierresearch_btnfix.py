@@ -75,8 +75,7 @@ WHERE THE CAVE LIVES -- ⚠ read this before touching build_tierresearch_exe.py
   this fix is a separate call-retarget instead of an edit to `_layout_stores()`. If that script
   is ever rebuilt, re-run this one afterwards.
 
-Both canonical mod exes `Ziggurat\AoWz.exe` + `Ziggurat\AoWzCompat.exe` are patched in lockstep
-(AoWzCompat is AoWz + 1 byte; names from `zigexe.py`). Backups to <game dir>/backups/. Dry-run by
+Patches the mod exe `Ziggurat\AoWz.exe` (name from `zigexe.py`). Backups to <game dir>/backups/. Dry-run by
 default; --apply to write; --undo to revert. Idempotent, verify-before-write. Close every AoW
 binary first.
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
@@ -86,7 +85,7 @@ import os, sys, struct, shutil
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                       # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                       # mod binary names (AoWz.exe)
 EXES = list(zigexe.EXES)
 BACKUP_DIR = os.path.join(GAME, "backups")
 IB = 0x00400000

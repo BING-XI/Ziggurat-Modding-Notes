@@ -2,9 +2,7 @@
 r"""
 AoW1 mod -- COMBAT LOG, exe side (window + ring buffer). See Combat_Log_Implementation_Design.md.
 
-Adds to BOTH canonical mod exes `Ziggurat\AoWz.exe` and `Ziggurat\AoWzCompat.exe` (names from
-`zigexe.py`; byte-identical builds -- verified: they differ by ONE byte @foff 0x3BB7C, untouched
-here; every address below is valid for both).
+Adds to the mod exe `Ziggurat\AoWz.exe` (name from `zigexe.py`).
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
   .clog section @ VA 0x60D000 (RVA 0x20D000, file append @0x207A00, RWE) containing:
@@ -49,15 +47,15 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                       # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                       # mod binary names (AoWz.exe)
 BACKUP_DIR = os.path.join(GAME, "backups")   # ⚠ backups/, never the game root -- rule 2026-09-03
 ks = Ks(KS_ARCH_X86, KS_MODE_32); cs = Cs(CS_ARCH_X86, CS_MODE_32)
 
-# ---------- fixed addresses (AoWz.exe == AoWzCompat.exe) ----------
+# ---------- fixed addresses (AoWz.exe) ----------
 IMG_BASE   = 0x400000
 SEC_VA     = 0x60D000          # new .clog section VA
 SEC_RVA    = SEC_VA - IMG_BASE
-SEC_FOFF   = 0x207A00          # current EOF of both exes
+SEC_FOFF   = 0x207A00          # current EOF of the exe
 RSRC_RVA   = 0x76000           # .rsrc RVA (resource offsets are relative to this)
 HOOK_VA    = 0x459FAF          # call Application.Run  (E8 rel32 -> 0x401764)
 HOOK_CONT  = 0x459FB4
@@ -835,4 +833,4 @@ for exe in zigexe.EXES:
     allok &= ok1
     print()
 print("[dry-run] Re-run with --apply to write (close all AoW binaries)." if not APPLY
-      else ("[done] Both exes patched. Revert: undo surgically -- .pre-combatlog is layer 4/8, costs 4 features." if allok else "[!] not fully applied"))
+      else ("[done] Exe patched. Revert: undo surgically -- .pre-combatlog is layer 4/8, costs 4 features." if allok else "[!] not fully applied"))

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 r"""
 AoW1 Unit Spellcasting -- UI: hide too-high-tier spells from the casting book.
-Patches the canonical mod exes `Ziggurat\AoWz.exe` AND `Ziggurat\AoWzCompat.exe` (names from
-`zigexe.py`).  ⚠ Follow --apply with ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
+Patches the mod exe `Ziggurat\AoWz.exe` (name from `zigexe.py`).  ⚠ Follow --apply with ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 Why this and not the DLL: the "Cast Global Spell" book is filled by the exe calling
 TPlayerMagicControl.ListSpells DIRECTLY (import thunk 0x402654) -- it never routes through
@@ -44,7 +43,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                       # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                       # mod binary names (AoWz.exe)
 EXES = list(zigexe.EXES)
 BACKUP_DIR = os.path.join(GAME, "backups")   # ⚠ backups/, never the game root -- rule 2026-09-03
 

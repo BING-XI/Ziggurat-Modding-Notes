@@ -239,11 +239,13 @@ FIXES = [
      "When attacking, increases the Damage (+5) of the unit's first melee strike.\r\n",
      "Charge (doubling + 2026-08-24 re-grade, full-text row)"),
     # Reworked 2026-09-26 (build_monster_slaying.py / monsterslay.py): the ATK bonus became DEF.
+    # Melee re-tuned +4/+4 -> +5/+5 on 2026-09-28.
     ("Ability.pfs", 122,   5,
      ('Enhanced strikes (+3 Atk/Dam) against monstrous units.\r\n',
-      'Enhanced strikes (+5 Atk/Dam) against monstrous units.\r\n'),
-     'Against monstrous units: +4 Dam and +4 Def in melee, +2 Dam and +2 Def at range.\r\n',
-     "Monster Slaying (2026-09-26 rework: DAM + DEF, no ATK; full-text row)"),
+      'Enhanced strikes (+5 Atk/Dam) against monstrous units.\r\n',
+      'Against monstrous units: +4 Dam and +4 Def in melee, +2 Dam and +2 Def at range.\r\n'),
+     'Against monstrous units: +5 Dam and +5 Def in melee, +2 Dam and +2 Def at range.\r\n',
+     "Monster Slaying (2026-09-26 rework: DAM + DEF, no ATK; 2026-09-28 melee +5; full-text row)"),
     ("Ability.pfs", 123,   5,
      "Reduces the Attack (-4) power of an enemy's first strike against the unit.\r\n",
      "Reduces the Attack (-8) power of an enemy's first strike against the unit.\r\n",

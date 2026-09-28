@@ -215,7 +215,7 @@ banner popup, the unit hover popup, and CreateTCAbList.
 
 After --apply, run BOTH (their LADDERs already carry 0xB3, appended by this feature):
 
-    python build_scripts/build_abilityid_ceilings.py --apply     # 6 sites + 2 lockstep twins
+    python build_scripts/build_abilityid_ceilings.py --apply     # 6 sites
     python build_scripts/build_tcablist_ceiling.py  --apply      # 1 site
 
 Each derives the target from re_tools/ability_names.py, so 0xB2 was added to its MODDED map

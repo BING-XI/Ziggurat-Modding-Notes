@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""
 TASKBAR ICON  --  give the Windows taskbar button a real icon instead of the grey
-placeholder.  AoWz.exe + AoWzCompat.exe + AoWDevEd.exe (-> AoWzEd.exe).
+placeholder.  AoWz.exe + AoWDevEd.exe (-> AoWzEd.exe).
 
 THE DEFECT -- narrower than it looks: ICON_BIG was ALREADY correct, ICON_SMALL was 0
   The taskbar button belongs to Delphi 3's hidden owner window, class `TApplication`.
@@ -56,7 +56,7 @@ THE FIX -- call-retarget, 4 bytes changed per binary, nothing displaced
 
   | binary                    | hook VA    | file off | vanilla bytes  | Initialize thunk |
   |---------------------------|------------|----------|----------------|------------------|
-  | AoWz.exe / AoWzCompat.exe | 0x004599DE | 0x058DDE | e8 71 7d fa ff | 0x00401754       |
+  | AoWz.exe                  | 0x004599DE | 0x058DDE | e8 71 7d fa ff | 0x00401754       |
   | AoWDevEd.exe (-> AoWzEd)   | 0x0042EE52 | 0x02E252 | e8 d1 24 fd ff | 0x00401328       |
 
   Both thunks verified as `jmp dword ptr [<IAT>]` against
@@ -66,7 +66,6 @@ CAVES -- 96 bytes each, exe fixed base 0x400000 so absolute operands are legal
   | binary        | cave VA    | file off | reserved span | host section          |
   |---------------|------------|----------|---------------|-----------------------|
   | AoWz.exe      | 0x0062B000 | 0x225200 | 0x100         | .hcol 0x612000+0x1C000|
-  | AoWzCompat.exe| 0x0062B000 | 0x225200 | 0x100         | .hcol (lockstep)      |
   | AoWDevEd.exe  | 0x00590180 | 0x18A380 | 0x80          | .vgo  0x590000+0x200  |
 
   `.hcol` 0x0062A200..0x0062D000 is a 11.5 KB zero run; 0x0062B000 sits in the middle of
@@ -81,13 +80,13 @@ THE REBASE DELTA -- why the cave reaches into vcl30.dpl at all
   **LoadIconA is in no exe's IAT**, so the delta is needed whatever else is available.
   SendMessageA is the one that differs per binary, and it is NOT absent everywhere:
 
-      AoWz.exe / AoWzCompat.exe    1 user32 import  -- UnionRect @0x0045D3A8.  No SendMessageA.
+      AoWz.exe                     1 user32 import  -- UnionRect @0x0045D3A8.  No SendMessageA.
       AoWDevEd.exe / AoWzEd.exe   19 user32 imports -- SendMessageA @0x00432248.
 
   The editor could call its own SendMessageA and skip one of the two vcl30 loads.  It does
-  not, deliberately: routing both through vcl30 keeps ONE cave body across all four files
-  with only four immediates differing, which is what makes the lockstep check and the
-  editor derive cheap to verify.  It costs 6 bytes.
+  not, deliberately: routing both through vcl30 keeps ONE cave body across all three files
+  with only four immediates differing, which is what makes the editor derive cheap to
+  verify.  It costs 6 bytes.
 
   vcl30.dpl is a package and rebases, so its runtime addresses are recovered from an import
   the exe already has:
@@ -107,7 +106,7 @@ THE REBASE DELTA -- why the cave reaches into vcl30.dpl at all
   6.1's `vcl_delta` worked example does NOT reproduce -- use the GetExeName anchor.
 
 PER-BINARY IAT SLOTS (resolved by import-table walk, not by eye)
-  |                                          | AoWz / AoWzCompat | AoWDevEd / AoWzEd |
+  |                                          | AoWz              | AoWDevEd / AoWzEd |
   | VCL30!Forms.Application       (data)     | 0x0045D5F4        | 0x00432224        |
   | VCL30!Forms.TApplication.GetExeName      | 0x0045D56C        | 0x00432178        |
   | kernel32!GetModuleHandleA                | 0x0045D39C        | 0x00432160        |
@@ -169,8 +168,8 @@ RULED OUT (each with its reason, one line each)
 
 ALTERNATIVE NOT TAKEN
   One PIC cave in `Ziggurat\vcl30.dpl` hooking TApplication.Run @0x4133BC9C would fix
-  AoWz.exe, AoWzCompat.exe and AoWzEd.exe at once with no rebase delta, since all three
-  load that package.  Rejected: it couples to build_wheel_editor.py's existing cave at
+  AoWz.exe and AoWzEd.exe at once with no rebase delta, since both load that
+  package.  Rejected: it couples to build_wheel_editor.py's existing cave at
   0x413A8800 in the same file, it must be position-independent, and it would leave the
   editor SOURCE (AoWDevEd.exe) unpatched so every future editor build would ship without it.
 
@@ -199,10 +198,9 @@ IN-GAME CHECKLIST (nobody has run it -- status is APPLIED, UNTESTED)
   2. Look at the taskbar button -- the purple dragon, not the grey placeholder.
   3. Alt-Tab: the switcher entry must show the same icon.
   4. Win+Tab / taskbar thumbnail preview: icon present in the corner.
-  5. Repeat 1-4 for `Ziggurat\AoWzCompat.exe`.
-  6. Repeat 1-4 for `Ziggurat\AoWzEd.exe` (after build_zigeditor.py --apply) -- and open a
+  5. Repeat 1-4 for `Ziggurat\AoWzEd.exe` (after build_zigeditor.py --apply) -- and open a
      map, to confirm the editor still works, not just that it starts.
-  7. Pin one to the taskbar and relaunch from the pin: the running button must merge with
+  6. Pin one to the taskbar and relaunch from the pin: the running button must merge with
      the pinned one rather than appearing twice with different art.
 
   ⭐ DISCRIMINATOR if it half-works: **Alt-Tab reads ICON_BIG, the taskbar button reads
@@ -236,10 +234,6 @@ ICON_SMALL      = 0
 # derived=True  -> built by build_zigeditor.py from `src`; reported, never written.
 TARGETS = [
     dict(name="AoWz.exe",       derived=False, src=None,
-         hook_va=0x004599DE, thunk=0x00401754,
-         app_slot=0x0045D5F4, getexename_slot=0x0045D56C, getmodhandle_slot=0x0045D39C,
-         cave_va=0x0062B000, cave_span=0x100, section=".hcol", vsz_bump=None),
-    dict(name="AoWzCompat.exe", derived=False, src=None,
          hook_va=0x004599DE, thunk=0x00401754,
          app_slot=0x0045D5F4, getexename_slot=0x0045D56C, getmodhandle_slot=0x0045D39C,
          cave_va=0x0062B000, cave_span=0x100, section=".hcol", vsz_bump=None),

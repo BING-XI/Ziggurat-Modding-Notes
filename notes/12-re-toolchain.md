@@ -5,8 +5,8 @@ see. This file covers: the Ghidra setup and the discipline of reading a **pristi
 safely; naming VMT slots and instance fields straight from the DLL's own export table (the full
 derived VMT layout and field catalogue live here, in full, as the reference); the two-RNG rule; a
 reusable per-hex ring-distance technique; the cave-space allocation convention and the canonical
-table of who owns what; the pristine-reference / backup / revert convention; the process-lock and
-AoWCompat-lockstep rules; and a small ability-id / effect-bit quick reference salvaged from an
+table of who owns what; the pristine-reference / backup / revert convention; the process-lock rule and
+why `AoWCompat.exe` exists; and a small ability-id / effect-bit quick reference salvaged from an
 otherwise-superseded investigation log.
 
 It does **not** cover any specific game feature's design, balance numbers, or in-game checklist —
@@ -802,8 +802,7 @@ constant). `--hash` also requires the script to import `rngstd`: `build_herodlg_
 
 Targets are the live modules in `Ziggurat/`, exe names from `zigexe`. **References are the stock
 copies at the game root**, located by the GOG manifest (`goggame-*.hashdb` lives only there) and
-md5-checked against it on every run: `AoWEPACK.dpl`, `AoW.exe` for `AoWz.exe`, `AoWCompat.exe` for
-`AoWzCompat.exe`, `AoWTCPCK.dpl`, `aowInt.dpl`, `HSEPack.dpl`. `AoWDevEd.exe` has none — the root
+md5-checked against it on every run: `AoWEPACK.dpl`, `AoW.exe` for `AoWz.exe`, `AoWTCPCK.dpl`, `aowInt.dpl`, `HSEPack.dpl`. `AoWDevEd.exe` has none — the root
 copy is modded and the hashdb has no entry — so its sites print unseparated. A missing target, a
 missing reference or a reference that fails the hashdb check exits **2** before anything is printed.
 
@@ -818,7 +817,7 @@ modded draw (§4.8).
 
 24 modded sites in `AoWEPACK.dpl`, plus 3 in `AoWDevEd.exe` (no reference; attributed by
 inspection). Re-measured 2026-09-23 with every other module diffed against its root copy: none in
-`AoWz.exe`/`AoWzCompat.exe` (1 stock RAW site each), `AoWTCPCK.dpl` (273 stock), `HSEPack.dpl`
+`AoWz.exe` (1 stock RAW site each), `AoWTCPCK.dpl` (273 stock), `HSEPack.dpl`
 (9 stock) or `aowInt.dpl` (no entry point). The P4 site `0x006280A9` in both exes
 (`build_heroskill_race.py`) makes no draw and shows only under `--hash`. Changes since the
 2026-08-31 audit:
@@ -936,7 +935,7 @@ Q2b Is the sequence of draws FIXED in length and order between evaluations?
       NO  -> the set being decided can shrink, so draw order is not stable
              -> P4 DERIVED HASH.  done.  (no draw at all; keys on identity)
 Q3  Which binary carries the hook site?
-      AoWz.exe / AoWzCompat.exe / AoWDevEd.exe -> P1 IS UNAVAILABLE (0 SYNC sites in
+      AoWz.exe / AoWDevEd.exe -> P1 IS UNAVAILABLE (0 SYNC sites in
         any of the three; TAoWHSMap.Random not imported).  Use P4, or move the roll
         into AoWEPACK.dpl.
       AoWEPACK.dpl / AoWTCPCK.dpl -> Q4.
@@ -960,7 +959,7 @@ Q4  rng_audit.py <module> --functions ; find the hook site's HOST function:
 > re-deriving it.
 
 Q3's answer is measured, not assumed: `rng_audit.py AoWz.exe --functions` /
-`AoWzCompat.exe` / `AoWDevEd.exe` all print `SYNC: 0`, and none of the three imports
+`AoWDevEd.exe` both print `SYNC: 0`, and neither imports
 `TAoWHSMap.Random` (verified 2026-09-09). An exe cave *could* reach it through the rebase-delta
 idiom (`build_party_random.py` does that for `@RandInt`) — but there is no vanilla SYNC site in
 any of the three to inherit a synchronised context from, so the guard at `GetSynchronised @0x55775608`
@@ -1000,7 +999,7 @@ Read as `[[<map ptr>]] + 0x22C`. ⚠ **The map pointer is per-binary — it is n
 | binary | map pointer | note |
 |---|---|---|
 | `AoWEPACK.dpl` | `[0x558E9494]` → map | in a cave this needs the `call $+5; pop; sub` anchor |
-| `AoWz.exe`, `AoWzCompat.exe` | `[0x0045DF7C]` → map | IAT slot for `AoWEPACK.dpl!AoWE.AoWHSMap`; 678 vanilla sites use `mov eax,[0x0045DF7C]; mov eax,[eax]` |
+| `AoWz.exe` | `[0x0045DF7C]` → map | IAT slot for `AoWEPACK.dpl!AoWE.AoWHSMap`; 678 vanilla sites use `mov eax,[0x0045DF7C]; mov eax,[eax]` |
 | `AoWDevEd.exe` | `[0x0043289C]` → map | **different slot** — the editor is a different build; 119 sites |
 
 (verified 2026-09-09; `AoWEPACK.dpl` also has `[0x558FA040]` = `AoWE.AoWHSMap` reachable *directly*,
@@ -1065,7 +1064,7 @@ Returns literal `bytes`, never an asm string, and assembles nothing.
 | `SIGNATURE` | 6 | `69 c0 6b ca eb 85` — locates P4 sites |
 
 **First shipped P4 site, 2026-09-09** — `build_heroskill_race.py`, the per-race hero level-up offer
-gate, `0x006280A9` in `AoWz.exe` and `AoWzCompat.exe`. Reference implementation for the whole pattern:
+gate, `0x006280A9` in `AoWz.exe`. Reference implementation for the whole pattern:
 salt + 3 keys, `mul` clobbers EDX:EAX so the two values it must keep are pushed across the hash, and
 the script asserts its emitted bytes are `basis() + 4×mix() + fmix32() + range_n(100)` in that order
 before writing. `02-abilities-modded.md` Feature 1.
@@ -1110,7 +1109,7 @@ be position-independent**: rel32 `call`/`jmp`, register-only addressing, or the 
 delta idiom to reach an absolute data address. Reuse a VMT slot that already has a `.reloc` entry, or
 jump *into* existing code to borrow its already-relocated globals.
 
-**Exe caves are the exception.** `AoWz.exe`, `AoWzCompat.exe`, `AoWDevEd.exe` and `AoWzEd.exe` load at a
+**Exe caves are the exception.** `AoWz.exe`, `AoWDevEd.exe` and `AoWzEd.exe` load at a
 fixed base (`0x00400000`), so caves there may use absolute addresses directly.
 
 ### 5.2 ⚠ keystone `push` imm8 trap
@@ -1598,12 +1597,11 @@ Power Leech's reservation ceiling and the guard, and is free but small.)
 
 ### 6.2 Other binaries
 
-**AoWz.exe / AoWzCompat.exe** (base `0x00400000`, lockstep — see §9; identical addresses are valid
-for both, since AoWzCompat is a 1-byte build-number edit of the game exe.  ⚠ The only pair to patch is
-`Ziggurat\AoWz.exe` / `Ziggurat\AoWzCompat.exe`; they run from `Ziggurat\` and resolve their imports
-there, so they are the live files and there is no derived copy and no propagation step. The root holds
+**AoWz.exe** (base `0x00400000`.  ⚠ The only game exe to patch is
+`Ziggurat\AoWz.exe`; it runs from `Ziggurat\` and resolves its imports
+there, so it is the live file and there is no derived copy and no propagation step. The root holds
 only the vanilla `AoW.exe` / `AoWCompat.exe`, which are never targets. **`build_overlay.py` and the
-root `AoWz.exe`/`AoWzCompat.exe` it used to derive were retired and deleted 2026-09-10** — anything
+root `AoWz.exe` it used to derive were retired and deleted 2026-09-10** — anything
 telling you to run it after an exe patch is stale.):
 
 | VA | script | feature |
@@ -1611,7 +1609,7 @@ telling you to run it after an exe patch is stale.):
 | `0x0060C0A8` | `build_spellcast_book_exe.py` (original), **rewritten in place and extended** by `build_scroll_spellbook.py` | `cave_bookfilter` — hides too-high-tier spells from the casting book. **⚠ COUPLED, non-trivially** — full revert-order story in §6.5. |
 | `0x00610720` | `build_bltprobe_exe.py` | diagnostic: captures the original exception behind "Blt Error" |
 | `0x00628000`–`0x00629FFF` | `build_heroskill_race.py` | **exclusive**, `0x2000` — the per-race hero level-up offer gate. `RGT1` magic at `0x00628000`, code `0x00628010` (201 B), the two **fixed** tail-jump slots at `0x00628200`/`0x00628205`, and a 16×256 table at `0x00629000` ending exactly at the squatter floor below. ⚠⚠ **COUPLED to `build_herodlg_columns.py`, which would otherwise unlink it**: its hook sits *inside* `cave_fill`, which that script regenerates on every `--apply`. Both scripts locate the site by pattern (never by constant) and the columns script re-chains via `relink_bytes()`; full story in `02-abilities-modded.md` Feature 1. Also the project's first **P4 derived-hash** site (`rngstd.fmix32` at `0x006280A9`) |
-| `0x0062A000`–`0x0062A3FF` | `build_skylevel_ui.py` | **v4** (captions "Firmament" + "Abyss", 5-entry tables, code base `0x0062A060`, 580 B used) — the AoWz.exe/AoWzCompat.exe half of the Firmament and Abyss map levels: the World Map level strip (`TSWindow.ScannerTab`) and the level-navigation UI. DLL half is `build_maplevel4.py`, cave `0x55844000`. ✅ **Guard is already in place**: `build_herodlg_columns.py` sets `SQUATTER_FLOOR` and asserts it in `apply_to`. That floor moved `0x0062A000` → **`0x00628000`** on 2026-09-09 when the entry above took the top 8 KB; the columns blob tops out at **`0x00624200`** (2026-09-10: 8 rows/column, the per-column scrollbar sync in `cave_setfmax`, and the derive-don't-cache `cave_activelist` of `07-ui.md` §2.4a), leaving **15,872 verified-zero bytes at `0x00624200..0x00628000`** for future exe caves (`0x3E00`) |
+| `0x0062A000`–`0x0062A3FF` | `build_skylevel_ui.py` | **v4** (captions "Firmament" + "Abyss", 5-entry tables, code base `0x0062A060`, 580 B used) — the AoWz.exe half of the Firmament and Abyss map levels: the World Map level strip (`TSWindow.ScannerTab`) and the level-navigation UI. DLL half is `build_maplevel4.py`, cave `0x55844000`. ✅ **Guard is already in place**: `build_herodlg_columns.py` sets `SQUATTER_FLOOR` and asserts it in `apply_to`. That floor moved `0x0062A000` → **`0x00628000`** on 2026-09-09 when the entry above took the top 8 KB; the columns blob tops out at **`0x00624200`** (2026-09-10: 8 rows/column, the per-column scrollbar sync in `cave_setfmax`, and the derive-don't-cache `cave_activelist` of `07-ui.md` §2.4a), leaving **15,872 verified-zero bytes at `0x00624200..0x00628000`** for future exe caves (`0x3E00`) |
 | `0x0062D000` | `build_unitwin_ability.py` | lets a hero use an item-granted activatable ability from the unit window |
 | `0x0062D020` | `build_savedate_format.py` | ISO date in the Load/Save dialog (".hcol" section, after the entry above) |
 | `0x0062B000`–`0x0062B0FF` | `build_taskbar_icon.py` | **exclusive**, `0x100` (96 B used) — sets `WM_SETICON` ICON_BIG + ICON_SMALL on the `TApplication` owner window so the taskbar button stops showing the grey placeholder. Reached by **retargeting the existing `call Forms.TApplication.Initialize` at `0x004599DE`** (4 bytes of operand, nothing displaced); the cave tail-jumps to the real thunk `0x00401754`. Borrows `user32!LoadIconA`/`SendMessageA` and the `'MAINICON'` literal out of **vcl30.dpl** via the rebase delta `[0x0045D56C] − 0x4133C0F8` (that IAT slot is `Forms.TApplication.GetExeName`, preferred VA `0x4133C0F8`) — AoWz.exe imports exactly one user32 function (UnionRect) and neither of those two. Editor half is the `.vgo` row below |
@@ -1619,10 +1617,10 @@ telling you to run it after an exe patch is stale.):
 | `0x00633000`–`0x0063CFFF` | `build_taskbar_coords.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **tenant above `.ibnr`'s owner**: grows `.ibnr` `0x3000 → 0xD000` (SizeOfImage `0x233000 → 0x23D000`, file +40 KB, both exes). Grown `TTBWINDOW` DFM `0x00633000` (35923 B), relocated `TTBWindow` field table `0x0063BC60`, data + code `0x0063BFF0..0x0063C1DC`. Hooks `0x450F77` (7 B), `DisplayMouseMove` method entry file `0x51BB0`, VMT field-table/instance-size, resource entry file `0x731A0`. ⚠ `build_itembanner_hpmv.py --undo` refuses while `.ibnr` > `0x3000`: undo this first. `07-ui.md` §16 |
 | `0x0063D000`–`0x00646FFF` | `build_unit_ai.py` (🔨 APPLIED, UNTESTED 2026-09-27) | **tenant above `build_taskbar_coords.py`**: grows `.ibnr` `0xD000 → 0x17000` (SizeOfImage `0x23D000 → 0x247000`). Grown `TTBWINDOW` DFM `0x0063D000` (36693 B, + `UnitAIBtn`), field table `0x00645F60`, code `0x00646300`–`0x0064639A`. Repoints the three `TTBWindow` sites the coords script owns (resource entry, field table, instance size `0x148 → 0x14C`) plus the `AutoBtn2Click` / `TCMapSeatedPlayerChanged` method entries. ⚠ `build_taskbar_coords.py` aborts on the `.ibnr` size while this is installed: undo this first. `07-ui.md` §18 |
 | `0x0062D100`–`0x0062D2FF` | `build_powerleech_ui.py` | **exclusive**, `0x200` (0xA8 B of data + 107 B of code at `0x0062D1A8`) — the Power Leech income row in `TMagicWin` tab 4, hooked from `0x0042CFD9` (7 B). Also `.hcol`, the next clear `0x100`-aligned slot above `build_savedate_format.py`'s cave (last non-zero `0x0062D07A`); the script asserts `0x0062D0A0..0x0062DFFF` is zero outside its own span. The data half is two Delphi literal AnsiStrings plus a **fake object + 24-slot fake VMT of `xor eax,eax ; ret`** — the name list's `AddObject` object may not be nil, because `PowerSourceListDoubleClick @0x0042D944` and `PowerValueListMouseDown @0x0042D988` deref it unchecked. DLL half is `build_powerleech.py`, cave `0x55848000` |
-| `0x0062A400`–`0x0062A43F` | `build_eventlog_hover.py` | **exclusive**, 22 B used — `cave_evhover`, reached by retargeting the `call SetListOff` operand at `0x0042336A` (4 B, nothing displaced). Skips the event list's scroll-to-newest while `build_wheel_aowint.py`'s hover latch holds it. Patched in lockstep on both exes through `build_scripts/exe_patch.py`; `07-ui.md` §13 |
-| `0x0062A440`–`0x0062A47F` | `build_magictab_refresh.py` | **exclusive**, 24 B used — `cave_magicrefresh`, from the 8-byte prologue of `TMagicWin`'s refresh `0x0042D2CC`; plus the 2-byte NOP at `0x0042D497`. Both exes via `exe_patch.py`; `07-ui.md` §14 |
-| `0x0062A480`–`0x0062A51F` | `build_customize_name.py` | **exclusive**, 125 B used — `cave_custname`, from the 7 B `ctl.Done` call at `0x00416DD8` in `TLeaderSetupWin`'s finish routine: in a network session the customised name becomes registry `General\strings\0` and both pre-lobby name edits. Both exes via `exe_patch.py`; `07-ui.md` §15. ⚠ `build_pbem_leadersetup.py`'s anchor is split around this hook |
-| `0x0062A520`–`0x0062A9FF` | `build_magictab_tiername.py` | **exclusive**, 1029 B used — the Magic tab's research panel and the Power Distribution dialog name the tier group ("Cosmos II" + unresearched members; sphere-coloured spell-icon disc + Roman numeral in the panel's icon box) instead of the representative spell. Four retargeted `call SetGText` operands (`0x0042D0AD`, `0x0042D119`, `0x0042D185`, `0x0042BDFC`) and a 5 B `jmp` at `0x0042D8F5`. Both exes via `exe_patch.py`; `04-spells-modded.md` |
+| `0x0062A400`–`0x0062A43F` | `build_eventlog_hover.py` | **exclusive**, 22 B used — `cave_evhover`, reached by retargeting the `call SetListOff` operand at `0x0042336A` (4 B, nothing displaced). Skips the event list's scroll-to-newest while `build_wheel_aowint.py`'s hover latch holds it. Patched through `build_scripts/exe_patch.py`; `07-ui.md` §13 |
+| `0x0062A440`–`0x0062A47F` | `build_magictab_refresh.py` | **exclusive**, 24 B used — `cave_magicrefresh`, from the 8-byte prologue of `TMagicWin`'s refresh `0x0042D2CC`; plus the 2-byte NOP at `0x0042D497`. Via `exe_patch.py`; `07-ui.md` §14 |
+| `0x0062A480`–`0x0062A51F` | `build_customize_name.py` | **exclusive**, 125 B used — `cave_custname`, from the 7 B `ctl.Done` call at `0x00416DD8` in `TLeaderSetupWin`'s finish routine: in a network session the customised name becomes registry `General\strings\0` and both pre-lobby name edits. Via `exe_patch.py`; `07-ui.md` §15. ⚠ `build_pbem_leadersetup.py`'s anchor is split around this hook |
+| `0x0062A520`–`0x0062A9FF` | `build_magictab_tiername.py` | **exclusive**, 1029 B used — the Magic tab's research panel and the Power Distribution dialog name the tier group ("Cosmos II" + unresearched members; sphere-coloured spell-icon disc + Roman numeral in the panel's icon box) instead of the representative spell. Four retargeted `call SetGText` operands (`0x0042D0AD`, `0x0042D119`, `0x0042D185`, `0x0042BDFC`) and a 5 B `jmp` at `0x0042D8F5`. Via `exe_patch.py`; `04-spells-modded.md` |
 | `0x0062C000`–`0x0062C3FF` | `build_pbem_leadersetup.py` (✅ CONFIRMED WORKING 2026-09-24, both stages) | **exclusive**, `0x400` (944 B used), asserted zero-or-ours, inside the `.hcol` run `0x0062B100..0x0062D000`. Globals `G_EVENT 0x0062C000`, `G_CODE ..04`, `G_DATA ..08`, `G_MODAL ..0C` (byte); `.hcol` is RWX (`0xE0000060`, asserted), so `--undo` is one contiguous zero-fill. `C_SHOW 0x0062C010` (315 B, fixed: the dispatch hook targets it), `C_DONE 0x0062C150` (210 B, calls the DLL's `C_APPLY`), `C_PANEL 0x0062C230` (29 B), `C_OFFER 0x0062C250` (234 B, the P4 offer roll — `rng_audit.py --hash` lists it at `0x0062C301`), panel table `0x0062C340`, `G_VIS 0x0062C390`, `G_PLAYER 0x0062C3A0`. Sites: the rel32 of the `jmp 0x44F51E` at `0x0044F183` (nothing displaced) and a 6-byte E9 over `0x004161C9` in `TLeaderSetupWin`'s available-ability loop. Reads `build_heroskill_race.py`'s table at `0x00629000`. DLL half is the `0x5584C000` row. Full record `07-ui.md` §10.5–10.6 |
 
 ⚠⚠ **`.hcol` below `0x00628000` is NOT allocatable — `build_herodlg_columns.py` zeroes it on every
@@ -1937,7 +1935,7 @@ reservation, or the first apply succeeds and every later run finds two matches.
 ### 6.5 `cave_bookfilter@0x0060C0A8` — one cave, two features, a non-obvious revert order
 
 `build_spellcast_book_exe.py` originally owned this cave (a ~0xA1-byte filter that hides too-high-
-tier spells from the casting book, in AoWz.exe + AoWzCompat.exe). `build_scroll_spellbook.py` absorbed
+tier spells from the casting book, in AoWz.exe). `build_scroll_spellbook.py` absorbed
 it verbatim when it rewrote the cave in place on 2026-07-30, to add scroll-granted spells to the
 filtered list. On 2026-09-03 the filter's own logic changed again, in place, to make the tier test
 **unit-only** per a user ruling ("Spellcasting level should only restrict tier of spell that's
@@ -1995,7 +1993,7 @@ and a type-0 pad at offset 0, so an `(rva, type)` lookup can alias the pad.
 | `AoWEPACK.dpl` | `0x07CC75` | `TPlayerMagicControl.NewTurn+0x49` | `build_tierresearch_dll.py` hook @`0x5577CC72` over `mov eax,[0x558FC958]` — `e9` in v1, **`e8` (call) since v2, 2026-09-24** | the two `nop`s at `0x5577CC77/78` — a rebase delta is a multiple of 64 KB, so a `HIGHLOW` entry at `CC75` moves only the dword's top two bytes; the hook's rel32 (`CC73..CC76`) is never touched. ⚠ **Live since v2**: the grant now returns through those `nop`s to the `jmp 0x5577CD4A` at `0x5577CC79`, so this neutralisation is load-bearing (in v1 they were dead) |
 | `AoWEPACK.dpl` | **`0x0807FB`** | **`ExecuteStormDamage+0x193`** | the Death/Divine dispatch rewrite over `mov dx,[0x55780840]` — ⚠ **no owning build script**, an unowned legacy patch | ⚠⚠ **`mov dx,0x20` — THE DEATH-ALTAR CRASH** |
 | `AoWEPACK.dpl` | `0x082B77` | `TUnit.GetHits+0xF` | `build_medal_hpmv.py` shrank the body to `call 0x5580BE15 / ret` | inter-function padding before `TUnit.GetMoves@0x55782B84` — **dead** |
-| `AoWz.exe` / `AoWzCompat.exe` | `0x02EDAE`, `0x02EE14` | `TSpellBook.SpellBookDestroy+0x686/+0x6EC` | `build_tierresearch_exe.py` nop'd the `push` at `0x42EDAD`/`0x42EE13` | latent |
+| `AoWz.exe` | `0x02EDAE`, `0x02EE14` | `TSpellBook.SpellBookDestroy+0x686/+0x6EC` | `build_tierresearch_exe.py` nop'd the `push` at `0x42EDAD`/`0x42EE13` | latent |
 | ″ | `0x05121C` | `TMWindow.MapWindowUpdate+0x4` | `build_clogwin_gate.py` / `build_combatlog_exe.py` hook @`0x451218` | latent |
 | ″ | `0x00ABF5`, `0x00ACA1` | `0x0040ABF0`, `0x0040AC9C` | `e9` hooks over `mov eax,[0x45A420]` | **orphan tail** — rule A misses these (residual dword `0x0045A420` is a valid VA); caves never resume there |
 | ″ | `0x04723C`, `0x047274` | `TSortClick` sites | `build_herodlg_columns.py` `e9` @`0x447238`/`0x447270` | **orphan tail**, same shape; caves re-implement the displaced code and `ret` |
@@ -5141,11 +5139,11 @@ guarantee; check what the code actually does.
 
 ---
 
-## 11. Process locks and the AoWCompat lockstep rule
+## 11. Process locks and exe names
 
 ### 11.1 Game files are locked while any AoW binary is running
 
-`AoWz.exe`, `AoWzCompat.exe`, `AoWzEd.exe`, `AoWDevEd.exe` (and vanilla `AoW.exe` / `AoWCompat.exe`,
+`AoWz.exe`, `AoWzEd.exe`, `AoWDevEd.exe` (and vanilla `AoW.exe` / `AoWCompat.exe`,
 `AoWEd.exe`) all lock their own files while running. A
 lock surfaces as "Device or resource busy" or a `PermissionError` on write. `AoWDevEd.exe` loads
 `AoWEPACK.dpl`, so it locks the DLL too, not just its own exe.
@@ -5156,41 +5154,43 @@ first. There is nothing to lose: the game autosaves per turn, and the editor pro
 launch regardless.
 
 ```powershell
-Get-Process | Where-Object { $_.ProcessName -match '^(AoW|AoWz|AoWCompat|AoWzCompat|AoWDevEd|AoWzEd|AoWEd|AoWSetup)$' } | Stop-Process -Force
+Get-Process | Where-Object { $_.ProcessName -match '^(AoW|AoWz|AoWCompat|AoWDevEd|AoWzEd|AoWEd|AoWSetup)$' } | Stop-Process -Force
 ```
 
 `AowEmailWrapper` and `Launcher` do **not** lock the binaries — leave them running. Match process
 names exactly with `^...$`, or the `-match` operator will also catch `AowEmailWrapper` by accident
 (it contains "AoW" as a substring).
 
-### 11.2 `AoWzCompat.exe` is `AoWz.exe` with exactly ONE byte changed
+### 11.2 `AoWCompat.exe` is a Windows-shim copy; the mod's twin was retired 2026-09-28
 
-`AoWzCompat.exe` is not a separate binary to analyse. The only difference is file offset `0x3BB7C`
-(VA `0x43C77C`), the reported build number in the multiplayer version check — `0x0F` (v1.36.0015) in
-`AoWz.exe` versus `0x05` (v1.36.0005) in `AoWzCompat.exe`. It exists purely to let this build talk
-multiplayer to peers still on 1.36.0005.
+GOG ships the root `AoW.exe` and `AoWCompat.exe` **byte-identical** (both
+`f2c3630ead01aaae7c3fcd27a88c992d`). Windows compatibility layers are keyed by full path, so GOG
+needs a second file to carry them: `goggame-1207658883.info`'s primary play task is `Launcher.exe
+AoWCompat`, and `goggame-1207658883.script` writes `HKCU\…\AppCompatFlags\Layers\<app>\AoWCompat.exe =
+NT4SP5 DISABLEDWM HIGHDPIAWARE`.
 
-⚠⚠ **The split is a ZIGGURAT property, not a vanilla one** (measured 2026-09-09). GOG ships the
-root `AoW.exe` and `AoWCompat.exe` **byte-identical** — both `f2c3630ead01aaae7c3fcd27a88c992d`, both
-carrying `0x05` at `0x3BB7C`. The 2026-07-24 byte-diff that first recorded this was run on the
-already-modified install, so it described Ziggurat's pair, not stock. Live values: `Ziggurat\AoWz.exe`
-`0x0F` / `Ziggurat\AoWzCompat.exe` `0x05`.
+Ziggurat's twin, `AoWzCompat.exe`, carried no layers (the installer writes none) and differed from
+`AoWz.exe` at one byte: file `0x3BB7C`, the imm32 of `mov dword [ebp-0x14], 0xF` at `0x43C779`. That
+is the integer argument to `AoWE.Format(XRelationPlusYRStr, …)` in the city window, right after
+`TCity.UpgradeTime` — the "<race> relation +N" text for a city Upgrade. The engine gives +15
+(`10-ai-and-structures.md` §12); `AoWz.exe` shows 15, the twin showed vanilla's 5. It was **not** a
+multiplayer build number: the MP handshake (`TSetupControl.ValidateCompatibleVersion` `0x557DFCAC`)
+compares only the top 16 bits of the engine version, `dword [engine+0x58]`, which
+`TAoWEngine.Create` (`0x55797C21`, AoWEPACK.dpl) sets; the exes do not set it.
 
-**Every `AoWz.exe` address, finding, and patch applies to `AoWzCompat.exe` verbatim.** Always patch
-both in lockstep; never reverse-engineer `AoWzCompat.exe` separately — that would just be re-deriving
-`AoWz.exe`'s own analysis under a different filename. If it is ever lost or corrupted: copy
-`AoWz.exe` and flip that one byte back.
+Retired 2026-09-28: deleted from `Ziggurat/`, the staging tree and `backups/`; `zigexe.EXES` is
+`[GAME_EXE]`; the installer's `[InstallDelete]` removes the copy that releases up to 2026.09.27
+installed. A player who wants GOG's layers sets them on `AoWz.exe` (Properties → Compatibility).
 
-**Per-executable patches only affect their own binary otherwise.** `AoWz.exe`/`AoWzCompat.exe` (the
-game) and `AoWDevEd.exe`/`AoWEd.exe` (the editor) are different builds and frequently call *different*
+**Per-executable patches only affect their own binary.** `AoWz.exe` (the game) and
+`AoWDevEd.exe`/`AoWEd.exe` (the editor) are different builds and frequently call *different*
 functions for what looks like the same feature — verify the actual call path in the binary you're
-about to patch; don't assume the editor and the game share code just because the game and its MP
-compatibility twin do.
+about to patch.
 
 ### 11.3 ⭐ Never write an exe name as a literal — `zigexe.py` is the only place a binary is named
 
-`build_scripts/zigexe.py` exports `GAME_EXE` `COMPAT_EXE` `SRC_EDITOR` `LIVE_EDITOR` `EXES`
-`ALL_EXES` `LOCKING_PROCESSES` `COMPAT_BYTE` `VANILLA_EXE` `VANILLA_COMPAT`. It supplies **names,
+`build_scripts/zigexe.py` exports `GAME_EXE` `SRC_EDITOR` `LIVE_EDITOR` `EXES`
+`ALL_EXES` `LOCKING_PROCESSES` `VANILLA_EXE` `VANILLA_COMPAT`. It supplies **names,
 not paths** — joining is the caller's job. Build scripts get it from a sibling `import zigexe`;
 `re_tools` reaches it through `re_tools/zignames.py`, a shim that puts `build_scripts/` on
 `sys.path` and re-exports the module:
@@ -5223,11 +5223,11 @@ defect: `AoW.exe`/`AoWCompat.exe` were the **keys** of its module table — audi
 `Ziggurat/` — not only the reference path they mapped to, so both mod exes dropped out of every
 default run for two weeks with exit code 0 (§4.7). Before exempting a name from a sweep, check
 whether it is used as a target or as a reference. `rng_audit.py` now takes both from `zigexe`:
-`GAME_EXE`/`COMPAT_EXE` as targets, `VANILLA_EXE`/`VANILLA_COMPAT` as references.
+`GAME_EXE` as the target, `VANILLA_EXE` as its reference.
 
-⚠ **A name alone does not locate a binary that is to be LAUNCHED.** `AoWz.exe` and `AoWzCompat.exe`
-exist in **both** trees: the pair in `Ziggurat\` is the canonical patch source that nothing runs,
-and `build_overlay.py` derives the runnable pair at the **root**. The editors are the other way
+⚠ **A name alone does not locate a binary that is to be LAUNCHED.** `AoWz.exe` existed in
+**both** trees until 2026-09-10: the copy in `Ziggurat\` was the patch source, and `build_overlay.py`
+derived the runnable copy at the **root**. The editors are the other way
 round — they run from `Ziggurat\`. `veh_capture.py`'s `resolve_target()` is the worked example, and
 it launches with `cwd` = the resolved exe's own directory, not `GAME`.
 
@@ -5388,10 +5388,7 @@ file-by-file against the live install: 962/962 MD5 match.
 
 ⚠ **A staged tree goes stale the moment any script applies.** `AoW.exe`/`AoWCompat.exe` were rebuilt
 after the first packaging run and the zip silently carried the old pair. Re-run `--stage` (it
-overwrites) and re-hash staged-vs-live before every upload; the exe pair's own check is that they
-differ at **exactly one** offset, `0x3BB7C` (`0x0F` in `AoWz.exe`, `0x05` in `AoWzCompat.exe`) — a
-bugfix applied to only one of them shows up here and nowhere else. ⚠ That check is meaningless
-against the *vanilla* pair, which is byte-identical; see §11.2.
+overwrites) and re-hash staged-vs-live before every upload.
 
 The eight patched binaries shipped: `AoW.exe`, `AoWCompat.exe`, `AoWEPACK.dpl`, `AoWTCPCK.dpl`,
 `aowInt.dpl`, `vcl30.dpl` (mouse wheel, `build_wheel_vclpump.py`), `HSEPack.dpl`, `Ilpack.dpl`.
@@ -5464,9 +5461,7 @@ that anything the authoring tools *write* becomes payload the moment it exists.
 2. Revert every diagnostic; confirm via the CHANGED/SAME counts moving (§13 preamble).
 3. `build_relocfix.py --audit` — any feature that displaced bytes can have left a stale entry, and
    that is invisible to every other check (§5.2c).
-4. Verify the exe pair differs at **exactly one** offset, `0x3BB7C` (`0x0F`/`0x05`) — §11.2. A fix
-   applied to only one of them shows up here and nowhere else.
-4a. `build_scripts/build_version_stamp.py <AppVer> --apply` — the in-game version text is the
+4. `build_scripts/build_version_stamp.py <AppVer> --apply` — the in-game version text is the
    release date (§13.5). `build_installer.py` refuses a staged payload stamped with another date.
 5. `mod_manifest.py --stage <path> --json <path>`, then **orphan check** (staged-on-disk minus the
    manifest) and **staged-vs-live MD5**, both to 0 / N-of-N. Re-stage after *any* later patch.
@@ -5742,7 +5737,9 @@ resolved one (`build_dlgdirs.py` did, `08-editor.md`).
 ### 13.5 The version number is the release date (from 2026-09-28)
 
 Owner ruling 2026-09-28: the version shown in game is the release date, `YYYY.MM.DD`, the same
-string as the installer AppVer and the tag. `build_version_stamp.py <ver> --apply` writes
+string as the installer AppVer and the tag. A second release on the same day appends a letter,
+`2026.09.28b` (owner, same day); `update.ps1` compares versions by string equality, so the letter is
+what makes it offer the release to players on the earlier build. `build_version_stamp.py <ver> --apply` writes
 `Version: Ziggurat <ver>` into the `[US]` slot of `Version: %s` in `Dict/ResStr.mld` + `.txt`.
 
 Both screens that show a version format `AoWE.VersionXRStr` through that dictionary, but pass

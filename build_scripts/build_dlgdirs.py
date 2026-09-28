@@ -110,7 +110,7 @@ WHERE THE INI PATH COMES FROM  (v2 -- this used to be a baked-in absolute path)
                    -> append "AoWEd_LastDirs.ini"
 
   hModule = NULL is deliberate: it yields the *host process* image path, and all
-  four hosts (AoWz / AoWzCompat / AoWzEd / AoWDevEd) live in Ziggurat\.
+  four hosts (AoWz / AoWzEd / AoWDevEd) live in Ziggurat\.
   HSEPack.dpl does not import GetModuleHandleA, so NULL is also the only option.
   The result is cached in PATHBUF; the loader-zeroed first byte is the "not yet
   built" flag, so there is no separate init flag and no init hook.
@@ -168,10 +168,10 @@ HOOKS -- every site is a 5-byte `call <import thunk>` replaced 1:1 by
       0x556152BD THSMEdit.Load / 0x55614E65 THSMEdit.SaveAs (the post-save one)
       0x55615EE5 THSSEdit.Load / 0x55615C8E THSSEdit.SaveAs
 
-  Ziggurat\HSEPack.dpl is also loaded by AoWz.exe / AoWzCompat.exe / AoWzEd.exe.
+  Ziggurat\HSEPack.dpl is also loaded by AoWz.exe / AoWzEd.exe.
   The patched functions are editor-only entry points -- an import-table scan
   confirms only AoWDevEd.exe and AoWzEd.exe import THSSEdit.Load/.SaveAs at all,
-  AoWz.exe/AoWzCompat.exe and every .dpl import zero THS?Edit symbols -- and the
+  AoWz.exe and every .dpl import zero THS?Edit symbols -- and the
   cave is fully self-contained + host-agnostic (no absolute exe addresses), so
   riding along in the game is inert.
   ⚠ AoWEd.exe does NOT get this for free. It exists only at the game ROOT, has 6

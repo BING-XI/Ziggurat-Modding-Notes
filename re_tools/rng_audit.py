@@ -63,7 +63,6 @@ ROOT = os.path.dirname(HASHDB)
 REFS = {
     "AoWEPACK.dpl":    "AoWEPACK.dpl",
     zigexe.GAME_EXE:   zigexe.VANILLA_EXE,
-    zigexe.COMPAT_EXE: zigexe.VANILLA_COMPAT,
     "AoWTCPCK.dpl":    "AoWTCPCK.dpl",
     "aowInt.dpl":      "aowInt.dpl",
     zigexe.SRC_EDITOR: None,        # the root copy is modded too; the hashdb has no entry
@@ -263,7 +262,7 @@ def _cave_index():
 
 def _names_module(fn, modname):
     """Does script `fn`'s code name `modname` as a target -- by literal or by zigexe constant?"""
-    toks = [modname] + ["zigexe." + c for c in ("GAME_EXE", "COMPAT_EXE", "SRC_EDITOR",
+    toks = [modname] + ["zigexe." + c for c in ("GAME_EXE", "SRC_EDITOR",
                                                 "LIVE_EDITOR")
                         if getattr(zigexe, c) == modname]
     if modname in zigexe.EXES:

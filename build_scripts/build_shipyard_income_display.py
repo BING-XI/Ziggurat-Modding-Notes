@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-AoW1 SHIPYARD WATER INCOME -- the DISPLAY half (`Ziggurat\AoWz.exe` + `AoWzCompat.exe`,
+AoW1 SHIPYARD WATER INCOME -- the DISPLAY half (`Ziggurat\AoWz.exe`,
 LOCKSTEP; names from `zigexe.py`).  ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 The income mechanic itself lives in build_shipyard_income.py (AoWEPACK.dpl, TShipyard VMT
@@ -143,7 +143,7 @@ CROSS-SCRIPT COUPLING -- measured with `.syd` installed, 2026-08-26
       truncating someone else's section, so there is no self-service way out.
       So: undo `.syd` FIRST, re-apply either of them from scratch, then re-apply `.syd`.
 
-Backups: backups\AoWz.exe.pre-shipyarddisplay / backups\AoWzCompat.exe.pre-shipyarddisplay --
+Backup: backups\AoWz.exe.pre-shipyarddisplay --
          taken ONLY from a
 file proved unpatched by this feature (10 sections, EOF 0x228200, both sites vanilla). Never
 on --undo, never on a re-tune.
@@ -183,7 +183,7 @@ GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 
 EXES = list(zigexe.EXES)
 BACKUP_SUFFIX = ".pre-shipyarddisplay"
@@ -195,7 +195,7 @@ SEC_NAME = b".syd"
 SEC_VA = 0x0062E000
 SEC_RVA = SEC_VA - IB            # 0x22E000, exactly the end of .hcol
 SEC_SIZE = 0x1000
-SEC_FOFF = 0x00228200            # current EOF of both exes (asserted)
+SEC_FOFF = 0x00228200            # current EOF of the exe (asserted)
 EXP_NSEC = 10
 EXP_SOI = 0x0022E000
 NEW_SOI = 0x0022F000
@@ -241,7 +241,6 @@ ROWS_SHA1 = "719d65d6df6af0f78cc339ce34fdfff62f5966f4"
 JE_VA, JE_BYTES = 0x00449180, bytes.fromhex("744a")   # je 0x4491CC -- lands on the hook
 
 UNRELATED = ["AoWEPACK.dpl", "AoWDevEd.exe"]
-LOCKSTEP_BYTE = zigexe.COMPAT_BYTE  # AoWzCompat.exe = AoWz.exe with this one byte 0x0F -> 0x05
 
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
 cs = Cs(CS_ARCH_X86, CS_MODE_32)
@@ -953,7 +952,7 @@ def main():
     before = {f: hashlib.sha256(open(os.path.join(GAME, f), "rb").read()).hexdigest()
               for f in UNRELATED if os.path.exists(os.path.join(GAME, f))}
 
-    print("=== shipyard income DISPLAY (%s + %s) ===" % (EXES[0], EXES[1]))
+    print("=== shipyard income DISPLAY (%s) ===" % ", ".join(EXES))
     print("cave_sum %08X  cave_row %08X  literal %08X  blob %d/%#x bytes"
           % (CAVE_SUM, CAVE_ROW, LIT_SHIPYARDS, len(blob), SEC_SIZE))
 
@@ -1014,21 +1013,7 @@ def main():
         print("  %-14s %s" % (exe, results[exe]))
 
     # ---- post-write verification ----
-    a = open(os.path.join(GAME, EXES[0]), "rb").read()
-    b = open(os.path.join(GAME, EXES[1]), "rb").read()
     good = True
-    if len(a) != len(b):
-        print("  LOCKSTEP FAIL: lengths %#x vs %#x" % (len(a), len(b)))
-        good = False
-    else:
-        diff = [i for i in range(len(a)) if a[i] != b[i]]
-        if diff == [LOCKSTEP_BYTE]:
-            print("  lockstep OK: exactly one differing byte at %#x (%02X vs %02X)"
-                  % (LOCKSTEP_BYTE, a[LOCKSTEP_BYTE], b[LOCKSTEP_BYTE]))
-        else:
-            print("  LOCKSTEP FAIL: %d differing bytes %s"
-                  % (len(diff), [hex(x) for x in diff[:8]]))
-            good = False
     for f, sha in before.items():
         now = hashlib.sha256(open(os.path.join(GAME, f), "rb").read()).hexdigest()
         if now != sha:

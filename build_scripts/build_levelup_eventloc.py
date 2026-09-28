@@ -128,7 +128,7 @@ BEHAVIOUR NOTES
 * Pre-patch events (existing saves) keep following the hero.
 * After --undo, a save made with the patch still loads: the reader ignores property 0x1D.
 
-BINARY -- AoWEPACK.dpl only.  Nothing in AoWz.exe / AoWzCompat.exe changes.
+BINARY -- AoWEPACK.dpl only.  Nothing in AoWz.exe changes.
 
 USAGE
     python build_scripts/build_levelup_eventloc.py            # verify only (never writes)

@@ -47,7 +47,7 @@ PLACEMENT
 AoWz.exe is fixed-base 0x400000, so absolute addressing is fine here -- no PIC needed, unlike the DPL.
 NOTE 0x60D004..0x60F020 also scans as free but is the combat-log ring buffer; never allocate there.
 
-Patches BOTH canonical mod exes `Ziggurat\AoWz.exe` and `Ziggurat\AoWzCompat.exe` (names from
+Patches the mod exe `Ziggurat\AoWz.exe` (names from
 `zigexe.py`; byte-identical at this site, and the notes record the compat twin being silently
 skipped once). ⚠ Follow --apply with ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.) Idempotent, verify-before-write, dry-run by default, --apply / --revert.
 Backups: backups\<exe>.pre-bltprobe, minted ONLY from a file proved to carry neither the hook nor
@@ -60,7 +60,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 EXES = zigexe.EXES
 BACKUP_DIR = os.path.join(GAME, "backups")      # ⚠ backups/, never the game root -- rule 2026-09-03
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
@@ -258,7 +258,7 @@ def main():
         print("  [w ] %-14s %08X  %s" % (exe, va, desc))
 
     if revert:
-        print("\n[done] both exes restored to stock.")
+        print("\n[done] exe restored to stock.")
     else:
         print("\n[done] Reproduce the wall hit, LEAVE THE DIALOG UP, then:\n"
               "         python \"Modding Resources/re_tools/read_bltprobe.py\"")

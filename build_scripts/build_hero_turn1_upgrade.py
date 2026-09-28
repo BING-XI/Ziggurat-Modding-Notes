@@ -113,7 +113,7 @@ MP     -- deterministic: two pure reads and one byte decrement, no clock, no RNG
           streamed (THero.ReadWrite tags 0x16 and 0x27), so the save format does
           not move.  ⚠ Standing rule: no mixed modded / unmodded multiplayer.
 BINARY -- AoWEPACK.dpl only.  THero.NewTurn and THero.NewDay live nowhere else, so
-          there is no AoWz.exe / AoWzCompat.exe lockstep half.
+          there is no AoWz.exe lockstep half.
 
 ================================================================================
 GUARD 4 (v3, 2026-09-24) -- the PBEM day-1 LEADER is left alone

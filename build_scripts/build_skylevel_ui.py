@@ -1,4 +1,4 @@
-"""Firmament and Abyss map levels, v4 -- the AoWz.exe / AoWzCompat.exe (UI) half.
+"""Firmament and Abyss map levels, v4 -- the AoWz.exe (UI) half.
 
 A 4th map level is stored at index 3 and DISPLAYED ABOVE Surface, captioned "Firmament".
 (The *terrain* on it is still called Sky -- only the level strip's caption is Firmament.)
@@ -20,7 +20,7 @@ those builds and re-tunes them in place): the two tables are five dwords each, s
 
 The DLL half (level count, generation, serialisation, terrain) lives in
 `build_maplevel4.py` and is NOT touched here.  This script writes only to the canonical mod
-exes `Ziggurat/AoWz.exe` and `Ziggurat/AoWzCompat.exe` (names from `zigexe.py`).
+exes `Ziggurat/AoWz.exe` (names from `zigexe.py`).
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 Level count is read live, so a 3-level map keeps exactly three tabs and vanilla behaviour:
@@ -147,15 +147,12 @@ RNG: this feature makes no random draw of any kind.
 --------------------------------------------------------------------------------------
 USAGE
 --------------------------------------------------------------------------------------
-    python build_skylevel_ui.py            dry run: verify the current state of both exes
-    python build_skylevel_ui.py --apply    patch both exes (backup to <game>\\backups\\)
+    python build_skylevel_ui.py            dry run: verify the current state of the exe
+    python build_skylevel_ui.py --apply    patch the exe (backup to <game>\\backups\\)
     python build_skylevel_ui.py --undo     surgical restore: the 11 displaced bytes, the
                                            5 displaced bytes, 4a / 42, the three rel32s,
                                            and zero the 0x400-byte cave.  Touches no backup.
     python build_skylevel_ui.py --dis      capstone-disassemble every cave block
-
-AoWz.exe and AoWzCompat.exe get byte-identical writes; the script asserts afterwards that the
-two files still differ in exactly one byte, at file offset 0x0003BB7C.
 """
 
 import os, sys, struct, shutil
@@ -170,8 +167,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 
 import zigexe                                      # mod binary names
 
-TARGETS = [os.path.join(GAME, n) for n in zigexe.EXES]   # AoWz.exe + AoWzCompat.exe
-COMPAT_DIFF_OFF = zigexe.COMPAT_BYTE  # the single byte that makes AoWzCompat AoWzCompat
+TARGETS = [os.path.join(GAME, n) for n in zigexe.EXES]   # AoWz.exe
 
 BACKUP_DIR = os.path.join(GAME, "backups")
 
@@ -656,18 +652,6 @@ def disassemble():
 
 
 # ---------------------------------------------------------------- apply / undo
-def compat_check():
-    a = open(TARGETS[0], "rb").read()
-    b = open(TARGETS[1], "rb").read()
-    require(len(a) == len(b), "%s / %s differ in length" % tuple(zigexe.EXES))
-    d = [i for i in range(len(a)) if a[i] != b[i]]
-    require(d == [COMPAT_DIFF_OFF],
-            "%s and %s must differ in exactly one byte at 0x%08X; got %s"
-            % (zigexe.EXES[0], zigexe.EXES[1], COMPAT_DIFF_OFF,
-               [hex(x) for x in d[:8]]))
-    print("lockstep ok: the two exes differ in exactly one byte, 0x%08X" % COMPAT_DIFF_OFF)
-
-
 def backup(img):
     """Mint a .pre-skylevelui snapshot ONLY from a file positively proved unpatched."""
     st, bad, cz, co = state(img)
@@ -730,14 +714,12 @@ def apply_all(undo=False):
         print("    written")
 
     print()
-    compat_check()
-    print()
     show_state()
 
 
 def main():
     args = sys.argv[1:]
-    print("Firmament + Abyss map levels -- UI half (%s + %s), v4" % tuple(zigexe.EXES))
+    print("Firmament + Abyss map levels -- UI half (%s), v4" % ", ".join(zigexe.EXES))
     print("cave 0x%08X (%d/%d B used)  order=%s  captions=%s\n"
           % (CAVE, CAVE_USED, CAVE_BLOCK, list(ORDER_VALS), [t.decode() for t in CAPTIONS]))
     if "--dis" in args or "--show" in args:

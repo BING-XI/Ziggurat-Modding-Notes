@@ -7,10 +7,10 @@ build_ranged_slayers.py (whose caves carry two of the five Monster Slaying sites
 script: it has no --apply of its own.
 
 ====================================================================================
-THE RULE (owner's design, 2026-09-26)
+THE RULE (owner's design, 2026-09-26; melee re-tuned +4/+4 -> +5/+5 on 2026-09-28)
 ====================================================================================
 Monster Slaying (ability 0x70) against a Monster (marker 0x3F):
-    melee   +4 DAM when the slayer strikes a Monster, +4 DEF when a Monster strikes the slayer
+    melee   +5 DAM when the slayer strikes a Monster, +5 DEF when a Monster strikes the slayer
     ranged  +2 DAM on the slayer's shots/breath,      +2 DEF against a Monster's shots/breath
 No ATK bonus any more (it was +5 melee / +2 ranged).  The DEF half applies to EVERY melee strike --
 deliberate, retaliation, opportunity, Round Attack -- unlike Parry, which sits on the deliberate
@@ -69,10 +69,14 @@ import struct
 
 REWORK = True          # False = the owner scripts emit the pre-2026-09-26 inline blocks
 
-MELEE_DAM  = 4         # 2026-09-26, owner's numbers, current scale
-MELEE_DEF  = 4
+MELEE_DAM  = 5         # 2026-09-28, owner's numbers, current scale (4 from 2026-09-26)
+MELEE_DEF  = 5
 RANGED_DAM = 2
 RANGED_DEF = 2
+
+# Every number a re-tune may find installed. The owner scripts regenerate their bodies across this
+# range and accept any of them, so changing a number above is an in-place rewrite.
+RETUNE = range(1, 13)
 
 ZONE_VA    = 0x5584F300
 ZONE_LIMIT = 0x100

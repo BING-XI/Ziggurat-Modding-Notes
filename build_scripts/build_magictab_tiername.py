@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 r"""
 build_magictab_tiername.py -- the Magic tab and the Power Distribution dialog name the research
-GROUP ("Cosmos II" + its member spells), not the representative spell.  AoWz.exe + AoWzCompat.exe
-(lockstep, exe_patch.py).
+GROUP ("Cosmos II" + its member spells), not the representative spell.  AoWz.exe
+(exe_patch.py).
 
 Tier research (build_tierresearch_dll.py / _exe.py) researches a whole (sphere, tier) group, but
 [magic+0x34] still holds one representative spell id.  The spell book was re-labelled; these two

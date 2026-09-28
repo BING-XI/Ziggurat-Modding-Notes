@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""
-ZIGGURAT EXE ICON  --  purple dragon, mirrored.  `Ziggurat\AoWz.exe` + `AoWzCompat.exe`
-(names from `zigexe.py`).  ⚠ The exe is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from
+ZIGGURAT EXE ICON  --  purple dragon, mirrored.  `Ziggurat\AoWz.exe`
+(name from `zigexe.py`).  ⚠ The exe is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from
 `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step;
 that script is retired.)
 
@@ -50,12 +50,6 @@ THE FLIP
   by nibble, not by byte; the AND mask is 1bpp and reverses by bit.  Row ORDER is left
   alone -- these are bottom-up bitmaps and a horizontal flip does not touch that.
 
-LOCKSTEP
-  `AoWzCompat.exe` is `AoWz.exe` with one byte changed (file 0x3BB7C, 0x0F -> 0x05), so
-  it gets the identical edit -- see CLAUDE.md.  The script asserts the two files differ
-  in exactly that one byte before writing and again afterwards; if that ever fails,
-  stop, because the lockstep assumption has broken somewhere else.
-
 --undo restores the original palette entries and un-mirrors both bitmaps.  The flip is
 its own inverse, so --undo is exact and the round trip is byte-identical.
 
@@ -71,11 +65,10 @@ import sys
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 BACKUP_DIR = os.path.join(GAME, "backups")
 
 TARGETS = list(zigexe.EXES)
-COMPAT_BYTE = zigexe.COMPAT_BYTE   # the one byte AoWzCompat.exe differs by
 
 ICON_OFF = 0x00073AEC
 ICON_LEN = 744
@@ -171,20 +164,11 @@ def main():
             sys.exit("missing: %s" % p)
         blobs.append(bytearray(open(p, "rb").read()))
 
-    # lockstep precondition
-    a, b = blobs
-    diff = [i for i in range(min(len(a), len(b))) if a[i] != b[i]]
-    if len(a) != len(b) or diff != [COMPAT_BYTE]:
-        sys.exit("!! %s / %s differ at %d bytes (%s), expected only 0x%X -- stop"
-                 % (TARGETS[0], TARGETS[1], len(diff),
-                    [hex(x) for x in diff[:6]], COMPAT_BYTE))
-    print("lockstep ok: the two exes differ only at 0x%X" % COMPAT_BYTE)
-
     states = [is_patched(x) for x in blobs]
     if None in states:
         sys.exit("!! icon palette is neither vanilla nor ziggurat -- someone else edited it")
-    if states[0] != states[1]:
-        sys.exit("!! the two exes are in different icon states -- fix by hand")
+    if len(set(states)) > 1:
+        sys.exit("!! the exes are in different icon states -- fix by hand")
     patched = states[0]
     print("icon state: %s" % ("ZIGGURAT (purple, mirrored)" if patched else "vanilla"))
 
@@ -224,11 +208,9 @@ def main():
         print("  %s: palette %s, bitmaps mirrored"
               % (os.path.basename(p), "-> purple" if want else "-> vanilla red"))
 
-    a2 = bytearray(open(paths[0], "rb").read())
-    b2 = bytearray(open(paths[1], "rb").read())
-    d2 = [i for i in range(len(a2)) if a2[i] != b2[i]]
-    print("  verify: state=%s, lockstep diff=%s"
-          % ("ZIGGURAT" if is_patched(a2) else "vanilla", [hex(x) for x in d2]))
+    for p in paths:
+        print("  verify: %s state=%s" % (os.path.basename(p),
+              "ZIGGURAT" if is_patched(bytearray(open(p, "rb").read())) else "vanilla"))
 
 
 if __name__ == "__main__":

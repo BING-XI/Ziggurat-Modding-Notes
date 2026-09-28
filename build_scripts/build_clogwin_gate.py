@@ -39,7 +39,7 @@ USAGE
       --off  restores STOCK behaviour for the named group(s)
       --on   restores OUR behaviour
 
-Patches BOTH canonical mod exes `Ziggurat\AoWz.exe` and `Ziggurat\AoWzCompat.exe` (names from
+Patches the mod exe `Ziggurat\AoWz.exe` (names from
 `zigexe.py`) and verifies each separately -- the notes record the compat twin being silently left
 unpatched once. ⚠ Follow a write with ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.) Idempotent, verify-before-write, dry-run by default, refuses to write while the game is
 running.
@@ -57,7 +57,7 @@ import os, struct, subprocess, sys
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 EXES = zigexe.EXES
 
 # group -> (va, STOCK bytes, OURS bytes, description)

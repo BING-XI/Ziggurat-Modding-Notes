@@ -52,7 +52,7 @@ WHY THIS IS SAFE -- verified against the live DLL and both pristine references
          ⚠⚠ THE TRAP: they are in the EXEs, and the first scan covered only
          `AoWEPACK.dpl` / `AoWTCPCK.dpl` / `aowInt.dpl`, where there is indeed no TAbstractUnit
          receiver (32 / 18 / 0 `call [reg+0xbc]` sites, all map, army, event-log, TSpell or
-         VCL-event receivers). `AoWz.exe` and `AoWzCompat.exe` carry 13 each, of which 4 take a
+         VCL-event receivers). `AoWz.exe` carry 13 each, of which 4 take a
          HERO receiver -- `THero` VMT `0x55711FEC + 0xBC` IS `GetInherentAbilityLevel`.
          **This is the project's own per-binary rule: verify the call path in EVERY binary, not
          just the one that owns the function.** Caught by QA 2026-09-10, after the analysis had

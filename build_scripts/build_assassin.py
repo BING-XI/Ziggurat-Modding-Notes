@@ -222,13 +222,15 @@ def _pad_to(src_text, va, target_len, tail_label):
     assert b[-5] == 0xE9, "padded body does not end in a jmp"
     return b
 
-def ms_melee_text(ms_form, atk, dam):
+def ms_melee_text(ms_form, atk, dam, msn=None):
     """cave_melee's Monster Slaying block. "old" = the vanilla replay (+atk/+dam, same constants as
     Assassin); "new" = the 2026-09-26 rework through monsterslay.ms_test (+DAM, and -ATK on a
-    Monster's strike against a slayer, floored at 0 because BL is a byte)."""
+    Monster's strike against a slayer, floored at 0 because BL is a byte). `msn` = the rework's
+    (DAM, DEF), default monsterslay's."""
     if ms_form == "new":
+        md, mf = msn or (ms.MELEE_DAM, ms.MELEE_DEF)
         return ms.call_text("ebp", "esi", 0xA8) + ms.apply_text(
-            "_mm", "byte ptr [esp+3]", "bl", ms.MELEE_DAM, ms.MELEE_DEF, clamp=True)
+            "_mm", "byte ptr [esp+3]", "bl", md, mf, clamp=True)
     return f"""
     mov edx, 0x70
     mov eax, ebp
@@ -245,12 +247,13 @@ def ms_melee_text(ms_form, atk, dam):
     add bl, {atk}
     add byte ptr [esp+3], {dam}"""
 
-def ms_melee3_text(ms_form, atk, dam):
+def ms_melee3_text(ms_form, atk, dam, msn=None):
     """cave_melee3's Monster Slaying block. [EBX] is a dword, so the -ATK is UNCLAMPED, like
     Parry's `sub dword ptr [ebx], 8` which has already run on this record (monsterslay.py)."""
     if ms_form == "new":
+        md, mf = msn or (ms.MELEE_DAM, ms.MELEE_DEF)
         return ms.call_text("esi", "edi", 0xA8) + ms.apply_text(
-            "_m3m", "dword ptr [ebx+4]", "dword ptr [ebx]", ms.MELEE_DAM, ms.MELEE_DEF, clamp=False)
+            "_m3m", "dword ptr [ebx+4]", "dword ptr [ebx]", md, mf, clamp=False)
     return f"""
     mov edx, 0x70
     mov eax, esi
@@ -269,7 +272,7 @@ def ms_melee3_text(ms_form, atk, dam):
 
 MS_FORM = "new" if ms.REWORK else "old"
 
-def melee_text(atk, dam, legacy, ms_form=None):
+def melee_text(atk, dam, legacy, ms_form=None, msn=None):
     """cave_melee. EBP=attacker ESI=target BL=attack [ESP+3]=damage."""
     ms_form = ms_form or MS_FORM
     if legacy:
@@ -292,7 +295,7 @@ def melee_text(atk, dam, legacy, ms_form=None):
     test al, al
     jz _asn"""
         head = ""      # the PIC anchor died with the THero load; EDI is no longer clobbered
-    return f"""{head}{ms_melee_text(ms_form, atk, dam)}
+    return f"""{head}{ms_melee_text(ms_form, atk, dam, msn)}
 _mons:
     mov edx, 0x{ASSASSIN_ID:X}
     mov eax, ebp
@@ -306,7 +309,7 @@ _asn:
     jmp 0x{MELEE_CONT:X}
 """
 
-def melee3_text(atk, dam, legacy, ms_form=None):
+def melee3_text(atk, dam, legacy, ms_form=None, msn=None):
     """cave_melee3. ESI=attacker EDI=target EBX=strike record ([EBX]=attack, [EBX+4]=damage)."""
     ms_form = ms_form or MS_FORM
     if legacy:
@@ -326,7 +329,7 @@ def melee3_text(atk, dam, legacy, ms_form=None):
     call 0x{cug.GUARD_HERO:X}
     test al, al
     jz _m3asn"""
-    return f"""{ms_melee3_text(ms_form, atk, dam)}
+    return f"""{ms_melee3_text(ms_form, atk, dam, msn)}
 _m3mons:
     mov edx, 0x{ASSASSIN_ID:X}
     mov eax, esi
@@ -340,8 +343,8 @@ _m3asn:
     jmp 0x{MELEE3_CONT:X}
 """
 
-def build_melee(atk, dam, legacy, ms_form=None):
-    txt = melee_text(atk, dam, legacy, ms_form)
+def build_melee(atk, dam, legacy, ms_form=None, msn=None):
+    txt = melee_text(atk, dam, legacy, ms_form, msn)
     b = _pad_to(txt, CAVE_MELEE, MELEE_LEN, "_asn")
     if legacy:
         # the legacy body carries its own call/pop-EDI PIC anchor and a THero placeholder.
@@ -350,8 +353,8 @@ def build_melee(atk, dam, legacy, ms_form=None):
         b = patch(b, CAVE_MELEE, 0x5F, ([] if DIAG else [(PH_THERO, THERO_CLASSREF)]))
     return b
 
-def build_melee3(atk, dam, legacy, ms_form=None):
-    txt = melee3_text(atk, dam, legacy, ms_form)
+def build_melee3(atk, dam, legacy, ms_form=None, msn=None):
+    txt = melee3_text(atk, dam, legacy, ms_form, msn)
     b = _pad_to(txt, CAVE_MELEE3, MELEE3_LEN, "_m3asn")
     if legacy:
         b = patch(b, CAVE_MELEE3, 0x59, [(PH_THERO3, THERO_CLASSREF)])
@@ -400,6 +403,8 @@ WRITES = APPLY or UNDO_WG or UNDO_ALL
 # --apply upgrade a crashing install in place instead of demanding a revert-and-reapply.
 # 2026-09-26: and both Monster Slaying forms (monsterslay.py), so switching REWORK either way is an
 # in-place rewrite. Old-form bodies are the only ones with a legacy (pre-wall-guard) history.
+# 2026-09-28: and the new form at every Monster Slaying number in monsterslay.RETUNE, at today's
+# Assassin bonus, so re-tuning monsterslay.py is an in-place rewrite too.
 def _variants(builder):
     out=[]
     for a in range(1,13):
@@ -407,6 +412,9 @@ def _variants(builder):
             for legacy, form in ((False,"old"), (True,"old"), (False,"new"), (True,"new")):
                 try: out.append(builder(a,dmg,legacy,form))
                 except BaseException: pass
+    for md in ms.RETUNE:
+        for mf in ms.RETUNE:
+            out.append(builder(MELEE_ATK_BONUS, MELEE_DAM_BONUS, False, "new", (md, mf)))
     return out
 CAVE_VARIANTS = {
     CAVE_MELEE:  _variants(build_melee),

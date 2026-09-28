@@ -7,10 +7,9 @@ Fire Sprite), for all STRATEGIC / role fire: Firestorm, map-hex fires, Fire
 Barrier (all flow through TAbstractUnit.ExecuteDamageRole @0x55781AC4).
 Tactical-combat fire (fireball/breath) is a separate path, out of scope.
 
-Touches THREE binaries, all inside `Ziggurat\` (exe names from `zigexe.py`):
+Touches TWO binaries, both inside `Ziggurat\` (exe names from `zigexe.py`):
   AoWEPACK.dpl    : 3 caves + 3 redirects
   AoWz.exe        : 1 five-byte patch
-  AoWzCompat.exe  : 1 five-byte patch  (byte-identical site)
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 cave_mapfire_gate additionally makes MAP-HEX FIRE / FIRE BARRIER heal 226/228:
@@ -62,7 +61,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 BACKUP_DIR = os.path.join(GAME, "backups")      # ⚠ backups/, never the game root -- rule 2026-09-03
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
 cs = Cs(CS_ARCH_X86, CS_MODE_32)
@@ -324,7 +323,7 @@ dll_patches = [
     (TRIG_GATE,   TRIG_ORIG,         redir_trig,  "TriggerFireDamage immunity gate -> cave_mapfire_gate"),
 ]
 
-# ======================= AoWz.exe / AoWzCompat.exe ============================
+# ======================= AoWz.exe ============================
 EXE_BASE = 0x400000
 EXE_SITE = 0x436BFF
 EXE_ORIG = b"\x25\xff\x00\x00\x00"                        # and eax,0xff

@@ -3,7 +3,7 @@ r"""
 build_unit_ai.py -- a "Unit AI" checkbox beside "Auto" in the tactical combat bar.  While it is
 ticked, right-clicking one of your own units hands it to the AI -- or the whole selection, when the
 clicked unit is part of it -- until the AI has nothing left to do with them; then the turn is the
-player's again.  Unticked, right-click is vanilla.  AoWTCPCK.dpl + AoWz.exe + AoWzCompat.exe.
+player's again.  Unticked, right-click is vanilla.  AoWTCPCK.dpl + AoWz.exe.
 (Owner rulings 2026-09-27: plain right-click on an own unit; the box arms the gesture; clicked unit,
 or the selection if the clicked unit is in it.)
 
@@ -73,7 +73,7 @@ Rolls: none.  The AI runs locally exactly as under vanilla Auto; its actions tra
 WHERE
     AoWTCPCK.dpl  code zone 0x43A700-0x43ABFF (exclusive), BSS 0x46C800-0x46C90F (no file bytes;
                   BSS VirtualSize is 0xA1, the rest of the page is loader-zeroed RW).
-    AoWz.exe / AoWzCompat.exe  tenant above build_taskbar_coords.py: grows .ibnr 0xD000 -> 0x17000
+    AoWz.exe  tenant above build_taskbar_coords.py: grows .ibnr 0xD000 -> 0x17000
                   (SizeOfImage 0x23D000 -> 0x247000); grown DFM at 0x0063D000, then the field table,
                   then the code.  The resource entry, field-table pointer and instance size it
                   repoints are build_taskbar_coords.py's own sites, so that script reads FOREIGN and
@@ -114,7 +114,7 @@ UNIT_FILTER = 0x220104
 H_RCLICK, VAN_RCLICK, LEFT, RIGHT, MD_EXIT = 0x41EE7F, bytes.fromhex("80781001753c"), 0x41EEC1, 0x41EE85, 0x41F6D4
 EVALBATTLE, NEWFRAME, MOUSEDOWN = (0x418170, 0x41AFCD), (0x41C440, 0x41C69A), (0x41EE28, 0x41F6D9)
 
-# ---- AoWz.exe / AoWzCompat.exe ---------------------------------------------------------------
+# ---- AoWz.exe ---------------------------------------------------------------
 SEC = b".ibnr"
 IBNR_VA, COORDS_SIZE, NEW_SIZE = 0x00630000, 0xD000, 0x17000
 GROW_VA = IBNR_VA + COORDS_SIZE
@@ -767,10 +767,7 @@ def main():
     for va, van, new in hooks:
         o = P.va2off(back, va)
         assert back[o:o + len(van)] == (new if apply_ else van), "%08X did not stick" % va
-    a, b = (open(os.path.join(GAME, n), "rb").read() for n in zigexe.EXES)
-    diff = [i for i in range(len(a)) if a[i] != b[i]] if len(a) == len(b) else None
-    assert diff == [zigexe.COMPAT_BYTE], "lockstep broken: %s" % diff
-    print("\n%s AoWTCPCK.dpl and both exes; lockstep holds" % ("APPLIED to" if apply_ else "UNDONE on"))
+    print("\n%s AoWTCPCK.dpl and %s" % ("APPLIED to" if apply_ else "UNDONE on", ", ".join(zigexe.EXES)))
 
 
 if __name__ == "__main__":

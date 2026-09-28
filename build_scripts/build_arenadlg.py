@@ -3,8 +3,8 @@ r"""
 AoW1 mod -- "arenadlg": re-lay the Arena dialog for the arena-battle rework.
 
 Companion to build_arena.py (which is DPL-only). This one edits the TARENADLG **DFM resource** in
-the canonical mod exes `Ziggurat\AoWz.exe` + `Ziggurat\AoWzCompat.exe` (names come from
-`zigexe.py`). Binaries stay in lockstep; backups <exe>.pre-arenadlg.
+the canonical mod exes `Ziggurat\AoWz.exe` (names come from
+`zigexe.py`). backups <exe>.pre-arenadlg.
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 FULL DESIGN: Modding Resources/Arena_Rework_Feasibility.md
@@ -72,7 +72,7 @@ Pristine slot recognised by SHA1. A patched slot is recognised by rebuilding the
 pristine bytes and comparing -- so --apply is idempotent and --undo needs no backup. Re-tuning the
 layout = edit LAYOUT below and re-run --apply from any state.
 
-Dry-run by default; --apply to write both exes (they are killed first if they hold the file).
+Dry-run by default; --apply to write the exe (they are killed first if they hold the file).
 --undo restores the pristine slot in place.  The pristine payload comes from `pristine_slot()`,
 which prefers a `.pre-arenadlg` snapshot and falls back to the vanilla exe -- `Ziggurat upload/
 AoW.exe` or the stock one at the game root.  ⚠ Until 2026-09-09 it read `<exe>.pre-arenadlg`
@@ -96,7 +96,7 @@ from build_herodlg_tall import (locate_dfm, enc_int, apply_edits,   # noqa: E402
                                 write_slot, kill_game)
 
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(os.path.join(HERE, "..", ".."))
-EXES = list(zigexe.EXES)                           # AoWz.exe + AoWzCompat.exe
+EXES = list(zigexe.EXES)                           # AoWz.exe
 BAK_SUFFIX = ".pre-arenadlg"
 BACKUP_DIR = os.path.join(GAME, "backups")         # ⚠ never the game root -- rule 2026-09-03
 RESNAME = "TARENADLG"
@@ -291,7 +291,7 @@ def pristine_slot(path, size):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--apply", action="store_true", help="write both exes (default: dry run)")
+    ap.add_argument("--apply", action="store_true", help="write the exe (default: dry run)")
     ap.add_argument("--undo", action="store_true", help="restore the pristine DFM in place")
     ap.add_argument("--dump", action="store_true", help="list the resulting geometry and exit")
     args = ap.parse_args()

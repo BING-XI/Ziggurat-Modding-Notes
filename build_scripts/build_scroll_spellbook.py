@@ -105,7 +105,7 @@ ALSO PATCHED -- kill the vanilla consume-on-use path
 Stock `itScroll` behaviour is a one-shot TOME: Use -> `ExecuteSpellResearched` (spell becomes
 globally researched) -> item destroyed.  That is the opposite of "permanent", so both type-5 gates
 are retargeted to item type 7, which no item uses:
-  * AoWz.exe / AoWzCompat.exe @0x0040A657  -- `cmp byte [edi+0x34],5` -> 7   (Use button never shows)
+  * AoWz.exe @0x0040A657  -- `cmp byte [edi+0x34],5` -> 7   (Use button never shows)
   * AoWEPACK.dpl @0x557940D1 (TItem.CanUse)    -- imm 5 -> 7               (refuses, MP-safe)
   * AoWEPACK.dpl @0x55793FA9 (TItem.ExecuteUse) -- imm 5 -> 7              (defence in depth)
 
@@ -129,7 +129,7 @@ NOT DONE
   * `ItemUsePnl` visibility defect (AoWz.exe DFM @0x1F3EBD) -- untouched; irrelevant now that the
     Use button is disabled anyway.
 
-Targets `Ziggurat/AoWz.exe` + `AoWzCompat.exe` (names from `zigexe.py`) and `AoWEPACK.dpl`.
+Targets `Ziggurat/AoWz.exe` (names from `zigexe.py`) and `AoWEPACK.dpl`.
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 Idempotent, verify-before-write, snapshot to `backups/<file>.pre-scrollbook` taken ONLY from a
 file whose every site still holds its untouched pre-feature bytes.
@@ -146,7 +146,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 
 EXES = list(zigexe.EXES)
 DLL  = "AoWEPACK.dpl"
@@ -687,7 +687,7 @@ def main():
     print()
     if '--apply' not in sys.argv:
         print("DRY RUN -- nothing written. Re-run with --apply (close every AoW binary first: "
-              "AoWz.exe, AoWzCompat.exe, AoWzEd.exe, AoWDevEd.exe all lock these files).")
+              "AoWz.exe, AoWzEd.exe, AoWDevEd.exe all lock these files).")
     elif allok and not undo:
         print("Applied. Still needed before this can be tested:\n"
               "  1. Author a Scroll item in AoWDevEd (Open Item Library -> New Item -> Type=Scroll)\n"

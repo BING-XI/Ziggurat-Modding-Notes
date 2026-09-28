@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-AoW1 POWER LEECH -- the income row.  `Ziggurat\AoWz.exe` + `AoWzCompat.exe` (names from
+AoW1 POWER LEECH -- the income row.  `Ziggurat\AoWz.exe` (names from
 `zigexe.py`), 7 host bytes + one cave.  ⚠ The exe is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from
 `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step;
 that script is retired.)
@@ -163,13 +163,6 @@ GUARDS (all run at import, before anything can be written)
   G5  one `ret` in the code block, and push/pop are balanced 3/3 plus the edi spill pair.
   G6  every FAKE_VMT slot resolves to RET_STUB, and RET_STUB disassembles to xor eax,eax ; ret.
 
-AoWzCompat.exe LOCKSTEP
-----------------------
-AoWzCompat.exe is AoWz.exe with exactly one byte changed -- file offset 0x3BB7C, 0x0F vs 0x05 (the
-build number). Both exes are patched here in one pass with the identical byte writes at the
-identical VAs; the script re-checks after writing that `AoWz.exe` and `AoWzCompat.exe` still differ
-in exactly that one byte and aborts loudly if not.
-
 RE-TUNING -- an in-place cave rewrite, never revert-and-reapply
 --------------------------------------------------------------
 Change a label or the cave code and just re-run `--apply`. The positive test is the host hook: if
@@ -185,14 +178,14 @@ UNDO
 `8B C3 E8 44 56 FD FF` and 0x0062D100..0x0062D2FF is zeroed, in both exes. Round-trips to
 byte-identical files.
 
-Backups (`backups\AoWz.exe.pre-powerleechui`, `backups\AoWzCompat.exe.pre-powerleechui`) are minted
+The backup (`backups\AoWz.exe.pre-powerleechui`) is minted
 ONLY from a file proved to be in the pre-feature state -- the host bytes still vanilla AND our
 zone still zero -- never on --undo, never on a re-apply over our own output, and never merely
 because the backup file is missing.
 
 Usage:
   python build_scripts/build_powerleech_ui.py                  dry run + verify current state
-  python build_scripts/build_powerleech_ui.py --apply          patch both exes
+  python build_scripts/build_powerleech_ui.py --apply          patch the exe
   python build_scripts/build_powerleech_ui.py --undo --apply   surgical revert
   python build_scripts/build_powerleech_ui.py --dis            disassemble the cave and stop
 """
@@ -212,14 +205,11 @@ from keystone import KS_ARCH_X86, KS_MODE_32, Ks
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 EXES = zigexe.EXES
 BACKUP_DIR = os.path.join(GAME, "backups")
 SUFFIX = ".pre-powerleechui"
 IMAGE_BASE = 0x00400000
-
-# AoWzCompat.exe = AoWz.exe with this one byte flipped (build number 15 -> 5).
-COMPAT_OFF, COMPAT_AOW, COMPAT_CPT = zigexe.COMPAT_BYTE, 0x0F, 0x05
 
 # ---- host site -------------------------------------------------------------------------
 SITE = 0x0042CFD9                       # immediately after the value-loop terminator 0x42CFD7
@@ -688,7 +678,7 @@ def main():
         return 1
     todos = {e: state[e][3] for e in EXES}
     if len(set(todos.values())) != 1:
-        print("\nABORT: the two exes are in DIFFERENT states %s -- fix the lockstep by hand "
+        print("\nABORT: the exes are in DIFFERENT states %s -- fix by hand "
               "before writing." % todos)
         return 1
 
@@ -726,20 +716,6 @@ def main():
         open(path, "wb").write(bytes(d))
         print("  %-14s sha-256 %s" % (exe, hashlib.sha256(bytes(d)).hexdigest()))
 
-    # ---- lockstep proof: exactly one differing byte, and it is the build number ---------
-    a = open(os.path.join(GAME, EXES[0]), "rb").read()
-    b = open(os.path.join(GAME, EXES[1]), "rb").read()
-    if len(a) != len(b):
-        print("ABORT: %s and %s differ in LENGTH (%d vs %d)"
-              % (EXES[0], EXES[1], len(a), len(b)))
-        return 1
-    diff = [i for i in range(len(a)) if a[i] != b[i]]
-    if diff != [COMPAT_OFF] or a[COMPAT_OFF] != COMPAT_AOW or b[COMPAT_OFF] != COMPAT_CPT:
-        print("ABORT: lockstep broken -- differing offsets %s (expected [%#x] with %#02x/%#02x)"
-              % (["%#x" % x for x in diff[:8]], COMPAT_OFF, COMPAT_AOW, COMPAT_CPT))
-        return 1
-    print("lockstep OK: %s vs %s differ in exactly 1 byte, at %#x (%#02x/%#02x)"
-          % (EXES[0], EXES[1], COMPAT_OFF, COMPAT_AOW, COMPAT_CPT))
     print("undone." if undo else "applied, UNTESTED.")
     return 0
 

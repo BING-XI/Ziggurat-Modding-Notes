@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 r"""build_heroskill_race.py -- per-race probability gate on hero level-up ability offers.
 
-TARGET: the canonical mod exes `Ziggurat\AoWz.exe` + `Ziggurat\AoWzCompat.exe`, in lockstep
-(names from `zigexe.py`).  NOTHING in AoWEPACK.dpl is touched.
+TARGET: the mod exe `Ziggurat\AoWz.exe` (name from `zigexe.py`).  NOTHING in AoWEPACK.dpl is
+touched.
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 Each ability now has a per-race chance of appearing in the hero level-up dialog's Upgrades
@@ -11,7 +11,7 @@ Elf sees Archery and Forestry every time; a Dwarf sees Mountaineering and Cave C
 time; most of the rest are a per-level coin flip weighted by race.  The percentages live in
 `heroskill_races.py` -- that file is the authoring surface and is meant to be edited.
 
-    (no args)   verify both exes: hook, cave, table checksum, chain integrity
+    (no args)   verify the exe: hook, cave, table checksum, chain integrity
     --apply     patch (or rewrite the cave in place over an existing install)
     --undo      surgical: restore the 6 displaced bytes, zero 0x00628000..0x0062A000
     --dis       capstone-disassemble the cave and print the table summary
@@ -190,8 +190,7 @@ import heroskill_races as RACES
 import rngstd
 import zigexe                                      # mod binary names
 
-TARGETS = [os.path.join(GAME, n) for n in zigexe.EXES]   # AoWz.exe + AoWzCompat.exe
-COMPAT_DIFF_OFF = zigexe.COMPAT_BYTE  # the single byte that makes AoWzCompat AoWzCompat
+TARGETS = [os.path.join(GAME, n) for n in zigexe.EXES]   # AoWz.exe
 BACKUP_DIR = os.path.join(GAME, "backups")
 BACKUP_SUFFIX = ".pre-heroskillrace"
 
@@ -752,18 +751,6 @@ def relink_bytes(data):
 # ===========================================================================
 # reporting
 # ===========================================================================
-def compat_check():
-    a = open(TARGETS[0], "rb").read()
-    b = open(TARGETS[1], "rb").read()
-    require(len(a) == len(b), "%s / %s differ in length" % tuple(zigexe.EXES))
-    diff = [i for i in range(len(a)) if a[i] != b[i]]
-    require(diff == [COMPAT_DIFF_OFF],
-            "the two exes must differ in exactly one byte at 0x%08X; got %s"
-            % (COMPAT_DIFF_OFF, [hex(x) for x in diff[:8]]))
-    print("lockstep ok: %s and %s differ in exactly one byte, 0x%08X"
-          % (zigexe.EXES[0], zigexe.EXES[1], COMPAT_DIFF_OFF))
-
-
 def show_state():
     for path in TARGETS:
         data = bytearray(open(path, "rb").read())
@@ -815,7 +802,7 @@ def main():
     if args.apply and args.undo:
         ap.error("--apply and --undo are mutually exclusive")
 
-    print("per-race hero level-up offer gate (%s + %s)" % tuple(zigexe.EXES))
+    print("per-race hero level-up offer gate (%s)" % ", ".join(zigexe.EXES))
     print("cave 0x%08X..0x%08X, table 0x%08X (%d x %d)\n"
           % (CAVE, CAVE_END - 1, TABLE_VA, RACES.TABLE_ROWS, RACES.TABLE_COLS))
 
@@ -832,14 +819,10 @@ def main():
         for path in TARGETS:
             apply_one(path)
         print()
-        compat_check()
-        print()
         show_state()
     elif args.undo:
         for path in TARGETS:
             undo_one(path)
-        print()
-        compat_check()
         print()
         show_state()
     else:

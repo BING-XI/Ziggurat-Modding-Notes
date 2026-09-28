@@ -29,11 +29,11 @@ the DFM reader stops at the root terminator, so the pad is never read (dfm_edit 
 State handling: the pristine slot is recognised by SHA1; a patched slot (any height) is recognised
 by inverse-transforming it and SHA1-checking the result. So the script can re-tune to a new
 --height in place -- from any of its own states, touching no backup. The canonical mod exes
-`Ziggurat/AoWz.exe` and `Ziggurat/AoWzCompat.exe` (names from `zigexe.py`) are patched in lockstep
+`Ziggurat/AoWz.exe` (name from `zigexe.py`) is patched
 (their slots are byte-identical).
 
-  (no args)          verify: report the state of both exes
-  --apply            patch both exes (first run makes <exe>.pre-herodlgtall backups)
+  (no args)          verify: report the state of the exe
+  --apply            patch the exe (first run makes <exe>.pre-herodlgtall backups)
   --apply --height N re-tune to dialog height N (433..2400; default 864)
   --undo             surgical restore of the pristine DFM slot (no backup file involved)
 
@@ -56,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dfm_edit
 import zigexe                                      # mod binary names
 
-EXES = list(zigexe.EXES)                           # AoWz.exe + AoWzCompat.exe
+EXES = list(zigexe.EXES)                           # AoWz.exe
 BACKUP_SUFFIX = ".pre-herodlgtall"
 BACKUP_DIR = os.path.join(GAME, "backups")         # ⚠ never the game root -- rule 2026-09-03
 RESNAME = "THEROUPGRADEDLG"
@@ -242,7 +242,7 @@ def write_slot(path, off, blob):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--apply", action="store_true", help="write the patch to both exes")
+    ap.add_argument("--apply", action="store_true", help="write the patch to the exe")
     ap.add_argument("--undo", action="store_true", help="restore the pristine DFM slot")
     ap.add_argument("--height", type=int, default=DEFAULT_H,
                     help="target dialog height in px (default %d = 2x vanilla)" % DEFAULT_H)

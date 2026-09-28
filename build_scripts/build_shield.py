@@ -307,11 +307,10 @@ Release/Ability.pfs
   lives in `herodlg_cats.py`, but that file is only a SOURCE: the 256-byte lookup table is
   baked into AoW.exe and AoWCompat.exe by `build_herodlg_columns.py`
   (`exe.wr(D["cattbl"], CATS.lookup_table())`). Adding `176: (2, "Shield")` to the dict and
-  stopping there leaves the two executables holding the OLD table, so Shield silently appears in
+  stopping there leaves the executable holding the OLD table, so Shield silently appears in
   the Magic column (herodlg_cats.DEFAULT_CAT = 4) instead of Melee -- with every verifier,
   including this script's, reporting green. Found by QA on 2026-08-27, after exactly that.
-  The fix is `python build_scripts/build_herodlg_columns.py --apply` (it writes BOTH exes, so
-  the AoW.exe / AoWCompat.exe lockstep applies: they must still differ only at file 0x3BB7C).
+  The fix is `python build_scripts/build_herodlg_columns.py --apply`.
 """
 import os, sys, struct, shutil, zlib
 

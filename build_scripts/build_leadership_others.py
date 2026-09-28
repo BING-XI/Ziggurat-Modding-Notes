@@ -575,7 +575,7 @@ def main():
     try:
         open(TARGET, "wb").write(data)
     except PermissionError:
-        print("[x] LOCKED -- close every AoW binary (AoWz.exe/AoWzCompat.exe/AoWzEd.exe)"); return 1
+        print("[x] LOCKED -- close every AoW binary (AoWz.exe/AoWzEd.exe)"); return 1
     print("[done] applied, UNTESTED -- run the in-game checklist in this docstring.")
     return 0
 

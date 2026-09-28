@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 r"""
 build_taskbar_coords.py -- the world taskbar shows the hex under the cursor as "X,Y,Z" at the right
-end of the message box ("-,-,-" off the map).  AoWz.exe + AoWzCompat.exe in lockstep.
+end of the message box ("-,-,-" off the map).  AoWz.exe.
 
 From Inioch's share8 patch_aowx_cursor_coords.py (aowx-taskbar-coords.md); every address below
 was re-verified on AoWz.exe 2026-09-25.
@@ -406,10 +406,7 @@ def main():
                 x.d[off:off + len(old)] = old
             resize(x, IBNR_OWN)
         open(x.path, "wb").write(x.d)
-    a, b = (open(os.path.join(GAME, n), "rb").read() for n in zigexe.EXES)
-    diff = [i for i in range(len(a)) if a[i] != b[i]] if len(a) == len(b) else None
-    assert diff == [zigexe.COMPAT_BYTE], "lockstep broken: %s" % diff
-    print("\n%s both exes; lockstep holds" % ("APPLIED to" if apply_ else "UNDONE on"))
+    print("\n%s %s" % ("APPLIED to" if apply_ else "UNDONE on", ", ".join(zigexe.EXES)))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 r"""
 build_eventlog_hover.py -- the event tab stops jumping to the newest entry while the cursor is over
-the event list.  AoWz.exe + AoWzCompat.exe (lockstep, exe_patch.py).
+the event list.  AoWz.exe (exe_patch.py).
 
 Idea and site from Inioch's share8 patch_eventlog_hover_v1.py; the hover test is ours.
 

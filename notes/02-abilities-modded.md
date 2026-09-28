@@ -32,7 +32,7 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | Leadership IV grants the stack Fearless (Terror/Cause Fear immunity) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_leadership_fearless.py` | AoWEPACK.dpl |
 | An aura whose owner is missing no longer freezes its army | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_formation_guard.py` | AoWEPACK.dpl |
 | Leadership buffs only the OTHER units in the party (+ split "own (+received)" card text) | 🔨 APPLIED, UNTESTED (2026-09-16) | `build_leadership_others.py` | AoWEPACK.dpl |
-| Per-race probability gate on hero level-up ability offers | 🔨 APPLIED, UNTESTED (2026-09-09) — see Feature 1 below | `build_heroskill_race.py` + `heroskill_races.py` | `Ziggurat/AoWz.exe` + `Ziggurat/AoWzCompat.exe` |
+| Per-race probability gate on hero level-up ability offers | 🔨 APPLIED, UNTESTED (2026-09-09) — see Feature 1 below | `build_heroskill_race.py` + `heroskill_races.py` | `Ziggurat/AoWz.exe` |
 | Monster Slaying — DAM + DEF vs Monsters, no ATK | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_monster_slaying.py` + `monsterslay.py`, cave generators in `build_assassin.py` / `build_ranged_slayers.py`, row in `build_pfs_typos.py` | AoWEPACK.dpl + Release/Ability.pfs |
 | Mantle of Gloom (was Trail of Darkness) — radius 6, sight costs double; trail radius 6; True Seeing pierces it (v5) | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_los_terrain.py` v5; name row in `build_resstr_names.py`; card row in `build_pfs_typos.py` | AoWEPACK.dpl + Dict/ResStr.mld + Release/Ability.pfs |
 | Wall Crushing damage = the carrying unit's DAM (was a flat 12); ATK stays 12 | 🔨 APPLIED (2026-09-27) | `build_wallcrush_dam.py` | AoWEPACK.dpl + AoWTCPCK.dpl |
@@ -138,11 +138,14 @@ docstring holds the addresses, cave layout and the symmetry argument).
 
 ## Monster Slaying — DAM and DEF against Monsters
 
-🔨 **APPLIED, UNTESTED (2026-09-26).** Owner's design.
+🔨 **APPLIED, UNTESTED (2026-09-26).** Owner's design. Melee re-tuned +4/+4 → +5/+5 on 2026-09-28:
+the numbers are in `monsterslay.py`, and both melee owners (`build_monster_slaying.py`,
+`build_assassin.py`) accept their own bodies at any number in `monsterslay.RETUNE`, so a re-tune is
+`--apply` on the two of them.
 
 | | vs a Monster (marker `0x3F`) | before |
 |---|---|---|
-| melee | **+4 DAM** on the slayer's strikes, **+4 DEF** against every Monster strike (deliberate, retaliation, opportunity, Round Attack) | +5 ATK / +5 DAM |
+| melee | **+5 DAM** on the slayer's strikes, **+5 DEF** against every Monster strike (deliberate, retaliation, opportunity, Round Attack) | +5 ATK / +5 DAM |
 | ranged + breath | **+2 DAM** on the slayer's shots, **+2 DEF** against a Monster's shots and breath | +2 ATK / +2 DAM |
 
 **DEF is delivered as an ATK reduction on the Monster's strike**, Parry's own mechanism
@@ -169,7 +172,7 @@ The two new hooks overwrite only the 5-byte `mov edx,0x70` opening vanilla's blo
 and still verifies. The three owned caves already replayed Monster Slaying, so their generators
 switch on `monsterslay.REWORK` — re-running either owner keeps the rework. Chain exits
 (`0x5580E370`, `0x5580E3B0`, `0x55812A40`) preserved; `build_relocfix.py --audit` total 0. No RNG.
-Card text: `Ability.pfs` record 122, "Against monstrous units: +4 Dam and +4 Def in melee, +2 Dam and
+Card text: `Ability.pfs` record 122, "Against monstrous units: +5 Dam and +5 Def in melee, +2 Dam and
 +2 Def at range."
 
 ⚠ **Coupling.** `cave_melee`, `cave_melee3` and `cave_rng` call `ms_test`. Each of the three scripts
@@ -1057,7 +1060,11 @@ sign-extended — Poisoned ATK/DAM, Fury DEF) — `decode_getter` **raises** rat
 anything unrecognised; non-uniform immediate offsets in the combat-boost adds (`80 44 24 dd nn` puts the
 displacement *before* the immediate — reading a fixed `+3` there once shipped a bug); duplicate copies
 (most conditional bonuses exist in two strike tables — `combat_boosts()` reads every copy and **raises
-if they disagree**, since a divergence means a partial re-tune); Leadership's two storage schemes
+if they disagree**, since a divergence means a partial re-tune); rows for a vanilla block that a
+Ziggurat hook jumps over carry a `live-if` guard on the hook site, so the dead immediates count for
+the pristine DLL only (Monster Slaying's); cave rows are pinned to addresses, which move when a cave
+body changes length — the 2026-09-26 rework dropped Assassin and every ranged row from the table
+until 2026-09-28; Leadership's two storage schemes
 (vanilla flat tables vs Ziggurat's per-level cave — reading a pristine DLL yields zeros, so the
 extractor follows one unnamed-callee hop to the cave and slices to the ability's real level cap).
 
@@ -2185,8 +2192,7 @@ and an **ability-data linked list** (head `owner+0x10`, one `TxxxAbilityData` re
 #### Feature 1 — per-race probability gate on hero level-up ability offers
 
 **Status: 🔨 APPLIED, UNTESTED (2026-09-09).** Scripts `build_heroskill_race.py` (the patch) and
-`heroskill_races.py` (the percentages — **the user's file to edit**). `Ziggurat/AoWz.exe` +
-`Ziggurat/AoWzCompat.exe` only; nothing in `AoWEPACK.dpl`. ⚠⚠ **Its two snapshots no longer exist.**
+`heroskill_races.py` (the percentages — **the user's file to edit**). `Ziggurat/AoWz.exe` only; nothing in `AoWEPACK.dpl`. ⚠⚠ **Its two snapshots no longer exist.**
 `<root>\backups\AoW.exe.pre-heroskillrace` and `<root>\backups\AoWCompat.exe.pre-heroskillrace` were
 minted 2026-09-09 14:58 from a positively-proved-unpatched file, kept their **pre-rename** filenames,
 and went with `<root>/backups/` when that directory was deleted on 2026-09-10. `BACKUP_DIR` resolves
@@ -2209,7 +2215,7 @@ shorthand still means 100, but the shorthand is not the live table — the JSON 
 
 **The live table (`heroskill_races.json`, fingerprint `818757b6`, ladder `0/10/25/60`), baked into
 both exes** — `build_heroskill_race.py` reports `applied -- hook, cave, tails and table all current`
-against `AoWz.exe` and `AoWzCompat.exe` (verified 2026-09-23). Expected offers of 103, the
+against `AoWz.exe` (verified 2026-09-23). Expected offers of 103, the
 deterministic floor (`det`: cells at 100 — **zero for every row** since the second retune, and kept
 as a column only because `report()` prints it), and the ladder distribution per race:
 
@@ -2422,7 +2428,7 @@ matching exactly once per exe; the cave disassembly read instruction by instruct
 and the table base `0x00629000`); the four nil guards and the `cmp eax,0x100` fail-open present; the
 emitted hash byte-identical to `rngstd.basis() + 4×mix() + fmix32() + range_n(100)`; `.reloc` empty
 across the whole of `.hcol` and in particular in `[cf_gate, cf_gate+6)`; no branch landing inside the
-displaced bytes; `AoWz.exe`/`AoWzCompat.exe` differing at exactly one offset (`0x3BB7C`);
+displaced bytes;
 `0x0062417C..0x00628000` still all-zero; `build_skylevel_ui.py`'s cave at `0x0062A000` untouched;
 `AoWEPACK.dpl`, `AoWDevEd.exe` and `HSEPack.dpl` md5-unchanged; the re-chain round-trip both ways;
 `--undo` restoring the 6 bytes and leaving `0x0062417C..0x0062A000` all-zero; the live table byte-equal
@@ -2434,13 +2440,13 @@ and 99 in row 15 (all-100 → derived) — and **nothing else**: diffed against
 `backups\*.pre-heroskillrace` the whole footprint of the feature is the 6-byte hook at `cf_gate` (then `0x00623E5D`)
 plus bytes inside `0x00628000..0x0062A000`, 3901 bytes per exe, zero outside. Cave code (201 B),
 both tails, the `RGT1` magic and the hook are byte-identical across the re-apply; only data moved.
-File length and section table unchanged; the two exes still differ at exactly `0x3BB7C`; the backups
+File length and section table unchanged; the backups
 were not touched by the re-apply (they held the `orig` state) — ⚠ **they have since been deleted with
 `<root>/backups/` on 2026-09-10, so the `--undo` reference is now the script's own recorded original
 bytes, not a file**. md5s at the time of that re-apply
 `c0504136be44aa4fee1ee0e745fe431d` / `5e3a568bae16d9eed6adea3fc790913c`; `AoWEPACK.dpl`,
 `AoWDevEd.exe`, `HSEPack.dpl` md5-unchanged. ⚠ Those two md5s are **superseded** — the files were
-renamed to `AoWz.exe` / `AoWzCompat.exe` and re-derived later the same day; the canonical pair is
+renamed to `AoWz.exe` and re-derived later the same day; the canonical pair is
 `301a071399f34dfd3f7df0c5470a12bb` / `6636685e8ca976b916de339b073fe6d7` (2026-09-09).
 
 **⚠ Still needs the user's in-game test:**
@@ -2614,7 +2620,7 @@ is byte-identical to `cave_abinherent` but for `+0x70` vs `+0x94`.
 ⚠⚠ **The second consumer is in the EXEs, and the first analysis missed it** (QA, 2026-09-10 — the analysis
 had already been called complete). `TAbstractUnit.GetInherentAbilityLevel @0x5577F5A8` dispatches `+0x94`
 at `0x5577F5D1`. A scan of `AoWEPACK.dpl`/`AoWTCPCK.dpl`/`aowInt.dpl` finds no `TAbstractUnit` receiver —
-but `AoWz.exe`/`AoWzCompat.exe` carry **four**, all in `THeroUpgradeDlg`, because `THero` VMT
+but `AoWz.exe` carry **four**, all in `THeroUpgradeDlg`, because `THero` VMT
 `0x55711FEC + 0xBC` *is* that function. Each is a before/after pair over one ability id
 (`[dlg+0x1d8]` = the hero as he was, `[dlg+0x1dc]` = the working copy):
 

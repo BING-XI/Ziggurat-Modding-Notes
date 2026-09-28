@@ -19,7 +19,7 @@ that is the expected result, not an oversight.
 ================================================================================
 WHERE THE CODE IS
 ================================================================================
-`TItemBanner` exists ONLY in AoWz.exe / AoWzCompat.exe -- the class name appears in no .dpl and in
+`TItemBanner` exists ONLY in AoWz.exe -- the class name appears in no .dpl and in
 neither editor binary (checked 2026-09-13). Its stat renderer is the published `OnShow` of the
 `IBannerPopup` menu:
 
@@ -151,9 +151,6 @@ WHAT THIS SCRIPT CHANGES  (2 hooks + 2 caves, per exe)
    0x00406E26..0x00406E39 is left intact but unreachable (nothing jumps into it; the only inbound
    edges are to 0x00406E3A).
 
-6. Every byte is mirrored into AoWzCompat.exe, and the one-byte-difference invariant
-   (file 0x3BB7C only) is asserted after writing.
-
 ================================================================================
 SAFETY
 ================================================================================
@@ -183,8 +180,8 @@ SAFETY
 ================================================================================
 USAGE
 ================================================================================
-    (no args)   verify the state of both exes -- writes nothing
-    --apply     patch both exes (an UNPATCHED exe is first snapshotted to
+    (no args)   verify the state of the exe -- writes nothing
+    --apply     patch the exe (an UNPATCHED exe is first snapshotted to
                 backups/<exe>.pre-itembannerhpmv; a patched one is NOT -- a .pre-* of a patched
                 file is a lie)
     --undo      surgical: repoint the resource, restore [VMT-0x2C] / [VMT-0x1C], restore both
@@ -212,7 +209,7 @@ import dfm_edit                                        # noqa: E402
 import zigexe                                          # noqa: E402
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32       # noqa: E402
 
-EXES = list(zigexe.EXES)                               # AoWz.exe + AoWzCompat.exe
+EXES = list(zigexe.EXES)                               # AoWz.exe
 BACKUP_SUFFIX = ".pre-itembannerhpmv"
 BACKUP_DIR = os.path.join(GAME, "backups")             # never the game root -- rule 2026-09-03
 
@@ -841,17 +838,6 @@ def undo(exe, drop=True, verbose=True):
                      struct.unpack_from("<I", exe.d, exe.opt + 56)[0]))
 
 
-def check_lockstep():
-    a = open(os.path.join(GAME, zigexe.GAME_EXE), "rb").read()
-    b = open(os.path.join(GAME, zigexe.COMPAT_EXE), "rb").read()
-    if len(a) != len(b):
-        return "!! SIZE MISMATCH %d vs %d" % (len(a), len(b))
-    diff = [i for i in range(len(a)) if a[i] != b[i]]
-    if diff == [zigexe.COMPAT_BYTE]:
-        return "lockstep ok: the pair differs at file 0x%X only" % zigexe.COMPAT_BYTE
-    return "!! LOCKSTEP BROKEN: %d differing bytes %s" % (len(diff), [hex(x) for x in diff[:8]])
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--apply", action="store_true")
@@ -905,9 +891,7 @@ def main():
             save(exe)
             print("    restored")
 
-    if args.apply or args.undo:
-        print(check_lockstep())
-    else:
+    if not (args.apply or args.undo):
         print("\ndry run -- use --apply to patch, --undo to revert, --dis to read the caves")
 
 

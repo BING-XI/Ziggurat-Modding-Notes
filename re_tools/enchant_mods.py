@@ -284,18 +284,37 @@ def leadership_table(path=None):
 #     83 03 nn          add dword [ebx], imm8        -> imm at +2
 # Several bonuses exist in MORE THAN ONE copy (different strike tables). All copies are listed so
 # combat_boosts() can assert they agree -- a divergence means a partial re-tune.
-#   name, stat, instruction VA, opcode prefix, immediate offset, sign
+#   name, stat, instruction VA, opcode prefix, immediate offset, sign[, live-if]
+# `live-if` = (VA, bytes): the row is read only while those bytes are there. It marks a vanilla
+# block that a Ziggurat hook jumps over -- its immediates stay on disk as dead code, so the row
+# counts for the pristine DLL and not for the live one.
+# ⚠ Cave addresses move whenever a cave body is regenerated longer or shorter, and a row whose
+# opcode no longer matches is skipped SILENTLY: its bonus just vanishes from the manual. Re-read
+# them with capstone after any change to cave_melee / cave_melee3 / cave_rng / monsterslay.py.
+_MS_SDV_STOCK = (0x55766564, b"\xBA\x70\x00\x00\x00")   # build_monster_slaying.py's hook sites
+_MS_CUS_STOCK = (0x55767904, b"\xBA\x70\x00\x00\x00")
 _BOOSTS = [
     # --- MELEE branches. Each bonus is applied in up to three strike builders (StrikeDV and the
     #     two TMeleeRound tables); all copies are listed so a partial re-tune is caught.
-    ("Monster Slaying (melee)", "ATK", 0x5576658A, b"\x80\xC3",     2, +1),
-    ("Monster Slaying (melee)", "ATK", 0x5576792A, b"\x83\x03",     2, +1),
-    ("Monster Slaying (melee)", "DAM", 0x5576658D, b"\x80\x04\x24", 3, +1),
-    ("Monster Slaying (melee)", "DAM", 0x5576792D, b"\x83\x43\x04", 3, +1),
-    ("Assassin (melee)",        "ATK", 0x5580E0CD, b"\x80\xC3",     2, +1),
-    ("Assassin (melee)",        "ATK", 0x5580E17C, b"\x83\x03",     2, +1),
-    ("Assassin (melee)",        "DAM", 0x5580E0D0, b"\x80\x44\x24", 4, +1),
-    ("Assassin (melee)",        "DAM", 0x5580E17F, b"\x83\x43\x04", 3, +1),
+    # Monster Slaying, vanilla: +ATK/+DAM in StrikeDV and CalculateUnitStrikes.
+    ("Monster Slaying (melee)", "ATK", 0x5576658A, b"\x80\xC3",     2, +1, _MS_SDV_STOCK),
+    ("Monster Slaying (melee)", "ATK", 0x5576792A, b"\x83\x03",     2, +1, _MS_CUS_STOCK),
+    ("Monster Slaying (melee)", "DAM", 0x5576658D, b"\x80\x04\x24", 3, +1, _MS_SDV_STOCK),
+    ("Monster Slaying (melee)", "DAM", 0x5576792D, b"\x83\x43\x04", 3, +1, _MS_CUS_STOCK),
+    # Monster Slaying, Ziggurat (monsterslay.py): +DAM, and DEF as a `sub` from the Monster's ATK,
+    # in cave_sdv, cave_cus, cave_melee and cave_melee3.
+    ("Monster Slaying (melee)", "DAM", 0x5584F392, b"\x80\x04\x24", 3, +1),
+    ("Monster Slaying (melee)", "DAM", 0x5584F3D2, b"\x83\x43\x04", 3, +1),
+    ("Monster Slaying (melee)", "DAM", 0x5580E082, b"\x80\x44\x24", 4, +1),
+    ("Monster Slaying (melee)", "DAM", 0x5580E132, b"\x83\x43\x04", 3, +1),
+    ("Monster Slaying (melee)", "DEF", 0x5584F39A, b"\x80\xEB",     2, +1),
+    ("Monster Slaying (melee)", "DEF", 0x5584F3DA, b"\x83\x2B",     2, +1),
+    ("Monster Slaying (melee)", "DEF", 0x5580E08B, b"\x80\xEB",     2, +1),
+    ("Monster Slaying (melee)", "DEF", 0x5580E13A, b"\x83\x2B",     2, +1),
+    ("Assassin (melee)",        "ATK", 0x5580E0B0, b"\x80\xC3",     2, +1),
+    ("Assassin (melee)",        "ATK", 0x5580E15B, b"\x83\x03",     2, +1),
+    ("Assassin (melee)",        "DAM", 0x5580E0B3, b"\x80\x44\x24", 4, +1),
+    ("Assassin (melee)",        "DAM", 0x5580E15E, b"\x83\x43\x04", 3, +1),
     ("Charge",                  "DAM", 0x55767872, b"\x83\x43\x04", 3, +1),
     ("Charge",                  "DAM", 0x55767BCA, b"\x83\x43\x04", 3, +1),
     ("Holy Champion (melee)",   "ATK", 0x55766522, b"\x80\xC3",     2, +1),
@@ -313,14 +332,14 @@ _BOOSTS = [
     # --- RANGED branches, all four in build_ranged_slayers.py's cave at 0x5580E190.
     #     ⚠ In that cave body [esp] is DAMAGE and [esp+8] is ATTACK (operand-swap trap, documented
     #     in the script). And `add byte [esp+8], imm8` = 80 44 24 dd nn -- disp8 BEFORE the value.
-    ("Monster Slaying (ranged)", "DAM", 0x5580E1BF, b"\x80\x04\x24", 3, +1),
-    ("Monster Slaying (ranged)", "ATK", 0x5580E1C3, b"\x80\x44\x24", 4, +1),
-    ("Holy Champion (ranged)",   "DAM", 0x5580E1FF, b"\x80\x04\x24", 3, +1),
-    ("Holy Champion (ranged)",   "ATK", 0x5580E203, b"\x80\x44\x24", 4, +1),
-    ("Unholy Champion (ranged)", "DAM", 0x5580E23D, b"\x80\x04\x24", 3, +1),
-    ("Unholy Champion (ranged)", "ATK", 0x5580E241, b"\x80\x44\x24", 4, +1),
-    ("Assassin (ranged)",        "DAM", 0x5580E288, b"\x80\x04\x24", 3, +1),
-    ("Assassin (ranged)",        "ATK", 0x5580E28C, b"\x80\x44\x24", 4, +1),
+    ("Monster Slaying (ranged)", "DAM", 0x5580E1AB, b"\x80\x04\x24", 3, +1),
+    ("Monster Slaying (ranged)", "DEF", 0x5580E1B3, b"\x80\x6C\x24", 4, +1),   # sub [esp+8]
+    ("Holy Champion (ranged)",   "DAM", 0x5580E1F6, b"\x80\x04\x24", 3, +1),
+    ("Holy Champion (ranged)",   "ATK", 0x5580E1FA, b"\x80\x44\x24", 4, +1),
+    ("Unholy Champion (ranged)", "DAM", 0x5580E234, b"\x80\x04\x24", 3, +1),
+    ("Unholy Champion (ranged)", "ATK", 0x5580E238, b"\x80\x44\x24", 4, +1),
+    ("Assassin (ranged)",        "DAM", 0x5580E27F, b"\x80\x04\x24", 3, +1),
+    ("Assassin (ranged)",        "ATK", 0x5580E283, b"\x80\x44\x24", 4, +1),
     # Parry SUBTRACTS from the attacker's attack, so its immediate is reported negated.
     ("Parry",           "ATK", 0x55767889, b"\x83\x2B",     2, -1),
     ("Parry",           "ATK", 0x55767BE1, b"\x83\x2B",     2, -1),
@@ -340,7 +359,9 @@ def combat_boosts(path=None, strict=True):
     than silently reporting whichever copy happened to be read last."""
     pe = _PE(path or DLL)
     seen = OrderedDict()
-    for name, stat, va, opc, ioff, sign in _BOOSTS:
+    for name, stat, va, opc, ioff, sign, *live_if in _BOOSTS:
+        if live_if and pe.read(live_if[0][0], len(live_if[0][1])) != live_if[0][1]:
+            continue                       # hooked out: dead code, not the value the game uses
         b = pe.read(va, ioff + 1)
         if b is None or not b.startswith(opc):
             continue                       # shape moved -- report nothing rather than a wrong number

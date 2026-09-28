@@ -1070,7 +1070,7 @@ Assert the caps before writing; do not rely on the engine.
 ### Unspent skill points are offered — `build_hero_turn1_upgrade.py`
 
 **Status: 🔨 APPLIED, UNTESTED (2026-09-22, v2).** `AoWEPACK.dpl` only; `THero.NewTurn` and
-`THero.NewDay` exist in no other module, so there is no `AoWz.exe`/`AoWzCompat.exe` lockstep half.
+`THero.NewDay` exist in no other module, so there is no `AoWz.exe` lockstep half.
 
 ⭐⭐ **The real defect is not the confiscation — it is that a level SET in the editor can never open
 the spend UI.** Measured live 2026-09-22 (out-of-band `ReadProcessMemory` poller across a real PBEM
@@ -1827,11 +1827,11 @@ decorative from here on, since the data file wins on every load. Tag 9 initially
 (missing the `0x200` bit hero level-up needs alongside `0x100`) — `--apply` now writes `0x03FF` and
 repairs the CRC, a real functional fix, not bookkeeping. No tag 5 — Shield has no info-card
 description; adding one is a record-length change and needs the editor, never a byte-patching script.
-`AoWz.exe`/`AoWzCompat.exe` each carry one byte (file offset `0x21DE40`) placing Shield in the **Melee**
+`AoWz.exe` each carry one byte (file offset `0x21DE40`) placing Shield in the **Melee**
 level-up column — chosen while Shield was still melee-capable, now arguably the wrong column
 ("Resistances" holds the 17 mitigation abilities); no `--undo`, fix is to edit `ABILITY_CATS` in
 `herodlg_cats.py` and re-run `build_herodlg_columns.py --apply`. ⚠ Editing `herodlg_cats.py` alone is
-**not enough** — the 256-byte lookup table is *baked into both exes*; editing only the source dict
+**not enough** — the 256-byte lookup table is *baked into the exe*; editing only the source dict
 leaves the binaries holding the old table and Shield silently defaults to the Magic column, with every
 verifier reporting green. (Found by QA 2026-08-27, after exactly that happened.)
 

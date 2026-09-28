@@ -24,7 +24,7 @@ This file covers the **map editor**: its two executables (`AoWDevEd.exe`, the de
 | Hex-group selection (Shift+right-click, purple glow), shape-keeping area copy/paste, cursor-following paste ghost, wheel rotation | 🔨 APPLIED, UNTESTED (2026-09-26), §7 | `build_editor_hexgroup.py` | `HSEPack.dpl` + `Images\General.ilb` + `_General.ilb` |
 | Timer autosave — `Scenario\Autosave\Autosave 1..3.hsm`, oldest overwritten, every 5 min when edited, §8 | applied 2026-09-27 | `build_editor_autosave.py` | `HSEPack.dpl` |
 
-**The two editor binaries are separate compiles of the same source**, not a one-byte relationship like `AoWz.exe`/`AoWzCompat.exe`: `AoWDevEd.exe` and `AoWEd.exe` share DFM layout and function shapes but every address shifts by a small, per-function constant (`TMainForm.HSMEditUpdateFrame` sits at `0x428D18` in one and `0x428CA0` in the other; `AoWDevEd.exe`'s `CODE` section is ~332 bytes larger). **Verify every address independently per exe** — never assume one function's delta carries to another. `HSEPack.dpl` (map data + the `THSMEdit`/`THSSEdit` map-view controls) rebases at runtime like every `.dpl`, and is loaded by **both** editors and by the game (`AoWz.exe`/`AoWzCompat.exe`) — patches there are safe only because the touched entry points (`THSMEdit.Load/Save/SaveAs`, `THSMEdit.UpdateFrame`, `TArmyPlaceControl`) are editor-only call paths the game never reaches. **`AoWDevEd.exe` imports the AoWEPACK global `AoWE.AoWHSSet`, so it loads `AoWEPACK.dpl` and locks it too** — closing "the game" is not enough before patching that DLL; kill the editor as well (`_new/CLAUDE.md`'s standing kill-authorisation already covers `AoWDevEd`/`AoWEd` by name).
+**The two editor binaries are separate compiles of the same source**, not a one-byte relationship like `AoWz.exe`: `AoWDevEd.exe` and `AoWEd.exe` share DFM layout and function shapes but every address shifts by a small, per-function constant (`TMainForm.HSMEditUpdateFrame` sits at `0x428D18` in one and `0x428CA0` in the other; `AoWDevEd.exe`'s `CODE` section is ~332 bytes larger). **Verify every address independently per exe** — never assume one function's delta carries to another. `HSEPack.dpl` (map data + the `THSMEdit`/`THSSEdit` map-view controls) rebases at runtime like every `.dpl`, and is loaded by **both** editors and by the game (`AoWz.exe`) — patches there are safe only because the touched entry points (`THSMEdit.Load/Save/SaveAs`, `THSMEdit.UpdateFrame`, `TArmyPlaceControl`) are editor-only call paths the game never reaches. **`AoWDevEd.exe` imports the AoWEPACK global `AoWE.AoWHSSet`, so it loads `AoWEPACK.dpl` and locks it too** — closing "the game" is not enough before patching that DLL; kill the editor as well (`_new/CLAUDE.md`'s standing kill-authorisation already covers `AoWDevEd`/`AoWEd` by name).
 
 ### Current on-disk layout (verified 2026-09-03) and why "restore a backup" is off the table
 
@@ -210,7 +210,7 @@ Every file dialog in the editor (map Open/SaveAs, mapset Open/SaveAs, text impor
 | `HSEPack.dpl` (dirseed, `SetInitialDir` thunk `0x55601A64`) | reroute `SetInitialDir(GetCurrentDir)` to the remembered folder | `0x55614D7E` `THSMEdit.SaveAs`=Map, `0x55615C5A` `THSSEdit.SaveAs`=Set |
 | `HSEPack.dpl` (persist, `GetFileName` thunk `0x55601A5C`) | write back | `0x556152BD`, `0x55614E65`, `0x55615EE5`, `0x55615C8E` |
 
-**`Ziggurat\HSEPack.dpl` is also loaded by `AoWz.exe`/`AoWzCompat.exe`/`AoWzEd.exe`, but the patched functions (`THS?Edit.Load/SaveAs`) are editor-only entry points the game never calls** — an import-table scan settles it: only `AoWDevEd.exe` and `AoWzEd.exe` import `HSSEdit.THSSEdit.Load`/`.SaveAs` at all, while `AoWz.exe`, `AoWzCompat.exe` and every `.dpl` import zero `THS?Edit` symbols. The cave carries no absolute exe addresses, so riding along in the game is inert.
+**`Ziggurat\HSEPack.dpl` is also loaded by `AoWz.exe`/`AoWzEd.exe`, but the patched functions (`THS?Edit.Load/SaveAs`) are editor-only entry points the game never calls** — an import-table scan settles it: only `AoWDevEd.exe` and `AoWzEd.exe` import `HSSEdit.THSSEdit.Load`/`.SaveAs` at all, while `AoWz.exe` and every `.dpl` import zero `THS?Edit` symbols. The cave carries no absolute exe addresses, so riding along in the game is inert.
 
 ⚠ **`AoWEd.exe` does *not* get its map/mapset dialogs fixed for free.** It exists only at the game **root**, has 6 sections and no `.dlgd`, and it loads the **root's vanilla** `HSEPack.dpl` — it gets nothing. (The earlier claim here dates from when the exes lived at the root and shared one DLL; the 2026-09-09 move invalidated it.)
 
@@ -904,7 +904,7 @@ per the ladder. What it cannot cover, and what a real session should watch for:
 ## 10. Developer > Delete Unused Heroes (`build_deved_heroprune.py`)
 
 🔨 APPLIED, UNTESTED (2026-09-08). `AoWDevEd.exe` only — `AoWEd.exe` is out of scope by the
-2026-09-07 owner ruling (patched but not shipped). `AoWz.exe`, `AoWzCompat.exe`, `AoWEPACK.dpl` and
+2026-09-07 owner ruling (patched but not shipped). `AoWz.exe`, `AoWEPACK.dpl` and
 `HSEPack.dpl` were byte-identical before and after (MD5-checked). ⚠ The live editor is
 `Ziggurat\AoWzEd.exe`, built from `Ziggurat\AoWDevEd.exe` by `build_zigeditor.py` — patch the
 source, then rebuild, or the change does not reach the editor you run.

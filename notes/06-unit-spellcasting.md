@@ -2,7 +2,7 @@
 
 Makes the *Spellcasting* ability (id `0x34`) functional on ordinary (non-hero) units — mana-throttled
 casting in auto-resolve, tactical combat and on the strategic map, plus a casting-points display on
-the unit card — by patching `AoWEPACK.dpl`, `AoWTCPCK.dpl`, `AoWz.exe` and `AoWzCompat.exe`. No new
+the unit card — by patching `AoWEPACK.dpl`, `AoWTCPCK.dpl`, `AoWz.exe`. No new
 DLL. It also covers the two features layered directly on top of that mechanism: the "Spellcasting
 level ≥ spell tier" cast gate (and its 2026-09-03 reversal to units-only) and hero mana income scaling
 with Resistance.
@@ -32,16 +32,16 @@ reason the M2 tier gate had to become item-aware; it is cross-referenced, not do
 | Phase 1a — auto/fast-combat casting | ✅ CONFIRMED WORKING (2026-07-06) | `build_spellcast.py` | AoWEPACK.dpl |
 | Phase 1b — manual/tactical combat casting | ✅ CONFIRMED WORKING (2026-07-06) | `build_spellcast_tcpck.py` | AoWTCPCK.dpl |
 | Phase 2 — strategic instant casting + ability button | ✅ CONFIRMED WORKING (2026-07-06) | `build_spellcast.py` | AoWEPACK.dpl |
-| Casting points on the unit card | ✅ CONFIRMED WORKING (2026-07-06) | `build_spellcast_card_v2.py` | AoWz.exe + AoWzCompat.exe |
+| Casting points on the unit card | ✅ CONFIRMED WORKING (2026-07-06) | `build_spellcast_card_v2.py` | AoWz.exe |
 | M1 — multi-turn channel accrual (progress no longer freezes) | ✅ CONFIRMED WORKING (2026-07-06) | `build_spellcast_multiturn.py` | AoWEPACK.dpl |
 | M2 — "Spellcasting level ≥ spell tier" cast gate, all casters | ✅ CONFIRMED WORKING (2026-07-06); item-aware v2 fix ✅ CONFIRMED WORKING (2026-08-28) | `build_spellcast_multiturn.py` | AoWEPACK.dpl |
 | M2 — hero/leader **exemption** from the tier gate (units only) | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_spellcast_herotier.py` | AoWEPACK.dpl |
-| M3 — hide too-high-tier spells from the casting book | ✅ CONFIRMED WORKING (2026-07-06) as "prune everyone"; units-only behaviour 🔨 APPLIED, UNTESTED (2026-09-03) | `build_scroll_spellbook.py` (rewrote `build_spellcast_book_exe.py`'s cave in place) | AoWz.exe + AoWzCompat.exe |
-| M4 — hide Cosmos spells from *unit* books (heroes/leader keep them) | ✅ CONFIRMED WORKING (2026-07-06), unaffected by the 2026-09-03 reorder | `build_scroll_spellbook.py` (rewrote `build_spellcast_book_exe.py`'s cave in place) | AoWz.exe + AoWzCompat.exe |
+| M3 — hide too-high-tier spells from the casting book | ✅ CONFIRMED WORKING (2026-07-06) as "prune everyone"; units-only behaviour 🔨 APPLIED, UNTESTED (2026-09-03) | `build_scroll_spellbook.py` (rewrote `build_spellcast_book_exe.py`'s cave in place) | AoWz.exe |
+| M4 — hide Cosmos spells from *unit* books (heroes/leader keep them) | ✅ CONFIRMED WORKING (2026-07-06), unaffected by the 2026-09-03 reorder | `build_scroll_spellbook.py` (rewrote `build_spellcast_book_exe.py`'s cave in place) | AoWz.exe |
 | C2 — save/load persistence of casting state | ✅ CONFIRMED WORKING (2026-07-06) | `build_spellcast_persist.py` | AoWEPACK.dpl |
 | Hero mana generation = Resistance × Spellcasting level | ✅ CONFIRMED WORKING (2026-08-27) | `build_spellcast_manares.py` | AoWEPACK.dpl |
 | Mana generation *for unit casters* | SPECULATIVE — deliberately LOCKED, never to be built | *(cancelled Phase 3; every relevant script re-asserts the stub)* | AoWEPACK.dpl |
-| Scrolls — permanent per-hero spellbook grant *(adjacent feature — shares `cave_bookfilter` with M3/M4; not itself unit spellcasting)* | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_scroll_spellbook.py` | AoWz.exe + AoWzCompat.exe + AoWEPACK.dpl |
+| Scrolls — permanent per-hero spellbook grant *(adjacent feature — shares `cave_bookfilter` with M3/M4; not itself unit spellcasting)* | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_scroll_spellbook.py` | AoWz.exe + AoWEPACK.dpl |
 | Fast-combat freeze hypothesis (unit casters vs. walled cities) | Investigated and **ruled out** — real cause found elsewhere | `build_fastcast_gate.py` (diagnostic toggle, kept) | AoWEPACK.dpl |
 | Per-unit intrinsic spellbook / HP-MV casting cost / enchant cost-by-level | SPECULATIVE — investigated, nothing built | *(none)* | AoWEPACK.dpl / AoWz.exe |
 
@@ -292,7 +292,7 @@ Result: a unit can cast **instant** strategic spells — any spell whose cost �
 casting points. Multi-turn (unaffordable) casts needed M1 (below) to actually progress; before M1
 landed, starting one left the unit "casting" with no progress (cancellable, not a crash).
 
-### Casting points on the unit card (AoWz.exe + AoWzCompat.exe)
+### Casting points on the unit card (AoWz.exe)
 
 `build_spellcast_card_v2.py` — ✅ CONFIRMED WORKING (2026-07-06). No `--undo`. Depends on Phase 1a's
 **D3** patch (VMT `+0x128` redirected to `THero.GetCastingPointsMax`) — the display reads casting
@@ -419,7 +419,7 @@ player has researched, regardless of Spellcasting level; units keep the level �
 | half | file | mechanism | revert |
 |---|---|---|---|
 | **cast gate** | `AoWEPACK.dpl` | `build_spellcast_herotier.py` retargets the 4 rel32 bytes at `0x5578974E` (M2's hook inside `CanCastSpell`, i.e. `CANCAST_INJECT+1`) from `cave_tiergate` to a new `cave_herotier` @ **`0x55846000`** (own reservation, span 0x80 owned/zeroed on undo, zone end `0x55848000` — deliberately a *separate* reservation, because `cave_tiergate`'s own 50-byte slot was already ~48 B full and an `IsClass` test costs ~25 B more, too big to extend in place). The cave: `IsClass(caster, THero)?` — **yes** (hero *or* `TLeader`, its subclass): replicate the two displaced instructions and `jmp 0x55789753` == vanilla, no tier test at all; **no**: `jmp 0x5580D95E`, straight into the **unmodified** `cave_tiergate`, which still does the level≥tier compare for units. | `python build_scripts/build_spellcast_herotier.py --undo --apply` |
-| **book filter** | `AoWz.exe` + `AoWzCompat.exe` | 15 bytes each inside `cave_bookfilter`'s `_loop`, **size-neutral reorder** (36 B both ways — `.sc` has 0 spare) — hero-family test moved ahead of the tier test. Lives in `build_scroll_spellbook.py` (it owns the cave — see next section). | `python build_scripts/build_scroll_spellbook.py --undo --apply` — ⚠ **also removes the scroll feature and re-breaks this exemption**, see below |
+| **book filter** | `AoWz.exe` | 15 bytes each inside `cave_bookfilter`'s `_loop`, **size-neutral reorder** (36 B both ways — `.sc` has 0 spare) — hero-family test moved ahead of the tier test. Lives in `build_scroll_spellbook.py` (it owns the cave — see next section). | `python build_scripts/build_scroll_spellbook.py --undo --apply` — ⚠ **also removes the scroll feature and re-breaks this exemption**, see below |
 
 `cave_tiergate` itself is **not** modified by the herotier patch — `build_spellcast_multiturn.py`
 verifies it byte-for-byte on every run, and its hook-entry check now accepts `cave_herotier`'s address

@@ -58,7 +58,7 @@ Do not copy this into an AoWEPACK cave, which must stay position-independent.
 
 Usage:
   python build_scripts/build_savedate_format.py           dry run + report state
-  python build_scripts/build_savedate_format.py --apply   patch Ziggurat\AoWz.exe + AoWzCompat.exe
+  python build_scripts/build_savedate_format.py --apply   patch Ziggurat\AoWz.exe
                                                           ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
   python build_scripts/build_savedate_format.py --undo    surgical revert (restore, zero the cave)
 """
@@ -70,7 +70,7 @@ import sys
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 EXES = zigexe.EXES
 SUFFIX = ".pre-savedate"
 BACKUP_DIR = os.path.join(GAME, "backups")      # ⚠ backups/, never the game root -- rule 2026-09-03
@@ -228,7 +228,7 @@ def main(argv):
         d = bytearray(open(os.path.join(GAME, fn), "rb").read())
         assert struct.unpack_from("<I", d, va2off(d, IAT_SLOT))[0] == NAME_VA - BASE
         assert bytes(d[va2off(d, CALL_SITE):va2off(d, CALL_SITE) + 5]) == call_bytes(STUB_VA)
-    print("read-back verified in both exes.")
+    print("read-back verified in the exe.")
     print("\nIN-GAME TEST NEEDED -- this script cannot confirm anything:")
     print("  1. open Load Game: the Date column must read like 2026-08-29 08:27:32,")
     print("     fully inside the column, no garbled tail.")

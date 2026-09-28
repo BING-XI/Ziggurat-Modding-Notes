@@ -18,7 +18,7 @@ Cave in a new executable ".sc" section (no inline slack). Game imports: IntToStr
 Idempotent, verify-before-write, backs up first.
 Targets the canonical mod exes in `Ziggurat\` (names from `zigexe.py`).
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
-Usage: [AoWz.exe|AoWzCompat.exe] [--apply]
+Usage: [AoWz.exe] [--apply]
 """
 import shutil, sys, struct, os
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
@@ -29,7 +29,7 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                       # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                       # mod binary names (AoWz.exe)
 EXE_NAME=next((a for a in sys.argv[1:] if not a.startswith('--')),zigexe.GAME_EXE)
 EXE=os.path.join(GAME,EXE_NAME)
 BACKUP_DIR = os.path.join(GAME, "backups")   # ⚠ backups/, never the game root -- rule 2026-09-03

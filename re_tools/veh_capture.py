@@ -104,11 +104,11 @@ ROOT = os.path.dirname(GAME)          # the vanilla install -- and where the RUN
 OUT = os.path.join(TOOLS, "veh_capture.txt")
 
 #: Which tree holds the RUNNABLE copy of a given name. This tool LAUNCHES its target, so the
-#: distinction matters: AoWz.exe / AoWzCompat.exe exist in BOTH trees, and the pair in Ziggurat\
+#: distinction matters: AoWz.exe exists in BOTH trees, and the copy in Ziggurat\
 #: is LIVE and runs from Ziggurat/ (build_overlay.py's root-exe indirection was retired 2026-09-09)
 #: at the ROOT, with their imports rewritten to Ziggurat\<pkg>.dpl. The editors are the other way
 #: round: they run from Ziggurat\.
-_RUNS_FROM_ROOT = {zigexe.GAME_EXE, zigexe.COMPAT_EXE, zigexe.VANILLA_EXE, zigexe.VANILLA_COMPAT}
+_RUNS_FROM_ROOT = {zigexe.GAME_EXE, zigexe.VANILLA_EXE, zigexe.VANILLA_COMPAT}
 
 
 def resolve_target(name):
@@ -1710,10 +1710,10 @@ def build_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=__doc__)
     p.add_argument("--exe", default=zigexe.GAME_EXE,
-                   help="target by name, or a full path (default %s). %s and %s also work; the "
+                   help="target by name, or a full path (default %s). %s also works; the "
                         "name is resolved to whichever tree holds the RUNNABLE copy. "
                         "⚠ AoW.exe / AoWCompat.exe are the VANILLA pair -- only pass one on purpose."
-                        % (zigexe.GAME_EXE, zigexe.COMPAT_EXE, zigexe.LIVE_EDITOR))
+                        % (zigexe.GAME_EXE, zigexe.LIVE_EDITOR))
     p.add_argument("--attach", type=int, metavar="PID",
                    help="inject into an already-running process instead of launching one. "
                         "Never terminates it.")

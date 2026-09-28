@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""
 AoW1 UNIT WINDOW -- party prev/next arrows in EVERY entry path
-(`Ziggurat\AoWz.exe` + `AoWzCompat.exe`, LOCKSTEP; names from `zigexe.py`).
+(`Ziggurat\AoWz.exe`, LOCKSTEP; names from `zigexe.py`).
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
 USER REPORT
@@ -71,7 +71,7 @@ THE FIX -- drive the arrows from the unit's OWN army, vanilla-first
       does the own-army path run.  This structurally rules out the arrows-visible/clicks-dead
       failure mode: every case vanilla could handle is still handled by vanilla's own code.
 
-PATCH SITES (all three verified reloc-free, and byte-identical in AoWz.exe, AoWzCompat.exe and
+PATCH SITES (all three verified reloc-free, and byte-identical in AoWz.exe and
 the pristine `Ziggurat upload/AoW.exe` -- that donor is VANILLA and keeps its vanilla name)
       0x00407EAD  8 B  8B 06 8B 80 14 02 00 00   -> E9 rel32 + 90 90 90   (hide-arrows block)
                   The only inbound branches are the four chain exits at 0x00407E5A / 0x00407E6A /
@@ -121,19 +121,14 @@ CAVE -- a NEW PE section `.pyar`
       cave are correct.  .reloc is real (0x6034 bytes, 11909 entries) and was scanned: no entry
       overlaps any of the three sites or the new section.
 
-LOCKSTEP
-      AoWzCompat.exe is AoWz.exe with exactly one byte different (file 0x3BB7C, 0x0F vs 0x05 -- the
-      MP build number).  Both get the identical patch, both are verified before either is written,
-      and after writing the script asserts the two files still differ in exactly that one byte.
-
-BACKUPS  backups\AoWz.exe.pre-unitwinpartyarrows / backups\AoWzCompat.exe.pre-unitwinpartyarrows
+BACKUPS  backups\AoWz.exe.pre-unitwinpartyarrows
       Taken ONLY from a file positively proved free of THIS feature (all three sites hold the
       vanilla bytes AND .pyar is either absent or entirely zero).  Never on --undo, never on a
       re-tune over an existing install, and never gated merely on "no backup file exists yet".
 
 Usage:
   python build_scripts/build_unitwin_party_arrows.py            dry run + verify current state
-  python build_scripts/build_unitwin_party_arrows.py --apply    patch both exes (in-place re-tune ok)
+  python build_scripts/build_unitwin_party_arrows.py --apply    patch the exe (in-place re-tune ok)
   python build_scripts/build_unitwin_party_arrows.py --undo     surgical revert (hooks + zero cave)
   python build_scripts/build_unitwin_party_arrows.py --dis      disassemble the cave as it would be built
   python build_scripts/build_unitwin_party_arrows.py --selftest run every build + host guard
@@ -148,7 +143,7 @@ import sys
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import zigexe                                   # mod binary names (AoWz.exe / AoWzCompat.exe)
+import zigexe                                   # mod binary names (AoWz.exe)
 
 EXES = zigexe.EXES
 # ⚠ VANILLA_EXE keeps the name `AoW.exe` on purpose -- this is the 2025-03-21 stock donor under
@@ -159,7 +154,6 @@ SUFFIX = ".pre-unitwinpartyarrows"
 BACKUP_DIR = os.path.join(GAME, "backups")      # ⚠ backups/, never the game root -- rule 2026-09-03
 
 IMAGE_BASE = 0x00400000
-COMPAT_BYTE_OFF = zigexe.COMPAT_BYTE    # the ONE byte AoWz.exe / AoWzCompat.exe differ in
 
 # ---------------------------------------------------------------- the new section
 SEC_NAME = b".pyar"
@@ -907,21 +901,6 @@ def kill_game():
         capture_output=True)
 
 
-def lockstep_check(paths):
-    a = open(paths[0], "rb").read()
-    b = open(paths[1], "rb").read()
-    if len(a) != len(b):
-        return ["LOCKSTEP: lengths differ (%d vs %d)" % (len(a), len(b))]
-    diff = [i for i in range(len(a)) if a[i] != b[i]]
-    if diff != [COMPAT_BYTE_OFF]:
-        return ["LOCKSTEP: %s / %s differ at %s, expected only %#x"
-                % (EXES[0], EXES[1], [hex(x) for x in diff[:8]], COMPAT_BYTE_OFF)]
-    if (a[COMPAT_BYTE_OFF], b[COMPAT_BYTE_OFF]) != (0x0F, 0x05):
-        return ["LOCKSTEP: build-number byte is %02X/%02X, expected 0F/05"
-                % (a[COMPAT_BYTE_OFF], b[COMPAT_BYTE_OFF])]
-    return []
-
-
 def disassemble(code, entries):
     from capstone import Cs, CS_ARCH_X86, CS_MODE_32
     names = {v: k for k, v in entries.items()}
@@ -980,13 +959,6 @@ def main():
         return 1
     print("  host guards H1-H5 ........ ok")
 
-    lf = lockstep_check(paths)
-    for f in lf:
-        print("  %s" % f)
-    if lf:
-        return 1
-    print("  lockstep (pre) ........... ok  (differ only at %#x)" % COMPAT_BYTE_OFF)
-
     states = []
     for exe, d in zip(EXES, blobs):
         ss = site_state(d, hooks)
@@ -1026,9 +998,6 @@ def main():
             if s:
                 d[s[3]:s[3] + SEC_RSIZE] = b"\0" * SEC_RSIZE
             open(p, "wb").write(bytes(d))
-        lf = lockstep_check(paths)
-        for f in lf:
-            print("  %s" % f)
         print("  UNDONE -- hooks restored, cave zeroed.  The .pyar section header is left in "
               "place (inert): removing it would renumber sections and truncate the file, which "
               "is exactly the operation that can unmap another feature's cave.")
@@ -1081,12 +1050,6 @@ def main():
                  "appended" if created else "overwritten in place", raw, soi,
                  len(sections(d))))
 
-    lf = lockstep_check(paths)
-    for f in lf:
-        print("  %s" % f)
-    if lf:
-        return 1
-    print("  lockstep (post) .......... ok")
     print("  APPLIED, UNTESTED.")
     return 0
 

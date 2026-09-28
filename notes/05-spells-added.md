@@ -21,7 +21,7 @@ container-format documentation beyond the splicing rules both features actually 
 | Embrittle spell (id 109) + Embrittled status (ability `0xB2`) — mechanics | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle.py` | `AoWEPACK.dpl` (7 hooks + 1 cave), `AoWTCPCK.dpl` (1 byte) |
 | Embrittle spellbook icon (broken-bone stamp, reuses dead entry 128) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle_icon.py` | `Images/SpellIcn.ILB` |
 | Embrittle `Spells.pfs` record 119 + `Ability.pfs` record 188 | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle_pfs.py` | `Release/Spells.pfs`, `Release/Ability.pfs` |
-| Ability-id ceiling ladders extended `0xB2`→`0xB3` (forced by Embrittled's new id) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_abilityid_ceilings.py`, `build_tcablist_ceiling.py` | `AoWTCPCK.dpl`, `AoWz.exe`, `AoWzCompat.exe` |
+| Ability-id ceiling ladders extended `0xB2`→`0xB3` (forced by Embrittled's new id) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_abilityid_ceilings.py`, `build_tcablist_ceiling.py` | `AoWTCPCK.dpl`, `AoWz.exe` |
 | Grip of Winter binary rework (cooling ladder, land targeting, temporary-terrain marker) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_gripofwinter.py` | `AoWEPACK.dpl` |
 | Grip of Winter rename ("Freeze Water" → "Grip of Winter") | 🔨 APPLIED, UNTESTED (2026-09-01)\* | `build_resstr_names.py` | `Dict/ResStr.mld` + `.txt` |
 | Grip of Winter spellbook description | 🔨 APPLIED, UNTESTED (2026-09-01)\* | `build_pfs_typos.py` | `Release/Spells.pfs` record 20 tag 10 |
@@ -298,11 +298,11 @@ a fixed base (element address `0x00467361` for index 109), so no `.reloc` concer
 ### Ability-id ceiling — two other scripts had to move, and their failure mode is silence
 
 Vanilla's highest ability id was `0xA9`, so nine `cmp <counter>, 0xAA` loop terminators exist across
-`AoWTCPCK.dpl`, `AoWz.exe` and `AoWzCompat.exe`. Registering `0xB2` made both ceiling ladders one short.
+`AoWTCPCK.dpl`, `AoWz.exe`. Registering `0xB2` made both ceiling ladders one short.
 Extended and re-applied 2026-09-01:
 
 ```
-build_abilityid_ceilings.py   LADDER = (0xAA, 0xB1, 0xB2, 0xB3)   6 sites + 2 lockstep twins
+build_abilityid_ceilings.py   LADDER = (0xAA, 0xB1, 0xB2, 0xB3)   6 sites
 build_tcablist_ceiling.py     LADDER = (0xAA, 0xB1, 0xB2, 0xB3)   1 site
 ```
 

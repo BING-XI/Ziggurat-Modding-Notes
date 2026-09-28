@@ -159,7 +159,7 @@ retune, re-apply. build_dlgdirs.py's `.dlgd` is unaffected.
 
 CONVENTIONS: dry-run by default; --apply writes; --undo reverts surgically (restores every hook site,
 drops `.hxg` while it is still the last section, splices ids 60/61 back out of both ILBs);
-idempotent; verify-before-write. The DLL is locked by AoWz.exe, AoWzCompat.exe and AoWzEd.exe.
+idempotent; verify-before-write. The DLL is locked by AoWz.exe and AoWzEd.exe.
 No .pre-* snapshot is minted: the --undo is the revert path.
 
 Roll pattern: none -- no randomness.
