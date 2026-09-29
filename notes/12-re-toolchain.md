@@ -5526,6 +5526,24 @@ reads it as a filename. Output lands in `installer/out/Ziggurat Setup <AppVer>.e
 2. `HKCU\Software\Triumph Studios\Age of Wonders Z\General\Startup Directory` must point at
    `{app}\Ziggurat\`. No archive can write that, and without it the mod loads vanilla's data.
 
+⚠ **`[Dirs]` creates `EmailIn` and `EmailOut`** (2026-09-29; every earlier installer left them
+out). No game module imports a directory-creation call, so the game never makes them; GOG's
+installer does, for vanilla only, and `PrepareToInstall` deliberately does not copy them (they
+hold vanilla turns). Without them the AoW Email Wrapper falls back to `Ziggurat\` itself
+(`AowGame.cs`, since 2011) and drops incoming turns where the game's PBEM dialog, which opens
+`<data root>\EmailIn\`, does not look. Reported by a player. Tested with a
+`/DTestNoRegistry` build into a fake tree: both folders created empty, and a rerun over an install
+keeps a turn already in `EmailIn`.
+
+**The complete folder set is GOG's `unins000.dat`, not the hashdb.** The hashdb lists files, so a
+folder GOG creates empty is invisible to it; the uninstall log (UTF-16) records folders too. GOG
+creates 14 top-level folders: the 11 `PrepareToInstall` copies plus `EmailIn`, `EmailOut` and
+`Save`, which it creates empty. `[Dirs]` covers those three, so a fresh `Ziggurat\` now has all 14.
+Empty subfolders inside a copied tree come across, because `CopyTree` walks the disk. A string scan
+of every Ziggurat binary finds no top-level folder beyond vanilla's except `Zig Modding Tools\`
+(the editor's map generator, withheld), and the editor autosave creates `Scenario\Autosave\`
+itself. `Save` in `[Dirs]` came from Inioch's AoWx installer template, not from this check.
+
 ### 13.3a The web installer — 2026-09-27
 
 Owner ruling 2026-09-27: ship a web installer **alongside** the offline one. `Ziggurat.iss` builds
@@ -5570,6 +5588,63 @@ is uploaded first (the API also lists assets alphabetically, where `Ziggurat.Set
 ⚠ Test builds: `ISCC` defines holding a URL need `MSYS_NO_PATHCONV=1` with single slashes — the
 `//D` trick passes `//DPayloadUrl=http://…` through unmangled and ISCC rejects it. `/DTestNoRegistry`
 removes both registry writes; never ship a build made with it.
+
+### 13.3b The update check — 2026-09-29
+
+Owner rulings 2026-09-29: installs check for a new release and, by default, **ask before
+installing**; the asking window lets the player choose, from then on, between
+`Install updates automatically`, `Keep requesting permission` (the default, selected, listed
+second on purpose) and `Don't auto-update (can be turned back on by running ZigUpdater.cmd)`, and
+daily / weekly / monthly checks. `ZigUpdater.cmd` replaced `Update Ziggurat.cmd` (removed by
+`[InstallDelete]`): it updates at once and turns checks back on.
+
+`update.ps1` has three modes: none (`ZigUpdater.cmd`), `-Scheduled` and `-Register`. The
+installer's `[Run]` calls `-Register` after every install, which (re)creates one per-user task,
+**`Ziggurat updater`** — logon trigger (2-minute delay) plus daily 18:00, `StartWhenAvailable`,
+`Interactive`/`Limited`, no admin — unless the player chose `Don't auto-update`, which it
+respects by removing the task. Settings: `HKCU\…\Age of Wonders Z\Updater`, values `Mode`
+(`Ask`/`Auto`/`Off`), `Every` (`Daily`/`Weekly`/`Monthly`), `LastChecked`.
+
+| `-Scheduled` rule | why |
+|---|---|
+| exits if any AoW program runs | the installer cannot replace locked files; no window over a game |
+| a check is due only `Every` 1/7/30 days after `LastChecked`; the task fires daily regardless | frequency changes need no re-registration |
+| `LastChecked` is written after a completed check, before any window | "Not now" waits a full interval; a failed check retries at the next trigger |
+| downloads and verifies first; reuses a verified copy in `%TEMP%` | "Install now" starts at once; "Not now" costs no second download |
+| `Auto` → `/VERYSILENT /SUPPRESSMSGBOXES`; "Install now" → `/SILENT` | no window at all / progress and errors only; both re-register the task |
+
+⚠ **The action is `conhost.exe --headless powershell … -EncodedCommand`.** `-WindowStyle Hidden`
+flashes a console, and where Windows Terminal is the default console it leaves one open. The
+encoded command tests for `update.ps1` and otherwise **unregisters the task**, so deleting
+`Ziggurat\` stays a complete uninstall. `/DTestNoRegistry` builds skip `[Run]`: a test install
+must not point a task at a fake tree.
+
+⚠ **`New-Item -Force` on an existing registry key recreates it EMPTY.** The first `Set-Setting`
+used it, so every write wiped the other values; it now creates the key only when missing.
+
+⚠ **A plain `MsgBox` in `[Code]` blocks a silent install for ever.** `/SUPPRESSMSGBOXES` does not
+cover it, and silent Setup presses Next again after `NextButtonClick` returns False, so the
+"does not look like an Age of Wonders folder" box came straight back after OK. It is skipped
+when `WizardSilent`; `PrepareToInstall` refuses the same folder and Setup exits with code 7.
+
+⚠ **Never run `ZigUpdater.cmd` in the owner's live tree**: its `version.txt` is 2026.09.21, so it
+would install a release over the working tree, and it now also registers the task there.
+
+**Tested 2026-09-29 on the owner's PC**, against a scratch copy:
+- The task registers at medium integrity; the logon trigger is accepted without elevation.
+- A run when up to date exits 0 with no window. With the script gone, the task deletes itself.
+- `Don't auto-update` + Not now → `Mode=Off`, task removed; a later `-Register` leaves it off;
+  a manual run (`ZigUpdater.cmd`) → `Mode=Ask`, task back.
+- `Weekly`, checked yesterday → no window. Due → dialog; `Install updates automatically` +
+  `Monthly` + Not now saved both.
+- `Auto`, due → no window; the installer started `/VERYSILENT` against the fake tree.
+- The download has no `Zone.Identifier` stream, so SmartScreen does not stop a silent install.
+- With a `/DTestNoRegistry` build: `/VERYSILENT` exits 7 at once with no window; `/SILENT` shows
+  the `PrepareToInstall` error once, then exits 7.
+- A real install through the task (the Yes / Auto path to completion) was not run: it would
+  install a release over the live data root.
+
+⚠ Installs from before 2026.09.29 have no task; each player updates once by hand.
 
 ### ⚠⚠ `createvalueifdoesntexist` made the install location unfixable — removed 2026-09-15
 
