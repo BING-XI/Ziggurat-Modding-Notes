@@ -36,6 +36,8 @@ features all had to learn about the engine underneath them.
 | Transport-boarding "units vanish" bug | SPECULATIVE — static analysis only | none | `AoWEPACK.dpl` |
 | Map/save instances are frozen ability snapshots | informational — ruled "not a bug" | none | `.hsm` / `.asg` / `.csm` |
 | Firmament map level (a 4th map level, index 3) | 🔨 APPLIED, UNTESTED (2026-09-06) — DLL half, v2; editor New-Map dialog and the map-gen tools still to do | `build_maplevel4.py` (v2), plus in-place re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6); UI half `build_skylevel_ui.py` | `AoWEPACK.dpl` (+ `AoWz.exe` for the UI half) |
+| Firmament ↔ Surface caves (placed on the Firmament, lower mouth on Surface) | 🔨 APPLIED, UNTESTED (2026-09-30) | `build_maplevel4.py` (v5) | `AoWEPACK.dpl` |
+| Firmament cities and structures use surface art | 🔨 APPLIED, UNTESTED (2026-10-01) | `build_firmament_structart.py` | `AoWEPACK.dpl` |
 | Abyss map level (a 5th map level, index 4, below Depths) + disabled levels / Map Levels popup | 🔨 APPLIED, UNTESTED (2026-09-27); editor half driven live, game strip rework not yet done | `build_maplevel4.py` (v3), plus in-place re-tunes of `build_skylevel_ui.py` (v4), `build_deved_levelnav.py` (v2, then `build_zigeditor.py`), `build_shipyard_income.py` (`MAX_LEVELS 5`) and `build_townquake_retune.py` | `AoWEPACK.dpl`, `AoWz.exe`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Registry isolation — own settings tree, so a Ziggurat install can sit beside vanilla | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_regiso.py` | `AoWEPACK.dpl`, `AoWSetup.exe` |
 | AoWSetup install-check `'.'` fallback (companion to the above) | ✅ CONFIRMED WORKING (2026-09-09) | `build_aowsetup_installcheck.py` | `AoWSetup.exe` |
@@ -2532,8 +2534,8 @@ All twelve now call one helper (cave `0x55844100`, register-only, PIC, ECX prese
 | `twin_place` `0x55844128` | + ECX = `TMapContainer` | also −1 when the result ≥ `[ecx+0x14]` (the level count) |
 | `twin_safe` `0x5584413C` | as strict | −1 becomes the **input** level |
 
-The Firmament has no cave neighbour either way. Placement sites use `twin_place` and refuse
-cleanly. Run-time sites use `twin_safe`, so a cave no placement path can create (hand-built map,
+In v3 the Firmament had no cave neighbour; since v5 it links to Surface (see "Firmament ↔ Surface
+caves" below). Placement sites use `twin_place` and refuse cleanly. Run-time sites use `twin_safe`, so a cave no placement path can create (hand-built map,
 third-party generator) resolves to its own hex instead of vanilla's unchecked `GetField(-1)` /
 `GetField(count)`. The script's dry run **executes** the three assembled helpers in a small
 interpreter against the Python order table, for levels −2..7, both directions and counts 3..5.
@@ -2662,6 +2664,46 @@ Checklist for this part:
 5. Flying from a Surface Chasm with Caverns off goes down to Depths; the prompt names Depths.
 6. New Map with Caverns off and Abyss on: the blank map opens with Surface, Depths and Abyss.
 7. Save, reload, and play the map: the disabled levels stay disabled.
+
+### Firmament ↔ Surface caves — `build_maplevel4.py` v5 (2026-09-30)
+
+Owner request. The cave chain becomes **Firmament 3 → Surface 0 → Caverns 1 → Depths 2 → Abyss 4**.
+As for every cave, the map maker places it while viewing the higher level (the Firmament), and the
+lower mouth spawns on Surface at the same x,y. A cave placed on Surface still leads to Caverns.
+
+- `strict4` has no slack (`cave_rw` follows it, and the `ReadWrite` call site holds `cave_rw`'s
+  VA), so v5 appends `strict5` (`0x55844308`, 117 B, the same code with the five-entry chain) after
+  `cave_rw`, repoints the `twin_strict` trampoline at it and zeroes `strict4`. No hook site
+  changes. Cave 893 B. Model check: 7 700 executed runs against the new chain.
+- Nothing else needed a change. Cave art follows polarity, not level (`TCave.GetTerrainTypeImage
+  @0x557B361C`: flag 1 → image, flag 0 → image + 0x1E). The entry prompt names no level.
+  Placement re-terrains the footprint (`TILTerrainMO.CanPlace`, HSEPack `0x55618A04` →
+  `THSMap.CanChangeTerrain`, which checks objects only, never the level). The cave has no Sky art,
+  so a mouth placed on Sky falls back on `ForceTerrainType`, which gives Grass on the Firmament
+  since `build_firmament_structart.py` (Dirt before it). Either way the mouth hex is not Sky, so
+  `build_fly_levels.py`'s Sky/Chasm movement drain does not fire.
+- A walker arriving on the Firmament cannot step off the mouth onto Sky; the map maker paints land
+  around the mouth when walkers are meant to use it.
+
+### Structure art on the Firmament — `build_firmament_structart.py` (2026-10-01)
+
+Owner report: Firmament cities showed their cave art. Two `level == 0 ? surface : underground`
+tests, both now treating level 3 as surface. Three in-place rewrites, no cave:
+
+| site | what it decided | now |
+|---|---|---|
+| `TStructure.ForceTerrainType @0x5575E93C` (20 B) and `TPad.ForceTerrainType @0x557FE950` (20 B) | fallback terrain when the structure has no art for the terrain under it: level 0 → none (`-1`), else Dirt `0xC`. `[TMapLevel+8]` is the level index (`TMapContainer.AddLevel`, HSEPack `0x55608E18`) | Firmament → **Grass** `1`; 0 and the cave levels unchanged. Inherited by 42 structure classes |
+| `TRaceResource.GetCityImage @0x55759EBC`, fallback at `0x55759F08` (22 B) | city picture when the race has none for that terrain: level 0 → id `0x32 + size − 1`, else `0x3C + size − 1` | Firmament → the surface id |
+
+- The Dirt reached the city through the hex's terrain cache: `TCity.UpdateImages @0x557AC494`
+  picks image offset `0x28` (U_wall) for terrain {5, 7, 8, 9, `0xC`, `0xD`}.
+- Grass rather than `-1`: `-1` sends `GetValidTerrainType` into its terrain scan from index 0, and a
+  resource with an image 0 (`Str_cave.ILB`) would make the hex Water.
+- A structure's terrain (`+0x18`) is not saved (`TMultiHexMO.ReadWrite` streams x, y only) and
+  `TILTerrainMO.Activate` (HSEPack `0x55618C10`) recomputes it at load, so existing Firmament cities
+  should change when the map is next opened. Unproven: that the hex cache no longer holds the old
+  Dirt at that moment. If one still looks underground, re-place it.
+- Left alone: the Shipyard's construction-time resource pick (`0x557C769C`, table below).
 
 ### In-game checklist — nobody has played this
 

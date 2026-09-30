@@ -53,8 +53,16 @@ USER RULINGS BAKED IN (2026-09-06)
     storm / Bird's View casting, the underground ranged malus.  Every one of
     those already holds for index 4 with no change, because each existing test
     is `level == 0` or `level == 0 or 3` (section G lists them).
-  * Caves link Depths <-> Abyss.  Caves still never lead into or out of the
-    Firmament (a cave on the Firmament, "inside mountains", is a later feature).
+  * Caves link Depths <-> Abyss.
+
+  v5 (2026-09-30, owner request): FIRMAMENT <-> SURFACE CAVES
+  * The Firmament joins the top of the cave chain: (3, 0, 1, 2, 4).  The map
+    maker places a cave while viewing the Firmament, as for every cave (always
+    on the higher level); its lower mouth spawns on the Surface.  A Surface cave
+    placed from the Surface still leads to Caverns; one Surface hex holds one
+    mouth, so the two kinds never share a hex.
+  * Only strict4's chain changes (section I).  Every site, the placement
+    guards and the pathfinder link already go through twin_strict.
 
 NO RANDOM DRAWS.  Not one block in this cave rolls anything, so neither RNG is
 involved and `rng_audit.py --owners` is unchanged by this feature.
@@ -223,7 +231,7 @@ G. THE ABYSS -- v3 (2026-09-27): cave links follow the level ORDER, not +/- 1
      twin_place (+ ecx = TMapContainer)  also -1 when the result >= [ecx+0x14]
      twin_safe                           as strict, but -1 -> the INPUT level
 
-   The Firmament has no cave neighbour in either direction.  Placement asks
+   (v3's table; v4 and v5 widened it -- sections H and I.)  Placement asks
    twin_place (refuse cleanly); the run-time sites ask twin_safe, so a cave no
    placement path can create (hand-edited map, third-party generator) resolves
    to its own hex instead of vanilla's unchecked GetField(-1) / GetField(count),
@@ -299,6 +307,30 @@ H. DISABLED LEVELS -- v4 (2026-09-27, owner request): a per-map mask
    disabled levels the same way (build_fly_levels.py fly_next).  Verified live
    in AoWzEd.exe 2026-09-27: popup edits, save as id 0x60 = 08, reload reads 08.
 
+I. FIRMAMENT <-> SURFACE CAVES -- v5 (2026-09-30, owner request)
+   The chain becomes (3, 0, 1, 2, 4).  strict4 (116 B) is followed directly by
+   cave_rw, whose VA the ReadWrite call site holds, so the one-byte-longer chain
+   cannot be rewritten in place: v5 appends strict5 (the same source, the new
+   chain) after cave_rw, repoints the twin_strict trampoline at it and zeroes
+   strict4's 116 bytes.  No hook site changes.
+   Checked statically, nothing else needed:
+     * Art is chosen by polarity, not level: TCave.GetTerrainTypeImage
+       @0x557B361C returns the image index for flag 1 and index+0x1E for flag 0.
+     * No cave arithmetic outside the Cave unit, no level-named text in the
+       entry prompt (TCave.EnterEx), AoWz.exe imports only CanEnter / Enter.
+     * Placement re-terrains the footprint: TILTerrainMO.CanPlace (HSEPack
+       0x55618A04) sets the structure's terrain through THSMap.CanChangeTerrain,
+       which checks the hex's objects and no level.  The cave has no Sky art, so
+       a mouth on Sky falls back on TStructure.ForceTerrainType @0x5575E93C:
+       Grass on the Firmament since build_firmament_structart.py (Dirt before).
+       The mouth hex is never Sky, so build_fly_levels.py's cave_mv drain (127
+       for a vertical move touching Sky or Chasm) does not fire.
+   A walker that climbs to the Firmament can stand on the mouth hex but cannot
+   leave it onto Sky; the map maker paints land around the mouth if walkers
+   are meant to use it.
+   ⚠ Disabling the Firmament (build_levelset.py) with caves on it: the Surface
+   mouths resolve to their own hex (twin_safe), as for any orphaned cave.
+
 ================================================================================
 LEFT ALONE ON PURPOSE -- these keep reading `level != 0` as "underground"
 ================================================================================
@@ -348,11 +380,13 @@ placeguard block, rewritten at its own VA.
     0x55844020  vis1        0x55844080  placeguard   0x558440E0  birdsview
     0x55844040  vis2        0x558440A0  stormcast    0x55844100  v3 helpers,
                                                                  then 12 stubs
+    0x55844274  (strict4, v4; zeroed in v5)    0x558442E8  cave_rw (v4)
+    0x55844308  strict5 (v5), ends 0x5584437C
 
---apply accepts orig, v1 or v2 (each recognised exactly: its site bytes plus
-cave == that version's regenerated payload, zero beyond it) and writes v3.
-A no-arg run over v1 or v2 reports "NEEDS RE-TUNE", never "applied".  --undo
-restores all 21 sites and zeroes the whole v3 length.
+--apply accepts orig, v1, v2, v3 or v4 (each recognised exactly: its site bytes
+plus cave == that version's regenerated payload, zero beyond it) and writes v5.
+A no-arg run over an older version reports "NEEDS RE-TUNE", never "applied".
+--undo restores all 23 sites and zeroes the whole v5 length.
 
 Usage:
   no args   dry run: verify + report the state of all 21 sites; also runs the
@@ -542,7 +576,19 @@ MASK_ID = 0x60
 RWCALL_VA = 0x55776E50                             # TAoWHSMap.ReadWrite: call THSMap.ReadWrite
 RWCALL_TARGET = 0x557025AC                         # the HSEPack import thunk
 MAPGLOBAL = 0x558FA040                             # AoWE.AoWHSMap (the map object)
-CAVE_CHAIN = (0, 1, 2, ABYSS_LEVEL)                # the cave chain, top to bottom
+CAVE_CHAIN_V4 = (0, 1, 2, ABYSS_LEVEL)             # v4's chain -- recognition only
+# ---- I. v5 (2026-09-30): the Firmament joins the chain at the top ------------
+CAVE_CHAIN = (SKY_LEVEL, 0, 1, 2, ABYSS_LEVEL)     # the cave chain, top to bottom
+CHAINS = {"strict4": CAVE_CHAIN_V4, "strict5": CAVE_CHAIN}
+CHAIN_AT = 9                                       # 4 pushes + the 5-byte call
+
+
+def strip_chain(name, code):
+    """A strict block with its inline chain data NOP'd, so capstone reads code only."""
+    if name not in CHAINS:
+        return code
+    n = len(CHAINS[name])
+    return code[:CHAIN_AT] + b"\x90" * n + code[CHAIN_AT + n:]
 
 
 # ---- cave source: v1 --------------------------------------------------------
@@ -772,14 +818,16 @@ _keep:
 
 
 # ---- cave source: v4 --------------------------------------------------------
-def src_strict4(va):
-    """twin_strict, v4: walk CAVE_CHAIN from the level's position, skipping any
+def src_strict(va, chain_levels):
+    """twin_strict, v4/v5: walk the chain from the level's position, skipping any
     level that is disabled in the map's mask or missing (>= the level count).
     EAX = level, DL != 0 DOWN -> EAX = the level, or -1.  Preserves all but EAX.
     The chain is inline data straddled by `call`, so the pop yields its run-time
-    address and, minus its link VA, the load delta for the map global."""
-    chain_va = va + 4 + 5                          # 4 pushes, then the 5-byte call
-    chain = ", ".join(str(c) for c in CAVE_CHAIN)
+    address and, minus its link VA, the load delta for the map global.
+    v4 (strict4) and v5 (strict5) differ only in the chain."""
+    chain_va = va + CHAIN_AT
+    chain = ", ".join(str(c) for c in chain_levels)
+    n = len(chain_levels)
     return f"""
     push ebx
     push ecx
@@ -809,14 +857,14 @@ _find:
     cmp  byte ptr [esi + edi], al
     je   _step
     inc  edi
-    cmp  edi, {len(CAVE_CHAIN)}
+    cmp  edi, {n}
     jb   _find
-    jmp  _none                            // not in the chain: the Firmament
+    jmp  _none                            // not in the chain
 _step:
     test dl, dl
     je   _up
     inc  edi
-    cmp  edi, {len(CAVE_CHAIN)}
+    cmp  edi, {n}
     jae  _none
     jmp  _test
 _up:
@@ -929,12 +977,23 @@ def build(version):
     if version >= 4:
         # appended after v3's last stub; v3's twin_strict becomes a trampoline so
         # every v3 stub and hook keeps its bytes
-        s4 = put("strict4", src_strict4(va))
+        s4 = put("strict4", src_strict(va, CAVE_CHAIN_V4))
         put("cave_rw", src_cave_rw())
-        code = out["strict4"][1]
-        assert code[9:9 + len(CAVE_CHAIN)] == bytes(CAVE_CHAIN), "chain data misplaced"
         ts_va = out["twin_strict"][0]
         out["twin_strict"] = (ts_va, asm("jmp %#x" % s4, ts_va))
+    if version >= 5:
+        # strict4 has no slack (cave_rw follows it directly), so the longer chain
+        # goes in a new block after cave_rw; the trampoline is repointed and
+        # strict4's bytes are zeroed.  cave_rw keeps its VA (the rw call site).
+        s5 = put("strict5", src_strict(va, CAVE_CHAIN))
+        del out["strict4"]
+        order.remove("strict4")
+        out["twin_strict"] = (ts_va, asm("jmp %#x" % s5, ts_va))
+    for name in CHAINS:
+        if name in out:
+            chain = CHAINS[name]
+            assert out[name][1][CHAIN_AT:CHAIN_AT + len(chain)] == bytes(chain), \
+                "chain data misplaced in %s" % name
     end = max(v + len(c) for v, c in out.values())
     return out, order, end
 
@@ -954,14 +1013,19 @@ B1, O1, END1 = build(1)
 B2, O2, END2 = build(2)
 B3, O3, END3 = build(3)
 B4, O4, END4 = build(4)
+B5, O5, END5 = build(5)
 PAY = {1: payload(B1, END1), 2: payload(B2, END2), 3: payload(B3, END3),
-       4: payload(B4, END4)}
-USED = END4 - CAVE
+       4: payload(B4, END4), 5: payload(B5, END5)}
+USED = END5 - CAVE
 
-# every block an older version owns keeps its VA in the newer one
-for _older, _newer in ((B1, B2), (B2, B3), (B3, B4)):
+# every block an older version owns keeps its VA in the newer one (v5 drops strict4)
+for _older, _newer in ((B1, B2), (B2, B3), (B3, B4), (B4, B5)):
     for _n, (_va, _c) in _older.items():
-        assert _newer[_n][0] == _va, "block %s moved between versions" % _n
+        if _n in _newer:
+            assert _newer[_n][0] == _va, "block %s moved between versions" % _n
+assert set(B4) - set(B5) == {"strict4"}, "v5 dropped a block other than strict4"
+_s4va, _s4 = B4["strict4"]
+assert not any(PAY[5][_s4va - CAVE:_s4va - CAVE + len(_s4)]), "v5 leaves strict4 bytes behind"
 assert USED <= CAVE_LIMIT, "cave payload %d B outgrew the 0x%X reservation" % (
     USED, CAVE_LIMIT)
 assert CAVE + CAVE_LIMIT <= CAVE_ZERO_END, "reservation runs past the verified-zero zone"
@@ -998,7 +1062,7 @@ for _label, _va, _orig, _blk, _gen in HOOK_TABLE:
 
 # v4's two non-hook sites: the instance size and the retargeted ReadWrite call
 RWCALL_ORIG = b"\xE8" + rel32(RWCALL_VA, RWCALL_TARGET)
-RWCALL_V4 = b"\xE8" + rel32(RWCALL_VA, B4["cave_rw"][0])
+RWCALL_V4 = b"\xE8" + rel32(RWCALL_VA, B5["cave_rw"][0])
 SITES4 = [("inst size  ", INST_VA, INST_ORIG, INST_V4),
           ("rw call    ", RWCALL_VA, RWCALL_ORIG, RWCALL_V4)]
 
@@ -1006,10 +1070,9 @@ SITES4 = [("inst size  ", INST_VA, INST_ORIG, INST_V4),
 # ---- build-time assertions on the ASSEMBLED bytes ---------------------------
 def verify_cave():
     """Never trust the keystone round trip -- read the encodings back."""
-    for name in O4:
-        va, code = B4[name]
-        if name == "strict4":                       # skip the inline chain data
-            code = code[:9] + b"\x90" * len(CAVE_CHAIN) + code[9 + len(CAVE_CHAIN):]
+    for name in O5:
+        va, code = B5[name]
+        code = strip_chain(name, code)              # skip the inline chain data
         n = 0
         for ins in cs.disasm(code, va):
             n += ins.size
@@ -1229,18 +1292,16 @@ FAKE_MAP, FAKE_CONT = 0x10000, 0x20000
 
 
 def model_check():
-    """Run twin_strict / twin_place / twin_safe (v4) for every level -2..7, both
+    """Run twin_strict / twin_place / twin_safe (v5) for every level -2..7, both
     directions, every disabled mask over levels 1..5, counts 3..6, against
     cave_twin_model.  _Mini.run also refuses a helper that returns with any
     register but EAX changed."""
     code_map, mem = {}, {}
-    for name in O4:
-        va, code = B4[name]
+    for name in O5:
+        va, code = B5[name]
         for i, b in enumerate(code):
             mem[va + i] = b
-        body = code
-        if name == "strict4":
-            body = code[:9] + b"\x90" * len(CAVE_CHAIN) + code[9 + len(CAVE_CHAIN):]
+        body = strip_chain(name, code)
         for ins in cs.disasm(body, va):
             code_map[ins.address] = ins
     emu = _Mini(code_map, mem)
@@ -1265,15 +1326,15 @@ def model_check():
                     dl = 1 if down else 0
                     tag = "L=%d %s mask=%02X n=%d" % (level, "dn" if down else "up",
                                                        mask, count)
-                    got = emu.run(B4["twin_strict"][0],
+                    got = emu.run(B5["twin_strict"][0],
                                   {"eax": level, "edx": 0xABCD00 | dl, "ecx": 0x1234,
                                    "ebx": 0x5678, "esi": 0x9ABC, "edi": 0xDEF0})
                     if got != want:
                         bad.append("strict %s: %d, want %d" % (tag, got, want))
-                    got = emu.run(B4["twin_safe"][0], {"eax": level, "edx": dl})
+                    got = emu.run(B5["twin_safe"][0], {"eax": level, "edx": dl})
                     if got != (level if want == -1 else want):
                         bad.append("safe %s: %d" % (tag, got))
-                    got = emu.run(B4["twin_place"][0],
+                    got = emu.run(B5["twin_place"][0],
                                   {"eax": level, "edx": dl, "ecx": FAKE_CONT})
                     if got != (want if 0 <= want < count else -1):
                         bad.append("place %s: %d" % (tag, got))
@@ -1284,7 +1345,7 @@ def model_check():
     for level in range(-2, 8):
         for down in (0, 1):
             want = cave_twin_model(level, down, 0, 0x7F)
-            got = emu.run(B4["twin_strict"][0], {"eax": level, "edx": down})
+            got = emu.run(B5["twin_strict"][0], {"eax": level, "edx": down})
             if got != want:
                 bad.append("no-map L=%d: %d, want %d" % (level, got, want))
             n += 1
@@ -1407,32 +1468,34 @@ def main():
     if apply_ and undo:
         sys.exit("pick one of --apply / --undo")
 
-    print("build_maplevel4 v4   Firmament = level %d (Sky 0x%02X), Abyss = level %d   "
-          "cave 0x%08X..0x%08X (%d of %d B; v3 %d, v2 %d, v1 %d)"
-          % (SKY_LEVEL, SKY_TERRAIN, ABYSS_LEVEL, CAVE, END4 - 1, USED, CAVE_LIMIT,
-             END3 - CAVE, END2 - CAVE, END1 - CAVE))
+    print("build_maplevel4 v5   Firmament = level %d (Sky 0x%02X), Abyss = level %d   "
+          "cave 0x%08X..0x%08X (%d of %d B; v4 %d, v3 %d, v2 %d, v1 %d)"
+          % (SKY_LEVEL, SKY_TERRAIN, ABYSS_LEVEL, CAVE, END5 - 1, USED, CAVE_LIMIT,
+             END4 - CAVE, END3 - CAVE, END2 - CAVE, END1 - CAVE))
     print("cave chain %s, skipping disabled (mask [map+0x%X], id 0x%X) and missing "
           "levels   (helper model: %d runs ok)"
           % (list(CAVE_CHAIN), MASK_OFF, MASK_ID, MODEL_RUNS))
-    for name in O4:
-        va, code = B4[name]
+    for name in O5:
+        va, code = B5[name]
         tag = ("" if name in V1_BLOCKS else "   [v2]" if name in V2_BLOCKS else
-               "   [v4]" if name in ("strict4", "cave_rw") else "   [v3]")
+               "   [v4]" if name == "cave_rw" else "   [v5]" if name == "strict5" else
+               "   [v3]")
         if name == "placeguard":
             tag = "   [v1, body rewritten in v3]"
         if name == "twin_strict":
-            tag = "   [v3, a trampoline to strict4 since v4]"
+            tag = "   [v3, a trampoline to strict5 since v5]"
         print("    %-11s 0x%08X  %4d B%s" % (name, va, len(code), tag))
+    print("    (v4's strict4 at 0x%08X, %d B, is zeroed in v5)"
+          % (_s4va, len(_s4)))
 
     if dis:
         print()
-        for name in O4:
-            va, code = B4[name]
-            if name == "strict4":
-                print("   (strict4 carries the chain %s as data at 0x%08X)"
-                      % (list(CAVE_CHAIN), va + 9))
-                code = code[:9] + b"\x90" * len(CAVE_CHAIN) + code[9 + len(CAVE_CHAIN):]
-            disasm(code, va, name)
+        for name in O5:
+            va, code = B5[name]
+            if name in CHAINS:
+                print("   (%s carries the chain %s as data at 0x%08X)"
+                      % (name, list(CHAINS[name]), va + CHAIN_AT))
+            disasm(strip_chain(name, code), va, name)
             print()
         print("   --- cap byte 0x%08X: %s -> %s ---\n"
               % (CAP_VA, CAP_ORIG.hex(" "), CAP_V3.hex(" ")))
@@ -1461,7 +1524,7 @@ def main():
 
     cur_cave = rd(CAVE, CAVE_LIMIT)
     cave_is = {0: cur_cave == bytes(CAVE_LIMIT)}
-    for v in (1, 2, 3, 4):
+    for v in (1, 2, 3, 4, 5):
         p = PAY[v]
         cave_is[v] = cur_cave[:len(p)] == p and not any(cur_cave[len(p):])
 
@@ -1485,7 +1548,7 @@ def main():
         show = cur if len(cur) <= 6 else cur[:6]
         print("  %s gen%d 0x%08X  %-17s %s%s"
               % (label, gen, va, show.hex(" "), st, "" if len(cur) <= 6 else "  (%d B)" % len(cur)))
-    known = [v for v in (4, 3, 2, 1, 0) if cave_is[v]]
+    known = [v for v in (5, 4, 3, 2, 1, 0) if cave_is[v]]
     print("  cave        0x%08X  %s"
           % (CAVE, "all zero" if cave_is[0] else
              "v%d payload (%d B), rest zero" % (known[0], len(PAY[known[0]])) if known else
@@ -1510,39 +1573,43 @@ def main():
         and gens(3, "patched") and g4o and cave_is[3]
     st_v4 = cap == CAP_V3 and gens(1, "patched") and gens(2, "patched") \
         and gens(3, "patched") and g4p and cave_is[4]
+    st_v5 = cap == CAP_V3 and gens(1, "patched") and gens(2, "patched") \
+        and gens(3, "patched") and g4p and cave_is[5]
 
     problems = safety_checks(data)
     print("  v3/v4 sites: .reloc / interior-branch check: %s"
           % ("CLEAN" if not problems else "!! " + "; ".join(problems)))
 
-    older = st_v1 or st_v2 or st_v3
+    older = st_v1 or st_v2 or st_v3 or st_v4
     if st_orig:
         print("\nSTATUS: orig -- NOT applied")
     elif st_v1:
-        print("\nSTATUS: applied (v1 -- NEEDS RE-TUNE to v4)")
+        print("\nSTATUS: applied (v1 -- NEEDS RE-TUNE to v5)")
     elif st_v2:
-        print("\nSTATUS: applied (v2 -- NEEDS RE-TUNE to v4: no Abyss)")
+        print("\nSTATUS: applied (v2 -- NEEDS RE-TUNE to v5: no Abyss)")
     elif st_v3:
-        print("\nSTATUS: applied (v3 -- NEEDS RE-TUNE to v4: no disabled-levels mask)")
+        print("\nSTATUS: applied (v3 -- NEEDS RE-TUNE to v5: no disabled-levels mask)")
     elif st_v4:
-        print("\nSTATUS: applied (v4 -- up to date)")
+        print("\nSTATUS: applied (v4 -- NEEDS RE-TUNE to v5: no Firmament caves)")
+    elif st_v5:
+        print("\nSTATUS: applied (v5 -- up to date)")
     else:
         print("\nSTATUS: PARTIAL / UNRECOGNISED -- the site states and the cave "
-              "do not add up to orig, v1, v2, v3 or v4.")
+              "do not add up to orig, v1, v2, v3, v4 or v5.")
 
     # ---- undo ----
     if undo:
         if st_orig:
             print("Nothing to undo.")
             return
-        if not (older or st_v4):
+        if not (older or st_v5):
             sys.exit("ABORT: unrecognised state -- refusing to undo blind.")
         wr(CAP_VA, CAP_ORIG)
         for label, va, orig, new in SITES4:
             wr(va, orig)
         for label, va, orig, new, gen in HOOKS:
             wr(va, orig)                       # restores every generation's sites
-        wr(CAVE, bytes(USED))                  # zero the FULL v4 length
+        wr(CAVE, bytes(max(USED, END4 - CAVE)))    # the FULL v4/v5 length
         if any(rd(CAVE, CAVE_LIMIT)):
             sys.exit("BUG: undo left non-zero bytes in the reservation -- not writing.")
         kill_aow()
@@ -1556,17 +1623,17 @@ def main():
         return
 
     if not apply_:
-        if not st_v4:
+        if not st_v5:
             print("DRY RUN -- re-run with --apply to commit%s."
-                  % (" (in-place cave rewrite -> v4)" if older else ""))
+                  % (" (in-place cave rewrite -> v5)" if older else ""))
         return
 
-    if st_v4:
-        print("\nAlready applied (v4) and up to date -- nothing to do.")
+    if st_v5:
+        print("\nAlready applied (v5) and up to date -- nothing to do.")
         return
 
     if not (st_orig or older):
-        sys.exit("ABORT: --apply accepts only the orig, v1, v2 or v3 state.")
+        sys.exit("ABORT: --apply accepts only the orig, v1, v2, v3 or v4 state.")
     if problems:
         sys.exit("ABORT: a v3/v4 site fails the .reloc / interior-branch check.")
 
@@ -1581,7 +1648,7 @@ def main():
         shutil.copy2(DLL, BACKUP)
         print("backup -> backups\\%s" % os.path.basename(BACKUP))
     elif older:
-        print("in-place rewrite -> v4: NO backup taken (the file on disk is this "
+        print("in-place rewrite -> v5: NO backup taken (the file on disk is this "
               "script's own previous output, not a proven-unpatched state)")
     elif not os.path.exists(BACKUP):
         print("backup skipped -- the live DLL is not byte-identical to the "
@@ -1593,18 +1660,17 @@ def main():
     for label, va, orig, new, gen in HOOKS:
         wr(va, new)
     wr(CAVE, bytes(CAVE_LIMIT))
-    wr(CAVE, PAY[4])
+    wr(CAVE, PAY[5])
 
     kill_aow()
     try:
         open(DLL, "wb").write(data)
     except PermissionError:
         sys.exit("ERROR: AoWEPACK.dpl is locked. Kill every AoW binary and retry.")
-    print("\nAPPLIED v4: cap byte 0x%08X -> 05; TAoWHSMap 0x41C -> 0x420 with the mask at "
-          "+0x%X (id 0x%X); %d hooks; cave %d B at 0x%08X."
-          % (CAP_IMM_VA, MASK_OFF, MASK_ID, len(HOOKS), USED, CAVE))
+    print("\nAPPLIED v5: cap byte 0x%08X -> 05; TAoWHSMap 0x41C -> 0x420 with the mask at "
+          "+0x%X (id 0x%X); %d hooks; cave chain %s; cave %d B at 0x%08X."
+          % (CAP_IMM_VA, MASK_OFF, MASK_ID, len(HOOKS), list(CAVE_CHAIN), USED, CAVE))
     print("Revert with --undo (surgical). No RNG draws in this feature.")
-    print("Status: applied, untested -- needs the user's in-game test.")
 
 
 if __name__ == "__main__":

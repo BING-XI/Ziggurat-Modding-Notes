@@ -1543,7 +1543,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x55838000` | `build_ai_itemloot.py` | `0x55838000`–`0x55838600` (6 sub-caves) | AI heroes pick up / equip / upgrade-swap / stash ground items; supersedes `build_ai_itempickup.py` and `build_ai_itemtarget.py` above |
 | `0x5583E000` | `build_raiseterrain_ug_earth.py` | `C_UGDIRT` `0x5583E000` (320 B), `C_SHOWGATE` `0x5583E140` (64 B slot, 22 B used) | Raise Terrain works underground, producing temporary earth. `C_SHOWGATE` is what `0x5582A4E0` jumps to: it tests the restore-terrain byte `[eax+0x0E]` and the Earth marker `[eax+0x0F] == 7`, then either `jmp 0x5582A4E6` (Grip of Winter's own untouched 14-byte tail → vanilla `Show`) or `jmp 0x5582A4F1` (`ret 4`, draw nothing). See the `0x5582A200` row for the undo ordering this creates. |
 | `0x55842000` | `build_minddecay_oos.py` | 256 B written; full page `0x55842000`–`0x55842FFF` verified zero and reserved | Mind Decay's to-hit roll made draw-count-invariant (§4.5's worked example) |
-| `0x55844000` | `build_maplevel4.py` | **exclusive**, `0x400` (**v4: 775 B used** — v3 below, plus `strict4` `0x55844274` and `cave_rw` `0x558442E8`; `twin_strict` is now a trampoline; ⚠ also owns `TAoWHSMap` InstanceSize `0x5570E858` (0x41C → 0x420, mask at `+0x41C`, id 0x60) and the call at `0x55776E50`. v3 was 625 B used — `fillterr` `0x55844000`, `vis1` `..20`, `vis2` `..40`, `spellgate` `..60`, `placeguard` `..80` (body rewritten in v3), `stormcast` `..A0`, `stormai` `..C0`, `birdsview` `..E0`; v3 from `0x55844100`: helpers `twin_strict`/`twin_place`/`twin_safe`, then 12 cave-link stubs to `0x55844270`) | Firmament (index 3) and Abyss (index 4) map levels: Sky terrain fill, surface-like vision, the global-target / storm / Bird's View spell gates, and every `TCave` level±1 site routed through the level order. Needs no globals — no PIC anchor, no absolute operand |
+| `0x55844000` | `build_maplevel4.py` | **exclusive**, `0x400` (**v5: 893 B used, ends `0x5584437C`** — v3 below, plus `cave_rw` `0x558442E8` (v4) and `strict5` `0x55844308` (v5); v4's `strict4` at `0x55844274` (116 B) is zeroed; `twin_strict` is a trampoline to `strict5`; ⚠ also owns `TAoWHSMap` InstanceSize `0x5570E858` (0x41C → 0x420, mask at `+0x41C`, id 0x60) and the call at `0x55776E50`. v3 was 625 B used — `fillterr` `0x55844000`, `vis1` `..20`, `vis2` `..40`, `spellgate` `..60`, `placeguard` `..80` (body rewritten in v3), `stormcast` `..A0`, `stormai` `..C0`, `birdsview` `..E0`; v3 from `0x55844100`: helpers `twin_strict`/`twin_place`/`twin_safe`, then 12 cave-link stubs to `0x55844270`) | Firmament (index 3) and Abyss (index 4) map levels: Sky terrain fill, surface-like vision, the global-target / storm / Bird's View spell gates, and every `TCave` level±1 site routed through the level order. Needs no globals — no PIC anchor, no absolute operand |
 | `0x55846000` | `build_spellcast_herotier.py` | **exclusive**, `0x80` | the Spellcasting-level tier gate applies to units only, not heroes |
 | `0x55847000` | `build_spellward_rescope.py` | **exclusive**, `0x100` (22 B used) | Astral Ward (ex Spell Ward) blocks only Town Gate (`0x26`) and Warp Party (`0x22`) — `cave_spellward`, hooked from `TSpell.CanActivate @0x557792E8` |
 | `0x55848000` | `build_powerleech.py` | **exclusive**, `0x400` (379 B used — `cave_powerleech` `0x55848000`, `nodepower` `0x5584810F`) | Power Leech: the caster steals 25% of the power of every magic node owned by another player. Entered by retargeting the opening `call` of `GetNetPower @0x5577CEC4`. **PIC anchored on a function**, not on a data global — `sub ecx, 0x77C50` leaves EDI = runtime `TPowerNode.GetPower @0x557D03C8`, so the node test is `cmp [edx+0x1F8], edi` and the map (`edi + 0x129C78`) and `TPlayerStructurePowerSource.Power` (`edi − 0x6E874`) are small offsets. **No `0x55xxxxxx` operand in the cave.** |
@@ -5618,6 +5618,31 @@ flashes a console, and where Windows Terminal is the default console it leaves o
 encoded command tests for `update.ps1` and otherwise **unregisters the task**, so deleting
 `Ziggurat\` stays a complete uninstall. `/DTestNoRegistry` builds skip `[Run]`: a test install
 must not point a task at a fake tree.
+
+**The window's look** (owner, 2026-09-29): the manual's palette — parchment, ink, green `#1d6a4f`
+buttons and title, copper `#a24e18`/`#c07a3c` double frame, Georgia headings — and an emblem,
+**`Ziggurat\ZigUpdater.png`** (a payload file, 256 px, transparent outside its glow), painted by
+`installer/make_updater_orb.py`: a pale-blue crystal ball with AoWz.exe's purple dragon inside
+it, palette and grain after the game's sphere icons (`Int/GenericI.ILB` 27–42, on the manual's
+Spheres page). Owner's brief, in three rounds: a flat purple orb was "too simplistic"; a
+textured disc read as "a plate" with the dragon "on top"; so the ball is lit as a sphere (wrap
+lighting, dark side bottom-right, caustic, Fresnel rim) and the dragon is smoothed (Scale2x ×2),
+repainted in a softer palette, lit and sculpted by the same light, and veiled by the glass.
+⚠ The highlight is **placed**, not derived: a Blinn highlight for a top-left light lands on the
+dragon's head. The window only displays the PNG, so it can be repainted by any means (an image
+model included); rerunning the script overwrites it. Missing, there is no emblem.
+The window icon is `MAINICON` taken at its native 32 px with `PrivateExtractIcons`
+(`ExtractAssociatedIcon` resamples it to the system icon size and blurs it). The title bar and
+window border are tinted with `DwmSetWindowAttribute` 35/36/34, which
+Windows 10 ignores. Two WinForms traps: `Form.Padding` does not move a control at (0,0) unless it
+is docked (the layout is placed by `Location`), and a gradient `BackgroundImage` shows through
+nested transparent panels at the wrong offset (the fill is flat, and the frame is painted in
+`Paint`). A render harness can open the window with sample values and no side effects by
+dot-sourcing just `Use-Forms`/`Ask`/`Show-UpdateDialog` from the script's AST.
+
+⚠ **`Use-Forms` guards its `Add-Type`.** A second `Add-Type` of the same type throws, and "Install
+now" while AoW runs calls it twice (the dialog, then the "close the game" box): unguarded, the
+script died there instead of saying so.
 
 ⚠ **`New-Item -Force` on an existing registry key recreates it EMPTY.** The first `Set-Setting`
 used it, so every write wiped the other values; it now creates the key only when missing.

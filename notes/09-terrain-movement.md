@@ -19,6 +19,7 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | World-map group move — plan front-first, pass over parties that are leaving | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_group_move_map.py` | AoWEPACK.dpl |
 | Chasm & Sky — movement rows + Coast water-filter | 🔨 APPLIED, UNTESTED (v1 2026-07-24) · ✅ **v2 rows CONFIRMED WORKING (2026-09-21)** — Fly row fully open, Bridge column opened in the 5 walking-family tables | `build_chasm_sky_movement.py` | AoWEPACK.dpl |
 | Roads on Dirt; bridges on Chasm and Sky (5 new resources) | ✅ CONFIRMED WORKING (2026-09-21) — 1131 children | `build_hss_addresource.py` | Release/Release.hss |
+| Sky/Chasm bridges need land at both ends (the water rule), no chaining | 🔨 APPLIED, UNTESTED (2026-10-01) | `build_bridge_skychasm.py` | AoWEPACK.dpl |
 | Chasm & Sky — editor palette (brushes + cross-level) | ✅ CONFIRMED WORKING (2026-07-24) | `build_deved_terrainpal.py` | AoWDevEd.exe |
 | Chasm & Sky — tile art, v2 grade | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_chasm_sky_art.py` | Release/Release.hss |
 | Chasm & Sky — cliff transitions, v2 remap | ✅ CONFIRMED WORKING (2026-07-27) | `build_chasm_sky_transitions.py` | AoWEPACK.dpl |
@@ -600,12 +601,19 @@ record gets a fresh resource id (tag 1, the guid maps store), so no existing map
 `ROAD*.ILB` on disk at all. That is why cloning a donor is the only cheap way to get art that fits —
 and why each new record costs 6.7–11.4 KB.
 
-⭐ `AoWE.Land @0x5575AEA4` (byte-identical to vanilla) returns *not land* only for
-**{0 Water, 6 Ice, 9 Lava, 10 CaveWater, 13 CaveIce}** — so **Chasm and Sky already count as land**.
-`THexagonBridge.DirectionValid @0x55799C04` requires both opposite neighbours to be land and
-`NeighbourTerrainChanged @0x5579A054` frees the bridge when no axis qualifies, so a chasm bridge will
-not delete itself. ⚠ The flip side: unlike a water bridge, it can be strung across open chasm rather
-than only shore to shore, because the chasm hexes either side also read as land.
+⭐ **Bridges over Sky and Chasm follow the water rule** — a one-hex span with land at both ends of
+one axis — since `build_bridge_skychasm.py` (2026-10-01, owner request). `AoWE.Land @0x5575AEA4`
+returned *not land* only for {0 Water, 6 Ice, 9 Lava, 10 CaveWater, 13 CaveIce}, so a Sky or Chasm
+hex beside a bridge counted as its bank and bridges chained without end. `Land` is rewritten in
+place as a bitmask test (`0x6E41`: those five plus Chasm 11 and Sky 14). Its 14 callers are all in
+`HxBridge` (`DirectionValid` ×2, `UpdateExclusiveMoves` ×12) and no other module imports it.
+- Only the hexagon bridge is involved: the road brush (`TMORTerrainControl.Place`, HSEPack
+  `0x5560EA94`) picks among resources registered by terrain, and `Bridge.TBridgeResource.MsgProc`
+  (HSEPack `0x55618138`) swallows the registration message `0x10014`, so engine bridges are never
+  offered.
+- Bridges already chained on a map stay placed (`Activate` re-runs only `UpdateExclusiveMoves`),
+  but no longer link into their Sky/Chasm neighbours, so walkers cannot cross them. Delete them by
+  hand.
 
 #### ⛔ The "1128-resource ceiling" was WRONG — it was a grid-slot collision (corrected 2026-09-21)
 
