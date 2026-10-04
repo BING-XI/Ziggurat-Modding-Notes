@@ -241,3 +241,15 @@ See `../Editor_Lag_CopyPaste_Investigation_2026-07-07.md` for the findings these
   them.
 
 Not ported: `diag_veh_attach.py` (= `veh_capture.py --attach`).
+
+## Added 2026-10-03 (terrain edges)
+
+- **hexfield.py** — hex-field toolkit. `render(M, hextrans, waterhex, icehex, tiles, rule=, shore_base=,
+  after_hex=)` paints a `{(hx,hy): terrain}` field in the engine's own order: base tile, the three
+  upper-edge transitions from the `TAoWHexagon.UpdateTransition` rule table, then every water/ice
+  hex's shore pieces (a transcription of `TAoWWaterHexagon.ShowDynamic`, with the edge run each of
+  the 32 pieces stands for). It reproduces the live map closely enough to judge transition art
+  before touching a binary. Also: ILB record read/re-serialise (round-trips every record of
+  HEXTRANS/Waterhex/IceHex), `ilb_append`/`ilb_strip` (tail splice, refuses anything else), and
+  `rle_encode`, a **multi-run** RLESprite16 encoder (`ilb_rle16.encode` allows one span per row,
+  which cannot express a dithered edge).

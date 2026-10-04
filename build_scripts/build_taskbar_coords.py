@@ -32,8 +32,8 @@ WHERE -- AoWz.exe has no free section-header slot, so this GROWS .ibnr, the last
       0x00633000  the grown TTBWINDOW DFM, then the relocated field table, then the code/data
   build_itembanner_hpmv.py --undo refuses while .ibnr is larger than its own 0x3000.
   --undo here restores every pointer and hook, truncates the file back and shrinks .ibnr.
-  build_unit_ai.py is a tenant above this one (.ibnr 0xD000 -> 0x17000) and repoints the resource
-  entry, field table and instance size again; this script aborts while it is installed.
+  build_unit_ai.py v1 (2026-09-27) was a tenant above this one (.ibnr 0xD000 -> 0x17000); v2
+  (2026-10-03) moved to .hcol and shrinks .ibnr back, so a 0x17000 .ibnr means v1 is still on.
 
 Rolls: none.  Fixed-base exe; absolute addresses throughout.
 """
@@ -312,7 +312,7 @@ def plan_for(x):
     grown = rs == NEW_SIZE
     assert rs in (IBNR_OWN, NEW_SIZE), "%s: .ibnr is %#x B, expected %#x or %#x%s" % (
         x.name, rs, IBNR_OWN, NEW_SIZE,
-        " -- build_unit_ai.py is installed above this feature: run its --undo first" if rs == 0x17000 else "")
+        " -- build_unit_ai.py v1 is installed above this feature: run build_unit_ai.py --apply (v2) first" if rs == 0x17000 else "")
     o = x.off(BASE + RES_RVA)
     dfm = bytes(d[o:o + RES_SIZE])
     assert dfm[:4] == b"TPF0", "the .rsrc TTBWINDOW master is not a DFM"

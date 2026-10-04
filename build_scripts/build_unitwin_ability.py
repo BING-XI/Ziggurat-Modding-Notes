@@ -87,7 +87,7 @@ CAVE SPACE
 ----------
 `0x0062D000`, inside `.hcol` (VA 0x612000, vsz 0x1C000, chars 0xE0000060 = EXEC|READ|WRITE).
 ⚠ `.hcol` is `build_herodlg_columns.py`'s section. That script allocates upward from 0x612000 and
-its blob currently ends at 0x0062417B, leaving ~36 KB before this cave; its `add_section()` returns
+its blob currently ends at 0x00624250, leaving ~36 KB before this cave; its `add_section()` returns
 early when `.hcol` exists, so re-applying it neither reallocates nor zeroes the section and this
 cave survives. Ordering: if `.hcol` is ever REMOVED, re-apply `build_herodlg_columns.py` first,
 then this. See that script's docstring for the `.syd` / SizeOfImage hazard around the same region.
@@ -124,7 +124,7 @@ SITE_ORIG = bytes.fromhex("8b08ff5174")          # mov ecx,[eax] ; call [ecx+0x7
 CAVE_VA = 0x0062D000
 CAVE_MAX = 0x40                                   # we use 27; keep the whole slot ours and zeroed
 HCOL_VA, HCOL_SIZE = 0x00612000, 0x1C000
-HERODLG_TOP = 0x0062417B                          # build_herodlg_columns.py's current high-water
+HERODLG_TOP = 0x00624250                          # build_herodlg_columns.py's current high-water
 
 # build_useitems.py P1 -- the two GetEnabled hooks this patch depends on (see the docstring).
 USEITEMS_HOOKS = ((0x5576BF40, 0x55815060, "THealingAbility.GetEnabled"),

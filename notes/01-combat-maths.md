@@ -1114,11 +1114,14 @@ EDX/ECX are clobbered, which is safe: the call site sets only EAX (`mov eax,esi 
 ⚠⚠ **Guard 2 is the load-bearing one and its absence is silent.** `[hero+0x4C]` is tag `0x16` and is
 **persisted**. If the cache were ever above the XP-derived level, the decrement would not be undone —
 a permanent 10-point budget loss written into the save. Guard 1 makes the behaviour self-limiting
-(once spent, it stops firing) and means a hero who **declines** is offered again next turn, by design.
+(once spent, it stops firing).
 Guard 3 floors the cache at 1, because this write bypasses `SetLevel`'s clamp.
 
-**Scope**: every hero, every turn, on its owner's turn — map-placed, recruited, or levelled in play.
-AI-owned included; `ExecuteUpgradeHeroAI` spends for them.
+**Scope**: every hero on **day 1 only** (guard 0, v4 2026-10-04), on its owner's turn. AI-owned
+included; `ExecuteUpgradeHeroAI` spends for them. v2/v3 fired every turn while points were unspent,
+so a declined prompt returned each turn; the owner ruled it turn-1 only. Guard 0 resolves the map
+PIC (held in ESI for guard 4) and skips the lag unless `[map+0x174] == 1` (`pbemday1.MAP_DAY`).
+Later level-ups reach `ValidateHeroUpgrade` through vanilla's own lag, unchanged.
 
 #### ⚠⚠ v1 hooked `THero.NewDay`'s day-1 block and NEVER FIRED — and every static check passed
 
@@ -1146,7 +1149,7 @@ verifying that the **loaded** image carries the patched bytes.
 3. On that leader's **first turn** the level-up dialog must appear, offering the full unspent count.
 4. Assign them; confirm the stats stick and the hero card reads the authored level, **not** one lower.
    One low means `ValidateHeroUpgrade` did not restore the cache and guard 2's premise is wrong.
-5. **Decline** the dialog on another hero: it must be offered again next turn, and the points must
+5. **Decline** the dialog on another hero: it must **not** come back on day 2, and the points must
    still be there.
 6. Spend everything on a third hero: the prompt must **stop** appearing.
 7. A hero with 0 unspent points must never be prompted; a level-1 hero must never be prompted.

@@ -22,6 +22,8 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Sky/Chasm bridges need land at both ends (the water rule), no chaining | 🔨 APPLIED, UNTESTED (2026-10-01) | `build_bridge_skychasm.py` | AoWEPACK.dpl |
 | Chasm & Sky — editor palette (brushes + cross-level) | ✅ CONFIRMED WORKING (2026-07-24) | `build_deved_terrainpal.py` | AoWDevEd.exe |
 | Chasm & Sky — tile art, v2 grade | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_chasm_sky_art.py` | Release/Release.hss |
+| Chasm & Sky — dense Sky variant 7 retired (barred pixels; owner: too busy) | applied 2026-10-03, editor loads it | `build_sky_dense_retire.py` | Release/Release.hss |
+| Chasm & Sky — edges v3: water/ice and CaveWater dissolve into the void, long cliff under land | applied 2026-10-03; rendered live in AoWzEd | `build_skychasm_edges.py` | AoWEPACK.dpl + `Images/` HEXTRANS, Waterhex, IceHex and their `_` twins |
 | Chasm & Sky — cliff transitions, v2 remap | ✅ CONFIRMED WORKING (2026-07-27) | `build_chasm_sky_transitions.py` | AoWEPACK.dpl |
 | Chasm & Sky — spell/ability guards (7 sites) | 🔨 APPLIED, UNTESTED (2026-07-27) | `build_chasm_sky_spellguard.py` | AoWEPACK.dpl |
 | Chasm & Sky — per-hex animation | SPECULATIVE — fully designed 2026-07-30, declined by the user | none written | — |
@@ -40,6 +42,8 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Movement predictor fix (v1→v4) | 🔨 APPLIED, UNTESTED (2026-07-05) | `build_patch.py` — **⚠ never run `--apply`**, see below | AoWEPACK.dpl |
 | Path abilities: radius +1, 25% outer-ring proc | ✅ CONFIRMED WORKING (2026-07-08) | `build_path_outerring.py` | AoWEPACK.dpl |
 | Move-cost: Sandworm/tunneler faster on desert | SPECULATIVE — feasible (85%/75%), not built | none written | — |
+| Earth/Rock block sight; v6 snapshot keeps fog counts balanced across terrain edits | v6 applied 2026-10-04 | `build_los_terrain.py` | AoWEPACK.dpl |
+| Earth/Rock brush on surface Water/Ice replaces the water hexagon (was a crash) | applied 2026-10-04 | `build_isohex_replace.py` | HSEPack.dpl |
 | Move-cost: Snow/Desert +1 for walkers; Frostlings on Snow, Azracs on Desert at the Grass cost | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_race_terrain_move.py` | AoWEPACK.dpl |
 
 ## Reference: terrain, overlay and hex geometry
@@ -425,7 +429,7 @@ plus **stars** stamped from the local maxima of the *original* art at native siz
 painted spikes, 1–5 per hex at hashed, jittered positions (a fixed count per hex draws a visible
 grid). **Variant mix 85/15** (user's call): `GetRndResource` picks the 8 variants with equal
 weight, so one slot (12.5%, closest to 15% obtainable) keeps the full v1 dense-starfield recipe,
-plus 2 stamped crosses so the two designs read as related. Chasm (`0xB`) is **no longer a
+plus 2 stamped crosses so the two designs read as related. **Retired 2026-10-03**: the dense tile carried horizontal bars and the owner judged it too busy; `build_sky_dense_retire.py` re-skins variant 7 in place with variant 5 rotated 180° (`--undo` restores the embedded original). Chasm (`0xB`) is **no longer a
 starfield** (user: it should read as *a very deeply darkened sea*): the 16 shipped surface-water
 tiles (`H_Wa2.BMP`, ids 140–155 of `Waterhex.ILB`) are copied 1:1 with no resampling, then
 re-graded around a very low base that **expands** detail rather than the v1 `floor+slope·V` form,
@@ -705,6 +709,81 @@ topping out at 65535. `TENode.GetCount`/`GetChild` (`0x55519B40` / `0x55519ADC`)
 `[[self+8]+8]` and `[[[self+8]+4]+i*4]` over an ordinary Delphi `TList`, which has no such bound
 either. Nothing in the container or the loader caps the resource count.
 
+
+### 8. Edges v3 — dissolves and the long cliff — `build_skychasm_edges.py` (2026-10-03)
+
+Owner's brief: surface Water/Ice beside a void showed the sandy coast; CaveWater beside one was a
+hard line; the CaveWater cliff under land was right but should drop about four times as far and
+fade. CaveIce beside a void already looked right (it hits the `0xD0/0xD3` ice↔cave-water blend)
+and is untouched. Everything was verified in the live editor on the owner's Firmament map.
+
+- **Water/Ice → a cross-fade.** `TAoWWaterHexagon.UpdateTransitions` picks a shore
+  base per land direction (grass 0, snow 0x28, wasteland 0x50); hook `0x5579AE30` adds Sky 0xA0 /
+  Chasm 0xC0, backed by two 32-image fade sets in `Waterhex.ILB` and `IceHex.ILB`. Each fade piece
+  stands for the same run of edges as the sand piece it replaces — the edge-set model
+  (`re_tools/hexfield.py` `PIECE_EDGES`) is checked against the `ShowDynamic` transcription for
+  all 63 land masks. Each pixel is drawn solid in a MIX of the liquid and void textures by its
+  distance from the edge; only where the mix is within `FADE_EPS` of what lies underneath is it
+  dithered. ⚠ v1 drew pure liquid or pure void pixels thinned by dither alone — at this contrast
+  the owner read every dot ("spray paint"). Colours sample one tile of each texture on the
+  lattice period, so stars inside the band are covered. CaveWater↔void uses the same function.
+  The six lone-edge pieces (13, 17, 15, 23, 14, 16 — one land edge, liquid on both sides) fade
+  only 7 px into the void (`WATER_FADE_SINGLE`): a one-hex Sky hole in a lake gets one from each
+  of its six neighbours, and at the full 14 px they met mid-hex and squeezed the sky into a dark
+  star with marks at its corners. A global cut instead shrank the lakes the owner had approved.
+  ⚠⚠ **The shore is drawn TWICE in vanilla.** `TAoWWaterHexagon.ShowDynamic` first calls the parent
+  `TLowerIsometricHexagon.ShowDynamic` (HSEPack `5561A400`), which draws the identical selection
+  from the fixed grass-sand ids, then draws its own per-direction set on top. Opaque snow sand hides
+  the first pass; a dithered fade does not, and the lakes showed speckled sand. The `call` at
+  `0x5579B19A` now goes through a cave that skips the parent pass on any hex with a void neighbour.
+  Only the live editor showed this.
+  Vanilla gap kept: land at SE and SW with water at S draws no SW piece (masks `{3,5}`, `{1,3,5}`).
+- **CaveWater ↔ void → the same dissolve, static.** The v2 remap cave (`0x55812000`, owned by
+  `build_chasm_sky_transitions.py`, rewritten in place) emits HexTrans `0xE0/0xE3+d` (Sky) and
+  `0xB0/0xB3+d` (Chasm), displaced. It also stops a void hex drawing the `0xA3+d` cliff lip onto a
+  Water/Ice neighbour.
+- **The long cliff.** Hexes paint top to bottom (`GetShowPriority` = `py<<13 + px`), so a tall
+  sprite from the land hex would be painted over by the void hexes below. Instead TAoWHexagon's VMT
+  `Show` slot (`0x5579A278`, `.reloc`-covered) points at a cave that, after the normal draw, makes
+  each void hex paint its own slice of every curtain reaching it. Slices are split by the exact set
+  of hexes their columns cross, and drawn only when the land is cliff-land `{1,2,3,4,5,0xC}` and
+  every crossed hex is void; land in between occludes the curtain. HexTrans ids `0x100..`.
+  **The curtain's art (v3, after two rounds of owner review the same day)** hangs the game's own
+  Earth-wall faces under the land: the pieces `TUpperIsometricHexagon.ShowDynamic` (HSEPack
+  `55619F18`) draws for an Earth wall with S, SE and SW open — `EARTHHEX.ILB` r+3 at (−51,−16),
+  r at (13,−16), `0xD` at (−19,0), r = 0..2 — lowered 16 px (walls are drawn raised) so the strand
+  roots sit just behind the rim, split by column into the three edges. **The rim** is the
+  CaveWater lip (`0xA3+d` below, `0xA0+d` above), a flat dirt ring lying on the terrain — the
+  owner's intended look. With its blue-grey face removed the ring stopped ~3 px short of the hex
+  edge and terrain showed outside it, so each edge's lip moves out by ONE shift (the 80th
+  percentile of what its columns need to reach `RIM_DELTA` = 1 px past the outline) and the few
+  short columns repeat their bottom pixel down to it; `RIM_WIDEN` = 3 extra columns close the
+  corners. ⚠ Shifting each pixel column by its own amount shears pixel art into vertical
+  streaks (the lip's lower edge is ragged) — the owner saw them as spikes on a snow coast. Settled after four rounds the same day: an 8 px band read as separating the
+  terrain (it was the gap, not the band); removing it lost the transition; a rim fully outside,
+  or overlapping by 3 px, left the hexagon readable. The ring hides the hexagon outline because
+  its speckled inner edge rounds the terrain off.
+  It must be drawn by a hex painted after the land, as vanilla's lip was: lower
+  rims `0xE9..0xEB` by the void hex below, upper rims `0xE6..0xE8` by the land hex, both emitted
+  by CAVE R displaced; the curtain slices repeat the lower rim outside the land hex. ⚠ Along a
+  slanted edge the void hex below, painted later, covers the land tile's outermost pixel (tiles
+  overlap by 1 px) — never drop curtain pixels merely for lying inside the land tile, or a 1-px
+  sky line opens. Recoloured: cracks
+  deepened, darker with depth, faded into the Sky or Chasm tile's mean colour (set chosen by the
+  drawing hex), tips and side roots dissolved by dither so a faded root never paints over a
+  neighbour's strands. Variant = (2X + Y) mod 3 of the land hex.
+  Upper-hex mask (`TUpperIsometricHexagon.UpdateTransitions @55619CF0`): bit d−1 set when the
+  neighbour in direction d is NOT a wall (not a `TUpperIsometricHexagon`, not a border).
+  Failed approaches, both judged by the owner: v1 procedural face with a lighter ledge every
+  7.5 px — countable bands; v2 texture synthesis from the lip's own pixels — no faults, but below
+  the base game's art quality. Reuse the game's own art before generating any.
+- **`_` twins.** The editor reads both `NAME.ILB` and `_NAME.ILB` at startup (access-time test);
+  only the full files were seen drawing. The same ids go into the twins at half size so no lookup
+  can index past a table's end — the shore code dereferences `ImageLib.Get` with no nil check.
+
+Reusable: `re_tools/hexfield.py` renders a hex field in the engine's draw order and rule table, and
+`--preview OUT.png` uses it to show current vs new before applying. Tunables (fade radii, curtain
+length) sit at the top of the script; re-running re-tunes in place.
 
 #### Raise Terrain: lava → 50% dirt, no mountain — `build_raiseterrain_lavadirt.py`
 
@@ -1481,6 +1560,50 @@ In-game checklist:
 8. Multiplayer or hotseat: the other seat sees the party arrive on the new level, with no desync.
 9. Save and reload after flying: the party is on the new level with zero movement.
 10. Walk through an ordinary cave entrance: the cost is unchanged (the drain must not fire).
+
+## Earth and Rock block sight
+
+`build_los_terrain.py` (AoWEPACK.dpl). Earth (7) and Rock (8) block strategic line of sight; the
+first blocking hex stays visible. The script docstring holds every address; Mantle of Gloom and
+True Seeing are in `02-abilities-modded.md`.
+
+**Fog is a per-hex counter** (`[field+0x1A]`): each observer adds 1 over what it sees and later
+subtracts 1 over the same area. The full rebuild (`uv_hook`) zeroes every counter and re-adds
+every live observer; it runs on new turn, seat change, Flood/Restore, war/peace changes and Mantle
+of Gloom moves.
+
+**v6 sight snapshot (2026-10-04).** Before v6 the add and the subtract each ran the sight check
+against the terrain of their own moment, so an Earth/Rock edit in between left counters too high
+(stuck visible) or wrapped below zero. The editor has no new turn, so painting Earth/Rock left hexes
+permanently inverted. It also made signs and towers unselectable: vanilla `TStructure.CanSelect`
+`@0x5575E994` refuses a structure while fog is on and all its hexes count 0. Owner ruling
+2026-10-04: that rule stays, in the editor too; only the counters are fixed.
+- Fog add/subtract read bit `0x80` of `[field+0x1B]`, a snapshot of "Earth/Rock" that only the
+  rebuild writes. Between rebuilds every subtract sees what its add saw.
+- Exploration reads live terrain, unchanged, so multiplayer exploration is as before v6.
+- `TriggerTerrainChangedEvent` (every terrain change, editor brush included, plus every
+  map-changed notification) marks the map; before the next frame, `DrawDynamicScene` scans the
+  fields and rebuilds only if some hex's Earth/Rock status no longer matches its snapshot.
+- Old maps and saves have no snapshot, so any map holding Earth/Rock rebuilds on the first frame
+  after load, which also replaces counters corrupted before v6. A pre-v6 map whose bad counters
+  sit on a map with no Earth/Rock left keeps them until a game's seat change.
+- Unproven: the rebuild runs inside the draw path, before the inherited draw; the worst case
+  expected is one frame drawn against a half-invalidated scene.
+- Vanilla `TAoWBorderHexagon.UpdateMapField` zeroes bits 12–31 of `[field+0x18]` on border hexes,
+  fog counter included; a later subtract there wraps to 255. Not touched.
+
+## Earth/Rock brush on surface Water/Ice replaces the water hexagon
+
+`build_isohex_replace.py` (HSEPack.dpl), applied 2026-10-04. Painting Rock on surface water crashed
+the editor in `TAoWWaterHexagon.Show` (`0x5579AF2D`, read of an invalid image pointer). Caught with
+`veh_capture.py`: the water hexagon carried the Rock wall resource. Earth/Rock brushes place through
+`TIsometricHexagonResource.PlaceResourceUser` (`0x55619BF8`), which re-skins any isometric hexagon
+already on the field; `TAoWWaterHexagon` is one (lower isometric). Vanilla offered Earth/Rock only
+underground, where no water hexagon exists; the cross-level palette (`build_deved_terrainpal.py`)
+exposed it. The hook at `0x55619C30` re-skins only when the hexagon's `ClassID` equals the
+resource's `ResourceUserClassID`; anything else goes down the create path, whose
+`TAbstractHexagon.PlaceHX` destroys the old hexagon first, as Grass over water always did. Water/Ice
+painted over Earth/Rock now replaces as well instead of re-skinning the wall.
 
 ## Open items
 

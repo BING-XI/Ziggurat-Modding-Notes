@@ -835,8 +835,11 @@ row in `build_pfs_typos.py`, changed from:
 
 to:
 
-> *"Freezes a small area of water solid enough to walk over, and chills the land it touches: desert to
-> steppe, steppe to grass, grass to snow. The ice and the chill both thaw after a few turns."*
+> *"Brings winter to the land, and temporarily freezes water to ice."*
+
+(2026-10-03.) The 2026-09-01 text (189 characters) was clipped by the spellbook, which shows three
+word-wrapped lines: 146 characters fitted, ending at "…grass to snow. The ice". The row keeps that
+text as a second accepted `old`, so `--undo` still restores vanilla.
 
 Same caveat as the rename: `build_pfs_typos.py --undo` is surgical and per-fix but reverts every fix it
 owns, in reverse order, not just this row.

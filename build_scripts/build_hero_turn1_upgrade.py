@@ -94,16 +94,16 @@ THE THREE GUARDS, AND WHY EACH IS LOAD-BEARING
 ================================================================================
 1. GetSkillPoints() > 0.  The whole point: offer only when there is something to
    assign.  It is also what makes the behaviour self-limiting -- once the player
-   spends, the guard stops firing.  ⚠ A hero who DECLINES the dialog is offered it
-   again next turn, by design: the alternative is stranding the points again.
+   spends, the guard stops firing.  A hero who declines the dialog keeps the points
+   unoffered after day 1 (guard 0, v4).
 2. GetLevel() >= levelCache.  ⚠⚠ THE DANGEROUS ONE.  [hero+0x4C] is tag 0x16 and
    is PERSISTED.  If the cache were ever above the XP-derived level, decrementing
    it would not be undone -- a permanent 10-point budget loss written into the
    save.  This guard makes the restore certain.
 3. levelCache >= 2.  Floors the cache at 1; this write bypasses SetLevel's clamp.
 
-SCOPE.  Every hero, every turn, on its owner's turn -- map-placed, recruited or
-levelled in play.  AI-owned heroes included; ExecuteUpgradeHeroAI spends for them.
+SCOPE.  Every hero on day 1, on its owner's turn.  AI-owned heroes included;
+ExecuteUpgradeHeroAI spends for them.  Later level-ups are vanilla's own lag.
 
 RNG    -- no draw of any kind, neither generator referenced.  Re-run
           re_tools/rng_audit.py --owners after --apply (standing rule); not a P4
@@ -140,15 +140,25 @@ machine reads as foreign -- its --undo would then refuse.  In place, both script
 working --undo and neither depends on the other at run time.  The guard needs no code from
 the other script: it only reads the map and the player.
 
-Re-tune: --apply over an installed v2 (KNOWN_BODIES) rewrites the cave in place, no backup.
-Undo order: none required.  This script's --undo removes the whole feature, guard included,
-and build_pbem_leadersetup.py accepts this cave either fully v3 or fully absent (it refuses a
-v2 without the guard, which would give the leader both a level-up prompt and the window).
+Re-tune: --apply over an installed v2 or v3 (KNOWN_BODIES) rewrites the cave in place, no
+backup.  Undo order: none required.  This script's --undo removes the whole feature, guard
+included, and build_pbem_leadersetup.py accepts this cave either exactly as this script builds
+it or fully absent (it refuses a v2 without the guard, which would give the leader both a
+level-up prompt and the window).
+
+================================================================================
+GUARD 0 (v4, 2026-10-04) -- day 1 only
+================================================================================
+Owner's ruling: the prompt fires on turn 1 only.  v3 fired every turn while points were
+unspent, so a declined prompt came back each turn.  C_TURN1 now resolves the map first (PIC,
+held in ESI for guard 4) and skips straight to ValidateHeroUpgrade unless the day counter
+[map+0x174] (pbemday1.MAP_DAY) is 1, or the map is nil.  Natural level-ups after day 1 are
+untouched: they reach ValidateHeroUpgrade through vanilla's own cache lag.
 
 USAGE
     python build_scripts/build_hero_turn1_upgrade.py            # verify only
     python build_scripts/build_hero_turn1_upgrade.py --dis      # + cave disasm
-    python build_scripts/build_hero_turn1_upgrade.py --apply    # also re-tunes v2 -> v3
+    python build_scripts/build_hero_turn1_upgrade.py --apply    # also re-tunes v2/v3 -> v4
     python build_scripts/build_hero_turn1_upgrade.py --undo     # surgical
 """
 import hashlib
@@ -199,6 +209,7 @@ OFF_OWNER     = 0x24            # TAbstractUnit owner player index, the byte New
 # --apply rewrites one of these in place; anything else in the span aborts.
 KNOWN_BODIES = {
     "0e2742eb45cf86001a850d7003da007a49343cfd4410dacae58bfeca707f433f": "v2 2026-09-22, 46 B",
+    "fb1fe5887a360b0ca94503c05e9c922187db5c00795f924248402260ec125ed2": "v3 2026-09-24, 129 B",
 }
 
 _BASE = None                    # VA = file_offset + _BASE, resolved from the PE
@@ -347,8 +358,20 @@ def build_caves():
     """Return {cave_va: bytes}."""
     blob = asm_layout([
         (None,   "push ebx"),
+        (None,   "push esi"),
         (None,   "mov ebx, eax"),
+        # guard 0 (v4) -- day 1 only.  The map stays in ESI for guard 4; the Delphi register
+        # convention preserves ESI across every call below.
+        (None,   "call {ANCHOR}"),
+        ("ANCHOR", "pop esi"),
+        (None,   lambda L: "add esi, %d" % (V_AOWHSMAP - L["ANCHOR"])),
+        (None,   "mov esi, dword ptr [esi]"),
+        (None,   "test esi, esi"),
+        (None,   "je {DONE}"),
+        (None,   "cmp dword ptr [esi + %s], 1" % hex(pbemday1.MAP_DAY)),
+        (None,   "jne {DONE}"),
         # guard 1 -- does this hero actually have anything to assign?
+        (None,   "mov eax, ebx"),
         (None,   "call %s" % hex(F_SKILLPOINTS)),
         (None,   "test eax, eax"),
         (None,   "jle {DONE}"),
@@ -365,26 +388,19 @@ def build_caves():
         (None,   "cmp dl, 1"),
         (None,   "jbe {DONE}"),
         # guard 4 (v3) -- the PBEM day-1 leader gets build_pbem_leadersetup.py's window
-        # instead, whose copy-back would overwrite this prompt's choices.  Map reached PIC.
-        (None,   "call {ANCHOR}"),
-        ("ANCHOR", "pop ecx"),
-        (None,   lambda L: "add ecx, %d" % (V_AOWHSMAP - L["ANCHOR"])),
-        (None,   "mov ecx, dword ptr [ecx]"),
-        (None,   "test ecx, ecx"),
-        (None,   "je {DEC}"),
+        # instead, whose copy-back would overwrite this prompt's choices.  ESI = map (guard 0).
         (None,   "movsx edx, byte ptr [ebx + %s]" % hex(OFF_OWNER)),
-        (None,   "mov eax, dword ptr [ecx + %s]" % hex(MAP_PLAYERS)),
-        (None,   "push ecx"),
+        (None,   "mov eax, dword ptr [esi + %s]" % hex(MAP_PLAYERS)),
         (None,   "call %s" % hex(F_GETPLAYERS)),
-        (None,   "pop ecx"),
         (None,   "test eax, eax"),
         (None,   "je {DEC}"),
-    ] + [(None, line) for line in pbemday1.asm("ecx", "eax", "{DEC}")] + [
+    ] + [(None, line) for line in pbemday1.asm("esi", "eax", "{DEC}")] + [
         (None,   "cmp dword ptr [eax + %s], ebx" % hex(pbemday1.PL_LEADER)),
         (None,   "je {DONE}"),
         ("DEC",  "dec byte ptr [ebx + %s]" % hex(OFF_LEVEL)),
         # tail-call the real thing with EAX = hero, exactly as the call site had it
         ("DONE", "mov eax, ebx"),
+        (None,   "pop esi"),
         (None,   "pop ebx"),
         (None,   "jmp %s" % hex(F_VALIDATE)),
     ], C_TURN1)
@@ -474,7 +490,7 @@ def state(d, caves):
 
 def show(d, caves):
     print("AoWEPACK.dpl  %s" % DLL)
-    print("  a hero holding unspent skill points is offered them on its owner's turn")
+    print("  a hero holding unspent skill points is offered them on day 1, on its owner's turn")
     for va in sorted(SITES):
         orig_fn, patch_fn, n, desc = SITES[va]
         cur = bytes(d[off(va):off(va) + n])

@@ -154,7 +154,7 @@ RULED OUT (each with its reason, one line each)
     runtime HANDLE; any static non-zero there is a garbage handle.
   * AoWz.exe `.hcol` below 0x00628000 -- build_herodlg_columns.py line 1547 does
     `exe.wr(SEC_VA, b"\0" * (SQUATTER_FLOOR - SEC_VA))`, zeroing 0x00612000..0x00628000 on
-    EVERY --apply.  The "free" 0x00624200..0x00628000 the ownership table advertises is
+    EVERY --apply.  The "free" 0x00624250..0x00628000 the ownership table advertises is
     inside that wipe.
   * AoWz.exe `.syd` / `.pyar` -- both owners rewrite the whole 0x1000 section and then
     verify `d[SEC_FOFF:SEC_FOFF+SEC_SIZE] == BLOB`.

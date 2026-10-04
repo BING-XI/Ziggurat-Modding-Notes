@@ -363,8 +363,30 @@ its **panel**, i.e. `Top = 0`.
 section's 288-byte slack. In research modes only, it makes each button exactly fill its own panel
 — `Top = 0`, `TopOffset = 0`, `Height = panel height` — then replays the three displaced
 instructions (`cmp` **last**, and `jmp` does not touch flags) and returns to `0x0042F2E2`. Zero is
-unambiguously right: the button already has `L=0, W=254` inside a `W=262` panel. Cast/info modes
-are untouched. `--undo` restores the 6 bytes and zeroes the cave.
+unambiguously right: the button already has `L=0, W=254` inside a `W=262` panel. `--undo` restores
+the 6 bytes and zeroes the cave.
+
+### Cast book dead on reopen — zero-height slot buttons (fixed 2026-10-03, btnfix v2)
+
+Reported as "the first open casts fine; reopen the book and the entries look normal but neither
+glow nor click", intermittent. Measured live (`Heulax 26`, global tab, book open): every slot
+button visible, **height 0**, sized flag `[btn+0x2E]` = 1; `BSS_BTNH` `0x45BC18` = 0,
+`BSS_PNLH` = 80.
+
+`cave_layout` captures the cast-mode button height once per session, on the first population, which
+runs before the book's first `Show`. A `TAOWBaseButton` has no height until `Setup` runs its
+`SetSize` (VMT `+0x30`, `aowInt` `0x59810FFC`: the Up image's height, BookWin #25 = 82 px), so the
+capture is 0. The first `Show` sizes the buttons; any later cast-mode population (a reopen, or
+`cave_dlgupd`'s self-heal re-run) stores the 0 back raw, the sized flag stays set, and `Setup`
+(`0x598033D0`, runs `SetSize` only when `[+0x2E] == 0`) never re-sizes them. Text is drawn by the
+panel's labels, so the entry still looks normal.
+
+**Fix:** `build_tierresearch_btnfix.py` v2 — in every non-research mode its cave now calls each slot
+button's own `SetSize` when the button has validated (`[+0x2C] != 0`). Unvalidated buttons are left
+to `Setup`, whose `Validate` clears the sized flag. Cave `0x611F00`, 151 B. ⚠ `cave_layout` still
+stores 0 into the cast buttons; **`btnfix --undo` re-breaks the cast book on every reopen.**
+
+Unproven: the book was not reopened after the fix.
 
 ⚠⚠ **Do NOT "simplify" this by retargeting the `call cave_layout` at `0x42F2D7`.** That call is
 one of `build_tierresearch_exe.py`'s verified HOOKS; retargeting it was tried and reverted,
@@ -2082,6 +2104,27 @@ In-game checklist:
 5. A manual battle against an AI hero who knows either spell: the AI casts it, on the same terms.
 6. After combat, the unit's world-map movement is normal.
 7. Multiplayer: no desync in a battle where it is cast.
+
+### Empty hexes are refused — `build_spell_unit_target.py` (2026-10-04)
+
+Owner's report: Lethargy could be cast on an empty hex; a friendly hex refused it. Vanilla Slow did
+the same, as does every single-unit spell. `TCombatUnitSelectionControl.MouseDownEvent`
+(`AoWTCPCK.dpl`) tests the spell's target flags (`GetCombatInfo` byte +7 = `[spell+0x3B]`: 1 friendly,
+2 enemy) only when the clicked hex holds a unit; an empty hex goes straight to `ExecuteMoveSelection
+@0x41E408`, which casts at the hex for every `SpellTypes` class but 0 and 4. Neither the class (7
+also holds Call Flames) nor `[spell+0x3B]` (2 for every `TCombatSpell`) separates unit-only spells,
+so the rule is a spell-id list, in one predicate cave shared by the click (`0x41F59C`, call
+retarget) and the cursor (`0x41F8AF`, `UpdateMoveCursor`'s empty-hex branch → frame `0x59`, the
+cursor vanilla shows for a refused unit):
+
+- **Refused on an empty hex** — the 22 combat-castable class-7 unit spells: Dispel Magic, Haste,
+  Enchant Weapon, Stone Skin, Free Movement, Fury, Remedy, Holy/Unholy Champion, Concealment,
+  Fire Halo, Water Walking, Wind Walking, Liquid Form, Healing Water, Bless, Dark Gift, Turn Undead,
+  Embrittle, Lethargy, Entangle, Vaporize. Desiccate (class 7) is a world-map land spell, not listed.
+- **Call Flames** — kept on a hex holding something it hurts: a standing **wooden** wall
+  (`TCityWall` `[+0x2D] == 1`, HP `[+0x20] > 0`; message `0x3100B` damages only wood, and
+  `CombatFire.CreateFire @0x406D64` ignites only wood), a Combat Structure or a Combat Terrain object
+  (both damaged unconditionally). Refused on bare ground, even flammable ground it would have lit.
 
 ---
 

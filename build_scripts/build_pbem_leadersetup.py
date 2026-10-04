@@ -1194,7 +1194,7 @@ def dependencies(pe):
     for va, blob in caves.items():
         want[va - T1.CAVE_BASE:va - T1.CAVE_BASE + len(blob)] = blob
     if sites_on and span == bytes(want):
-        out.append(("build_hero_turn1_upgrade.py", True, "v3 applied (leader guard present)"))
+        out.append(("build_hero_turn1_upgrade.py", True, "applied (leader guard present)"))
     elif sites_off and not any(span):
         out.append(("build_hero_turn1_upgrade.py", True, "not installed (no artificial lag)"))
     else:

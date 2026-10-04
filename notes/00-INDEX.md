@@ -58,7 +58,7 @@ safe, and the traps that have cost this project the most time.
 | **`build_herodlg_tall.py`** | superseded same-day by `build_herodlg_columns.py`, which now owns the dialog. Use `build_herodlg_columns.py --undo`. |
 | **Wall HP** | never "restore" it to a ×2 — there are THREE independent tables, unified to 40 stone / 10 wood by owner ruling. |
 | **`build_razediag.py --want-open`** | **test-map use only** — it sets `TAIGroupRazeControl`'s mode bit `0x04`, which makes the AI raze **everything** it stands on, cities of its own race included. It shipped live for two months undetected (`10-ai-and-structures.md` §3.6). ⚠ **A diagnostic that changes game behaviour needs a status row** — this one had none anywhere, which is exactly why nobody looked. Run `python build_razediag.py` (no args) before any playtest; all three levers must read `STOCK`. |
-| **`build_pbem_leadersetup.py`** (PBEM turn-1 leader customisation, ✅ confirmed 2026-09-24, `07-ui.md` §10) | its `C_APPLY` **calls** `build_tierresearch_dll.py`'s `cave_day1` v2 routine and relies on `build_hero_turn1_upgrade.py` v3's leader guard: **undo this script before changing either**. `build_tierresearch_dll.py` has no `--undo`. Undoing `build_heroskill_race.py` empties the PBEM window's ability list (it reads that table); this script's dry run then says `chain: BROKEN`. ⚠ Never ship its `AoWEPACK.dpl` half without the exe half: the event queue stalls on every PBEM day 1. |
+| **`build_pbem_leadersetup.py`** (PBEM turn-1 leader customisation, ✅ confirmed 2026-09-24, `07-ui.md` §10) | its `C_APPLY` **calls** `build_tierresearch_dll.py`'s `cave_day1` v2 routine and relies on `build_hero_turn1_upgrade.py`'s leader guard (guard 4): **undo this script before changing either**. `build_tierresearch_dll.py` has no `--undo`. Undoing `build_heroskill_race.py` empties the PBEM window's ability list (it reads that table); this script's dry run then says `chain: BROKEN`. ⚠ Never ship its `AoWEPACK.dpl` half without the exe half: the event queue stalls on every PBEM day 1. |
 | **`build_spellcast_book_exe.py`** | **retired — it no longer owns its own cave**, so a dry run reports `MISMATCH cave @ 0060C0A8` **permanently, and that is the correct output**, not a broken state: `build_scroll_spellbook.py` rewrote `cave_bookfilter@0x0060C0A8` in place (130 → 344 B) and owns the live bytes. ⚠ Do not "repair" the mismatch by relaxing the check or re-deriving the cave — that destroys the scroll feature and the hero-tier exemption. `--apply` is safe by accident only: the verify gate aborts before writing (`:174`). Re-tune the filter in `build_scroll_spellbook.py`'s `_loop`. Full record: `06-unit-spellcasting.md` §"The cave's second owner". |
 
 **Retired 2026-09-03:** the standing "never run `build_magebane.py --apply`" warning. That hazard was
@@ -110,7 +110,8 @@ file carries the specific checklist for its own rows.
   `01-combat-maths.md` holds the mechanism, the guards, the live-instrument recipe and the checklist.
   **v3 (2026-09-24)**: a fourth guard skips the lag for a PBEM human player's leader on day 1 — that
   leader gets the turn-1 leader window instead (`07-ui.md` §10.6); `C_TURN1` 46 → 129 B, span grown to
-  `0x5584B000..0x5584B0FF`, re-tuned in place.
+  `0x5584B000..0x5584B0FF`, re-tuned in place. **v4 (2026-10-04)**: day 1 only (guard 0 tests
+  `[map+0x174] == 1`); v3 re-offered every turn while points were unspent. 140 B.
 - HP ceiling 120 → 100 (four places that must move together) — 2026-08-31
 - Morale re-scale (ATK ±4, RES ±6) — 2026-08-26
 - Flyers lose morale underground (−5 Caverns / −10 Depths / −15 Abyss, units only, Cave Crawling exempt) — 2026-09-27
@@ -382,6 +383,10 @@ file carries the specific checklist for its own rows.
   Embrittle, in auto-combat and by hand. Haste is the mirror: one melee strike more attacking and
   defending. Caves `0x5584DF00`–`0x5584E1B5`. Surgical `--undo`. Checklist:
   `04-spells-modded.md`, "Lethargy".
+- **Single-unit spells refuse an empty hex, cursor included** (`build_spell_unit_target.py`,
+  `AoWTCPCK.dpl`) — 2026-10-04. Vanilla casts any of them at bare ground. 22 unit spells are refused
+  there; Call Flames only where a wooden wall, Combat Structure or Combat Terrain object stands.
+  Click `0x41F59C`, cursor `0x41F8AF`, one shared predicate. `04-spells-modded.md`, "Lethargy".
 - **Inioch's share8 spell changes** — 🔨 APPLIED, UNTESTED (2026-09-25), `04-spells-modded.md`
   "Inioch's share8 spell changes":
   - Holy Woods → Vertigo, Evil Woods → Cursed (`build_ground_debuffs.py`).
@@ -420,6 +425,7 @@ file carries the specific checklist for its own rows.
 - Storm / Poison Plant debuff — roll vs Resistance — 2026-07-30
 - Magic tab (Main) and the Power Distribution dialog name the research group — "Cosmos II" plus its unresearched members, and the sphere's spell-icon disc with a Roman tier numeral — instead of the representative spell (`build_magictab_tiername.py`, `.hcol` `0x0062A520`) — 2026-09-27
 - Research Book slot **buttons** now move with their panels (`build_tierresearch_btnfix.py`, hook `0x42F2DC`, cave `0x611F00` in the `.tres` slack, both exes) — 🔨 APPLIED, UNTESTED 2026-09-06 — fixes "some sphere-tiers selectable, others not": `cave_layout` re-pitched the panels for research mode but never moved the sibling `SxBtn` click targets. ⚠ Do **not** retarget the `call` at `0x42F2D7` instead — that is one of `build_tierresearch_exe.py`'s verified hooks and breaks its self-check
+- Cast spell book dead on reopen (no glow, no click) — zero-height slot buttons from `cave_layout`'s pre-`Show` height capture; `build_tierresearch_btnfix.py` v2 re-sizes every validated slot button via its own `SetSize` in non-research modes — 2026-10-03. ⚠ its `--undo` re-breaks the cast book (`04-spells-modded.md`)
 - ⭐⭐ **The Death Altar crash — a STALE `.reloc` ENTRY, not the combat log** (`build_relocfix.py`) — ✅ **CONFIRMED WORKING 2026-09-13** (applied 2026-09-11). The Death/Divine dispatch rewrite in `ExecuteStormDamage` overwrote `mov dx,[0x55780840]` but left its base-relocation at RVA `0x807FB`, so **the loader added the rebase delta to live code on every launch**, smashing `0x557807FD/FE` — the `mov dx,0x20` that is the **Death** arm, and only that arm. Reported as `EExternalException … at 000807FE / External exception 80000003`; `000807FE` is the second corrupted byte and the code varies with the load address. Fixed by flipping the entry type `3 → 0`, plus **ten more** found by the same sweep. ⚠⚠ **Invisible to every static check** — the file, `dasm.py`, the byte-diff and the owning script are all correct. ⚠ The `--audit` needs **all three** of its rules: "dword is not an in-image VA" alone has a systematic false-negative class (an operand at the *end* of the displaced range leaves a residual that still reads as a valid VA — it missed 4 of the 11), and the twin-diff rule that catches those is blind on the editor, which has no vanilla twin. Full decode + the rules in `12-re-toolchain.md` §5.2c; the register of all eleven, the reverse-coupling table and the release-staging caveat in §6.5a
 - Combat-log effect-roll emitter gated to tactical combat only (`build_effectroll_tacticalgate.py`, cave `0x55810500`) — 🔨 APPLIED, UNTESTED 2026-09-06 — the emitter's `CLG1` guard is not a combat gate, so the tactical-only string/ring machinery also ran on the strategic map and in auto-resolve; this confines it. ⚠ It was applied believing it was the Death-altar fix. **It was not** — see the row above. Keep it (running that machinery off the tactical path is still wrong), but it is not known to have fixed anything observable
 - Animate Dead — permanent undead, and the free-upkeep balance question — recorded 2026-09-04 ⚠ **pre-convention hand-edit; no script, no `--undo`; never attach a persistent enchantment to these units**
@@ -429,11 +435,9 @@ file carries the specific checklist for its own rows.
 - Scroll as a permanent per-hero spellbook grant — cave extended 2026-09-03
 
 ### UI — `07-ui.md`
-- **"Unit AI": right-click hands your units to the combat AI** (`build_unit_ai.py`, `AoWTCPCK.dpl`
-  ), applied 2026-09-27. A checkbox beside Auto arms it; right-click an own
-  unit (or one in the selection, for the whole selection); the AI's end-of-turn is diverted.
-  ⚠ Stacks on `build_taskbar_coords.py`'s `TTBWindow` sites, which then refuses to run: **undo this
-  first**. §18.
+- **"Unit AI": Space hands the selection to the combat AI; right-click opens the selected unit's
+  first usable ability** (`build_unit_ai.py`, `AoWTCPCK.dpl` + `AoWz.exe`), v2 applied 2026-10-03,
+  migrating v1 (checkbox-armed right-click, 2026-09-27) in place. The AI's end-of-turn is diverted. §18.
 - **The taskbar shows the hex under the cursor** (`build_taskbar_coords.py`) — 🔨 APPLIED,
   UNTESTED (2026-09-25). "X,Y,Z" at the right end of the message box. Grows `.ibnr` to `0xD000` as a
   tenant above `build_itembanner_hpmv.py`, whose `--undo` now refuses while it is there. §16.
@@ -486,8 +490,14 @@ file carries the specific checklist for its own rows.
   never cache which column a button acts on.** ⚠ Not caused by the same day's `cave_setfmax` scroll
   sync, which was kept — byte-proved by diffing `.hcol` against the 2026-09-09 staged exe. `07-ui.md`
   §2.4a. `build_herodlg_columns.py` on `Ziggurat/AoWz.exe`.
-- **Hero level-up dialog: 960×525 (8 rows/column), and each column now owns its own scrollbar**
-  — 2026-09-10. ⚠⚠ One DFM ident fixed three bugs at once: the four cloned Cost lists carried the
+- **Hero level-up dialog: 800×508 (7 rows/column); on a small screen box B loses rows from the
+  bottom instead of sliding over box A** — 2026-10-02, player report at 640×480. ⚠ The engine's
+  clamp is shift-then-pin (`TAOWWindow.SetSize 0x59808CE4`, `TAOWPanel.SetSize 0x5981D358`), not
+  "reset to 0": a box that fits but sits too low is moved up over its neighbour. `cave_geom` now
+  computes the dialog's clamped height and fits box B under its fixed top. Narrowed 960 → 800 wide on
+  2026-10-04 (player report: Done off screen) so 800×600 is never clamped; at 640 the Magic column
+  and Cancel are still off the dialog. `07-ui.md` §2.5. `build_herodlg_columns.py` on `Ziggurat/AoWz.exe`.
+- **Hero level-up dialog: each column owns its own scrollbar** — 2026-09-10. ⚠⚠ One DFM ident fixed three bugs at once: the four cloned Cost lists carried the
   donor's `VScrollBar = AvailableAbilitiesSB`, so the wheel over any Cost column drove column 0,
   `TAOWListBox.Update` dragged those costs back on every repaint, and `AvailSB2..5` were never
   positioned or made visible (only the list that *references* a bar runs `TAOWListBox.SetSize`'s
@@ -500,7 +510,7 @@ file carries the specific checklist for its own rows.
 - 12 added hero faces moved into the right resolution set (`H_Faces` 79 @103×128, `_H_Faces` 79 @52×64) — 2026-09-04
 
 ### Editor — `08-editor.md`, `Map_Generator.md`
-- Editor **autosave**: every 5 min, if the map was edited since the last one, the open map goes to `Scenario\Autosave\Autosave 1..3.hsm` (oldest overwritten); the user's file, title and modified flag are untouched. Applied 2026-09-27: `build_editor_autosave.py` on `Ziggurat/HSEPack.dpl` only, §8. ⚠⚠ `THSEngine.SaveHSM` clears the modified bit itself (`TAoWHSMap.ReadWrite`), so any cave-made save must restore it.
+- Editor **autosave**: every 5 min, if the map was edited since the last one, the open map goes to `Autosave\Autosave 1..3.hsm` in the map's own folder (v3, 2026-10-03; unsaved maps: `Scenario\Autosave\`) (oldest overwritten); the user's file, title and modified flag are untouched. Applied 2026-09-27: `build_editor_autosave.py` on `Ziggurat/HSEPack.dpl` only, §8. ⚠⚠ `THSEngine.SaveHSM` clears the modified bit itself (`TAoWHSMap.ReadWrite`), so any cave-made save must restore it.
 - Editor **hex groups + area copy/paste**: Shift+right-click toggles a hex into a group (purple 3-D hex glow, `General.ilb` ids 60/61); Ctrl+C / Ctrl+V keep the group's shape; Esc clears everything, a plain left-click drops the group (vanilla's deselect key is Space, not Esc). Armies, cities and events stay behind. `build_editor_hexgroup.py` on `Ziggurat/HSEPack.dpl` (section `.hxg`), §7. ⚠ `.hxg` sits after `.rgt`: undo it before retuning the render gate.
   §7.1 adds a cursor-following paste ghost and 60°-per-notch wheel rotation (the wheel arrives via a
   `SetWindowLongA` subclass of the map window, which only works because nothing above `THSMEdit`
@@ -689,6 +699,19 @@ file carries the specific checklist for its own rows.
   Never opened in the editor.
 
 ### Terrain & movement — `09-terrain-movement.md`
+- **Earth/Rock edits can no longer leave fog stuck** (`build_los_terrain.py` v6) — applied
+  2026-10-04. Fog add/subtract read a per-hex "blocks sight" snapshot (`[field+0x1B]&0x80`) that
+  only the full fog rebuild writes; a terrain change marks the map and the next frame rebuilds if
+  any hex's Earth/Rock status changed. Exploration still reads live terrain. Fixes editor hexes
+  stuck visible/fogged after painting Earth/Rock, and signs/towers that went unselectable with fog
+  on (vanilla `CanSelect` refuses fogged structures — kept by ruling). Cave 3 `0x55852000`, call
+  retargets `0x557724FB`/`0x55778A6A`. Whole-script `--undo`. Notes: `09-terrain-movement.md`,
+  "Earth and Rock block sight".
+- **Earth/Rock painted on surface Water/Ice no longer crashes the editor**
+  (`build_isohex_replace.py`, HSEPack.dpl) — applied 2026-10-04. The isometric brush re-skinned the
+  water hexagon with wall art; it now re-skins only a hexagon of its own class and otherwise
+  replaces it. Hook `0x55619C30`, cave `0x5561C800`. Surgical `--undo`. Notes:
+  `09-terrain-movement.md`, "Earth/Rock brush on surface Water/Ice".
 - **Snow and Desert cost walkers +1; Frostlings walk Snow and Azracs Desert at the Grass cost**
   (`build_race_terrain_move.py`) — 🔨 APPLIED, UNTESTED (2026-09-27). Five walking-family tables,
   Road and Structure exempt, Flying untouched; applies in tactical combat too (AoWTCPCK builds its
@@ -722,6 +745,8 @@ file carries the specific checklist for its own rows.
   cave is dead but kept for `--undo`. Checklist: `09-terrain-movement.md`, "Path of Frost leaves
   lava alone".
 - Chasm & Sky — movement rows, spell/ability guards, tile art v2
+- ⭐ **Chasm & Sky edges v3 — dissolves and the long cliff** (`build_skychasm_edges.py`, `09-terrain-movement.md` §"Chasm & Sky" step 8), 2026-10-03, rendered live in AoWzEd. Water/Ice and CaveWater dissolve into the void instead of a sandy coast / a hard line; land hangs the game's own Earth-wall strands, recoloured into the void,, drawn slice by slice by the void hexes (VMT `Show` slot). ⚠⚠ The water shore is drawn twice in vanilla (parent `TLowerIsometricHexagon.ShowDynamic` draws grass sand first) — a dithered replacement needs the parent pass skipped. Toolkit: `re_tools/hexfield.py` (engine-order hex-field renderer, ILB record writer, multi-run RLE encoder).
+- Dense Sky variant retired (`build_sky_dense_retire.py`, 2026-10-03) — barred pixels; the owner called it too busy.
 - ⭐ **Structures on Chasm & Sky — the PAD is the gate and the mound** (`09-terrain-movement.md`
   §"Chasm & Sky" step 6). Every structure resource carries `res[0x44]=1`, so `TStructure.CanPlace`
   is `CanPlacePad` and a `TPad` map object — with its own terrain-indexed art — decides the terrain,

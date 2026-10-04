@@ -52,8 +52,26 @@ THE FIX -- a 6-byte hook JUST AFTER cave_layout returns, plus one small cave
   diagnose itself. `0x42F2DC` sits between its two verified sites in this function
   (`0x42F2D7` and `0x42F2F1` nilguard) and is claimed by neither, so both scripts verify clean.
 
-  Cast/info modes are deliberately skipped: cave_layout writes a DIFFERENT (vanilla) table for
-  them, and the cast book's buttons are already correct -- copying there could move them.
+  Cast/info modes get no Y change: cave_layout writes a DIFFERENT (vanilla) table for them.
+
+v2 (2026-10-03) -- CAST BOOK: every slot button re-sized from its own image
+  THE BUG: "first open of the spell book casts fine; reopen it and the entries look normal but
+  neither glow nor click." Measured live (Heulax 26, global tab): every slot button visible with
+  HEIGHT 0, sized flag [+0x2E] = 1. cave_layout captures the cast-mode button height ONCE per
+  session (BSS 0x45BC18) at the first population, which runs BEFORE the book's first Show. A
+  TAOWBaseButton has no height until Setup runs its SetSize (VMT +0x30, aowInt 0x59810FFC:
+  height = its Up image, BookWin #25 = 82 px), so the capture is 0 (live: BSS_BTNH=0,
+  BSS_PNLH=80). The first Show sizes the buttons; every later cast-mode population writes the 0
+  back as a raw store, the sized flag stays set, and Setup never re-sizes them. Intermittent
+  because a population after the buttons are sized (reopen, cave_dlgupd's self-heal re-run) is
+  what kills them, and Setup re-sizes them whenever the book re-validates.
+  THE FIX: in every non-research mode, after cave_layout, call each slot button's own SetSize
+  when it has validated ([+0x2C] != 0) -- the height is re-read from the image, exactly what
+  vanilla's Setup computes. An unvalidated button is left alone: Setup validates it on Show, and
+  TAoWComponent.Validate clears its sized flag, so SetSize runs then anyway.
+  ⚠ Forward hazard: cave_layout still stores 0 into the cast buttons. This cave is what repairs
+  them -- `--undo` here re-breaks the cast book on every reopen.
+  A v1 cave (research modes only) is recognised and rewritten in place on --apply.
 
   Slot pairing (verified against the FillSlot call sites at 0x42F326+, where each slot pushes
   its button and passes its panel in ECX):
@@ -112,8 +130,28 @@ def table_bytes():
     return b
 
 
-def build_code():
+def build_code(version=2):
     from keystone import Ks, KS_ARCH_X86, KS_MODE_32
+    if version == 1:
+        cast = "ja   Ldone"
+    else:
+        cast = f"""jbe  Lresearch
+        xor  esi, esi
+    Lcast:
+        cmp  esi, 8
+        jge  Ldone
+        movzx edi, word ptr [0x{TABLE_VA + 2:X} + esi*4]
+        mov  eax, [ebx + edi]
+        test eax, eax
+        jz   Lcnext
+        cmp  byte ptr [eax + 0x2C], 0
+        je   Lcnext
+        mov  ecx, [eax]
+        call dword ptr [ecx + 0x30]
+    Lcnext:
+        inc  esi
+        jmp  Lcast
+    Lresearch:"""
     asm = f"""
         push eax
         push ecx
@@ -123,7 +161,7 @@ def build_code():
         movzx eax, byte ptr [ebx + 0x{MODE_OFF:X}]
         sub  eax, 2
         cmp  eax, 1
-        ja   Ldone
+        {cast}
         xor  esi, esi
     Lloop:
         cmp  esi, 8
@@ -210,10 +248,11 @@ def disasm(blob, va):
         print(f"   {i.address:08X}  {i.mnemonic:<7} {i.op_str}")
 
 
-def process(exe, code, tbl, show):
+def process(exe, code, old, tbl, show):
     path = os.path.join(GAME, exe)
     d = bytearray(open(path, "rb").read())
     co = va2off(d, CODE_VA); to = va2off(d, TABLE_VA); so = va2off(d, HOOK_VA)
+    ze = va2off(d, ZONE_END)
 
     new_hook = b"\xE9" + rel(HOOK_VA, CODE_VA) + b"\x90" * (len(HOOK_ORIG) - 5)
     cur = bytes(d[so:so + len(HOOK_ORIG)])
@@ -223,27 +262,42 @@ def process(exe, code, tbl, show):
         print(f"  {exe}: ABORT -- displaced range carries .reloc entries "
               f"{[hex(v) for v in bad]}"); return False
 
-    have = bytes(d[co:co + len(code)]) == code and bytes(d[to:to + 32]) == tbl
-    applied  = (cur == new_hook and have)
-    pristine = (cur == HOOK_ORIG and
-                all(b == 0 for b in d[to:va2off(d, ZONE_END)]))
+    def zone_is(c):
+        return (bytes(d[to:to + 32]) == tbl and bytes(d[co:co + len(c)]) == c
+                and all(b == 0 for b in d[co + len(c):ze]))
+    applied  = (cur == new_hook and zone_is(code))
+    previous = (cur == new_hook and zone_is(old))      # v1 cave: research modes only
+    pristine = (cur == HOOK_ORIG and all(b == 0 for b in d[to:ze]))
 
     if show:
         print(f"[tierresearch button-Y fix]  hook {HOOK_VA:08X} -> cave {CODE_VA:08X} "
               f"({len(code)} B code + 32 B table, zone {ZONE_END - TABLE_VA} B), "
               f"resume {RESUME_VA:08X}")
         disasm(code, CODE_VA)
-    print(f"  {exe}: {'APPLIED' if applied else 'PRISTINE' if pristine else 'UNKNOWN'}")
+    state = ('APPLIED' if applied else 'APPLIED v1 (re-tune pending)' if previous
+             else 'PRISTINE' if pristine else 'UNKNOWN')
+    print(f"  {exe}: {state}")
 
     if UNDO:
         if pristine: print(f"  {exe}: already pristine"); return True
-        if not applied: print(f"  {exe}: ABORT -- not cleanly applied, refusing"); return False
+        if not (applied or previous):
+            print(f"  {exe}: ABORT -- not cleanly applied, refusing"); return False
         if not APPLY: print(f"  {exe}: [dry] would restore 6 bytes + zero cave"); return True
         d[so:so + len(HOOK_ORIG)] = HOOK_ORIG
-        for i in range(to, va2off(d, ZONE_END)): d[i] = 0
+        for i in range(to, ze): d[i] = 0
         open(path, "wb").write(d); print(f"  {exe}: reverted"); return True
 
     if applied: print(f"  {exe}: already applied"); return True
+    if previous:
+        if not APPLY: print(f"  {exe}: [dry] would rewrite the cave in place (v1 -> v2)"); return True
+        for i in range(co, ze): d[i] = 0
+        d[co:co + len(code)] = code
+        try:
+            open(path, "wb").write(d)
+        except PermissionError:
+            sys.exit("[x] LOCKED -- close every AoW binary first (%s)"
+                     % ", ".join(zigexe.ALL_EXES))
+        print(f"  {exe}: cave re-tuned in place (v2)"); return True
     if not pristine:
         print(f"  {exe}: ABORT -- hook site is {cur.hex(' ')} (expected {HOOK_ORIG.hex(' ')}) "
               f"or cave zone not free"); return False
@@ -266,8 +320,8 @@ def process(exe, code, tbl, show):
 
 
 def main():
-    code, tbl = build_code(), table_bytes()
-    ok = all(process(e, code, tbl, i == 0) for i, e in enumerate(EXES))
+    code, old, tbl = build_code(2), build_code(1), table_bytes()
+    ok = all(process(e, code, old, tbl, i == 0) for i, e in enumerate(EXES))
     if not APPLY and ok:
         print("\nDry run OK. Re-run with --apply to write.")
     sys.exit(0 if ok else 1)

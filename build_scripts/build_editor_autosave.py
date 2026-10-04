@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 r"""
-EDITOR AUTOSAVE (v2)  --  Ziggurat\HSEPack.dpl only.
+EDITOR AUTOSAVE (v3, 2026-10-03)  --  Ziggurat\HSEPack.dpl only.
 
 WHAT IT DOES
   Every AUTOSAVE_MINUTES the map editor writes the open map to
-      <engine data root>Scenario\Autosave\Autosave 1.hsm / 2 / 3
+      <folder of the open map>\Autosave\Autosave 1.hsm / 2 / 3          (v3, owner's request)
+  or, for a map never saved (file name 'noname.hsm', no backslash), to
+      <engine data root>Scenario\Autosave\Autosave 1.hsm / 2 / 3        (the v2 location)
   overwriting whichever of the three is OLDEST (a missing file counts as oldest), so the three
-  always hold the last three autosaved states, newest by file date. The user's own filename,
+  always hold the last three autosaved states, newest by file date. Maps sharing a folder share
+  its three slots. The user's own filename,
   title bar and modified flag are untouched: Save still writes the user's file, and closing still
   asks about unsaved changes. Both folders are created on demand. No new import, no exe byte, so
   no `build_zigeditor.py` step: AoWzEd.exe loads Ziggurat\HSEPack.dpl directly.
@@ -61,10 +64,14 @@ HOW -- three edits, all in HSEPack.dpl (preferred base 0x55600000; it rebases, c
   shows the VCL error box and the editor carries on. Bit 7 is cleared BEFORE the save, so a
   failing target costs one box per burst of edits, not one per tick.
 
-  Path: FStartupDirectory = [engine+0x2C] (TEngine; always ends in '\', see build_dlgdirs.py)
-  + "Scenario" (CreateDir) + "\Autosave" (CreateDir) + "\Autosave N.hsm", built in G_PATH, a
-  Delphi AnsiString with refcount -1 (callees deep-copy it, never free it). Nothing is baked:
-  the root is read at run time. Roots over ROOT_MAX chars skip the save.
+  Path (v3): the open map's file name is the AnsiString at [THSMEdit+0x1E4] -- the field
+  THSMEdit.Save (0x55614EE8) passes to SaveHSM after comparing it with 'noname.hsm'. Everything
+  up to and including its last '\' + "Autosave" (CreateDir) + "\Autosave N.hsm". No backslash,
+  or a name over ROOT_MAX chars -> the v2 path: FStartupDirectory = [engine+0x2C] (TEngine;
+  always ends in '\', see build_dlgdirs.py) + "Scenario" (CreateDir) + "\Autosave" (CreateDir) +
+  "\Autosave N.hsm". Built in G_PATH, a Delphi AnsiString with refcount -1 (callees deep-copy
+  it, never free it). Nothing is baked: both roots are read at run time. Verified live
+  2026-10-03: an edit to a map in folder F produced F\Autosave\Autosave 1.hsm on the next tick.
 
 OWNERSHIP (record in 12-re-toolchain.md §6.2 HSEPack)
   0x5561C000..0x5561C3FF  CODE zero tail, exclusive. HSEPack's last CODE export ends
@@ -164,6 +171,7 @@ VCL_EXPECT = {                                          # first bytes, checked a
 # engine / map / view offsets
 MAPEDIT_OPEN = 0x1BC        # THSMEdit: map loaded
 MAPEDIT_ENGINE = 0x1C0      # THSMEdit: THSEngine
+MAPEDIT_FILE = 0x1E4        # THSMEdit: the open map's file name ('noname.hsm' until saved)
 ENGINE_STATE = 0x34         # THSEngine: load/save bits
 ENGINE_MAP = 0x3C           # THSEngine: current THSMap
 ENGINE_ROOT = 0x2C          # TEngine.FStartupDirectory
@@ -278,6 +286,37 @@ tick:                                       ; OnTimer: eax = Data = THSMEdit, ed
     call {THUNK_ISWINENABLED:#x}            ; a modal window disables the editor's form
     test eax, eax
     jz t_done
+    mov eax, dword ptr [ebx + {MAPEDIT_FILE:#x}]   ; the open map's file name (AnsiString)
+    test eax, eax
+    jz use_root
+    mov ecx, dword ptr [eax - 4]
+    cmp ecx, {ROOT_MAX:#x}
+    ja use_root
+    lea edx, [eax + ecx - 1]
+find_sep:                                   ; last backslash; none (noname.hsm) -> data root
+    cmp edx, eax
+    jb use_root
+    cmp byte ptr [edx], 0x5c
+    je got_sep
+    dec edx
+    jmp find_sep
+got_sep:
+    lea ecx, [edx + 1]
+    sub ecx, eax                            ; length of <dir> including its backslash
+    push edi                                ; engine -- no exit to t_done until it is popped
+    lea edi, [esi + {G_PATH:#x}]
+    push esi
+    mov esi, eax
+    rep movsb                               ; <dir>
+    pop esi
+    push esi
+    lea esi, [esi + {LIT_DIR2 + 1:#x}]
+    mov ecx, {len(DIR2) - 1}
+    rep movsb                               ; <dir>Autosave
+    pop esi
+    call set_len_mkdir
+    jmp have_dir
+use_root:
     mov eax, dword ptr [edi + {ENGINE_ROOT:#x}]
     test eax, eax
     jz t_done
@@ -304,6 +343,7 @@ tick:                                       ; OnTimer: eax = Data = THSMEdit, ed
     rep movsb                               ; <root>Scenario\\Autosave
     pop esi
     call set_len_mkdir
+have_dir:
     push esi
     lea esi, [esi + {LIT_FILE:#x}]
     mov ecx, {len(FILE)}
@@ -446,6 +486,8 @@ def static_checks(pe):
     assert pe.rd(SETMOD_FN, 8) == SETMOD_FN_BYTES, "THSMap.SetModified differs"
     assert pe.rd(HOOK_VA + 6, 6) == bytes.fromhex("8988c0010000"), "SetHSEngine body differs"
     assert pe.rd(HOOK_NIL, 2) == bytes.fromhex("33d2"), "SetHSEngine nil path differs"
+    # THSMEdit.Save: `mov eax,[ebx+0x1E4]` then compares with 'noname.hsm' -- the field the tick reads
+    assert pe.rd(0x55614EE8, 6) == bytes.fromhex("8b83e4010000"), "THSMEdit file-name field moved"
     for thunk, slot in ((THUNK_GETHANDLE, IAT_GETHANDLE), (THUNK_ISWINENABLED, IAT_ISWINENABLED)):
         assert pe.rd(thunk, 6) == b"\xff\x25" + struct.pack("<I", slot), f"thunk {thunk:#x}"
     assert pe.rd(0x55601A54, 6) == b"\xff\x25" + struct.pack("<I", IAT_OPENDLG_CREATE)
@@ -502,6 +544,7 @@ def main():
     print(f"HSEPack.dpl  hook {HOOK_VA:#x}: {hook_st}   SetModified const: {const_st}   "
           f"cave {CAVE:#x}: {cave_st}")
     print(f"  cave: head {na} B, tick {nb} B; every {AUTOSAVE_MINUTES} min, {SLOTS} slots, "
+          f"<map folder>{DIR2.decode()[1:]}{FILE.decode()}; unsaved map: "
           f"<root>{DIR1.decode()}{DIR2.decode()}{FILE.decode()}")
     assert "FOREIGN" not in (hook_st, const_st, cave_st), "unexpected bytes -- refusing"
 

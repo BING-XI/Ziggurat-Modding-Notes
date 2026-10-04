@@ -78,7 +78,7 @@ THE CAVE -- 0x0062D100, span 0x200, in `.hcol`
 ----------------------------------------------
 `.hcol` is VA 0x00612000, VirtualSize 0x1C000, characteristics 0xE0000060 (CODE|EXEC|READ|WRITE),
 raw 0x20C200. It is `build_herodlg_columns.py`'s section; its current occupants are
-build_herodlg_columns (0x612000 upward, top 0x0062417B), build_skylevel_ui (0x0062A000..0x62A3FF),
+build_herodlg_columns (0x612000 upward, top 0x00624250), build_skylevel_ui (0x0062A000..0x62A3FF),
 build_unitwin_ability (0x0062D000, 0x40) and build_savedate_format (0x0062D020, 0x80, last
 non-zero byte 0x0062D07A). 0x0062D0A0..0x0062DFFF is verified all-zero, so 0x0062D100 is the next
 clear 0x100-aligned slot above the highest existing occupant. Chosen for that reason: no new PE

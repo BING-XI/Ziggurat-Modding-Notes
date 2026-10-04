@@ -17,7 +17,7 @@ SUPERSEDES `build_herodlg_tall.py`.
 
 ## How tall -- height buys LIST ROWS and nothing else
 
-    height = FURNITURE_H + ROW_H * rows  =  389 + 17 * rows      (default 8 rows -> 525)
+    height = FURNITURE_H + ROW_H * rows  =  389 + 17 * rows      (default 7 rows -> 508)
 
 389 px of the dialog is fixed regardless of how many abilities are offered: 53 title knotwork,
 224 box A (portrait, banner, the six stat rows and their spinners, skill points, Current
@@ -30,13 +30,26 @@ for 27 rows so that the tallest category (Wayfaring, 27) never scrolled. `build_
 then went live and a hero is offered ~16-22 of the 102 abilities -- ~3-5 per column, so 22 rows
 per column were empty. Vanilla's own list depth is 5 rows (its single Upgrades list was
 WinHeight 107). Measured against the live race table, the chance that at least one of the five
-columns overflows and has to be scrolled is ~50% at 5 rows (worst race, Undead), 8.7% at 7 and
-**2.7% at 8**, which is the current default. Overflow scrolls -- it never drops entries -- because
-`cave_setfmax` drives all five scrollbars off `GetCount()-1`.
+columns overflows and has to be scrolled is ~50% at 5 rows (worst race, Undead), **8.7% at 7**
+(the default since 2026-10-02, owner's call) and 2.7% at 8. Overflow scrolls -- it never drops
+entries -- because `cave_setfmax` drives all five scrollbars off `GetCount()-1`.
 
-⚠ The height only ever quantises to whole rows: "10% taller than 474" is 521.4, and 525 = 389 +
-17*8 is the rung it lands on. Do not expect `--height 521` to give 521 -- the DFM will hold 521
-but the list shows floor((521-389+8-8)/17) = 7 rows and the extra 4 px is dead space.
+⚠ The height only ever quantises to whole rows. Do not expect `--height 515` to give a fraction
+of a row -- the DFM will hold 515 but the list shows floor((515-389)/17) = 7 rows and the extra
+7 px is dead space.
+
+## On a screen too small for the dialog -- the bottom of box B goes, nothing else
+
+At 640x480 the game area is 640x432 and the dialog is clamped to it. The engine's clamp shifts any
+box that overflows its parent UP until it fits, which put box B over box A's bottom 40 px (player
+report 2026-10-02: the Remove/Add/Done/Cancel row and the column headers hidden). `cave_geom` now
+computes the height the dialog will be clamped to and shortens box B to the room under its fixed
+top, so its lists lose rows from the bottom (7 -> 5 at 432) and scroll. Detail and the clamp's
+addresses are in the comment above `cave_geom`.
+
+Width is fixed by design rather than fitted: 800 (since 2026-10-04; was 960, which put Cancel and
+the Magic column off an 800x600 screen). At 640 wide the fifth column (Magic) and Cancel are still
+outside the clamped dialog; Done is not.
 
 ## How it works
 
@@ -74,7 +87,7 @@ different things (all verified by disassembly, addresses in the `cave_setfmax` n
     because they have no bar and fall through to case 2's geometric sibling search.
 
 `build_dfm()` asserts the wiring both ways: each cost list points at its own bar, and no name list
-owns one (a name list that did would drag the bar to `name.left + 126 - 17`, on top of the Cost
+owns one (a name list that did would drag the bar to `name.left + LIST_W - 17`, on top of the Cost
 column).
 
 ## ⚠⚠ THE STALE-SELECTION TRAP -- never cache which column the buttons act on
@@ -125,7 +138,7 @@ one: the sync is the ONLY code difference, and `mov dword [activecol],0` is pres
 and an ability that passed for level II still passes for level III.
 
 ⚠ **`.hcol` HAS FIVE OTHER TENANTS**, the lowest being `build_heroskill_race.py` at `0x00628000`.
-This layout allocates upward from `SEC_VA 0x612000` and currently tops out at `0x00624200`, so
+This layout allocates upward from `SEC_VA 0x612000` and currently tops out at `0x00624250`, so
 there is ~16 KB of headroom -- and `plan()`'s `assert D["code"] + len(code) < SQUATTER_FLOOR`
 (not the section end, which would not catch a squatter collision) is what enforces it. Full list
 at `SQUATTER_FLOOR` below. `add_section()` returns early when `.hcol` exists, so an ordinary
@@ -175,7 +188,7 @@ not /DYNAMICBASE so they are never applied in practice, but stale relocs are not
     (no args)                        verify the state of the exe
     --apply                          patch (an UNPATCHED exe is first snapshotted to
                                      backups/<exe>.pre-herodlgcolumns; a patched one is not)
-    --apply --width W --height H     re-tune the size in place (default 960x525 = 8 list rows)
+    --apply --width W --height H     re-tune the size in place (default 800x508 = 7 list rows)
     --undo                           surgical restore: resource repoint, VMT fields, every hook
                                      site, and the relocs. The .hcol section is left (inert).
     --dis [name]                     disassemble the caves at their real VAs (all, or one by
@@ -219,12 +232,17 @@ SEC_SIZE = 0x1C000                # 112 KB: grown DFM (~72 KB) + field table + c
 #   0x0062D000  build_unitwin_ability.py
 #   0x0062D020  build_savedate_format.py       (ends 0x0062D079)
 #   0x0062D100  build_powerleech_ui.py         (0x200)
-# Measured 2026-09-10: our blob ends at 0x00624200, so this leaves ~15.5 KB of headroom.
+# Measured 2026-10-02: our blob ends at 0x00624250, so this leaves ~15.4 KB of headroom.
 # Canonical list: Zig notes/12-re-toolchain.md §6.2. Raise this only after moving the squatters.
 SQUATTER_FLOOR = 0x00628000
-DEFAULT_W = 960
+# 800 wide (2026-10-04, player report: Done/Cancel off screen below 1920x1080). An 800x600 screen
+# gives an 800x552 game area, so 800x508 is never clamped there. Was 960 with 126/46 columns.
+# Name lists 112: the widest offered name in Age8 is ~100 px (Wasteland Concealment). Cost lists
+# 36: the column's 17 px scrollbar sits over the right of the cost list, leaving 19 px for a
+# 2-digit cost (5 px a digit). Columns are 3 px apart at this width.
+DEFAULT_W = 800
 NCOL = 5
-LIST_W, COST_W, SB_W = 126, 46, 17
+LIST_W, COST_W, SB_W = 112, 36, 17
 
 # ---- two-box layout -----------------------------------------------------------------------
 # Box A ("StatePnl", new) = the hero as he is: portrait+banner, stats, Current Abilities.
@@ -271,12 +289,12 @@ LIST_BORDER = 8                   # BorderHeight 4 top + 4 bottom
 FURNITURE_H = (BOXA_Y + BOXA_H + BOX_GAP + B_LIST_TOP + B_LIST_BOT
                + BAND_FROM_BOTTOM + LIST_BORDER)
 MIN_ROWS = 3                      # below this the columns stop being usable as columns
-# 8 rows (2026-09-10, owner's request: "about 10% taller"). 474 x 1.1 = 521.4 and the height
-# quantises to whole rows, so 525 = 389 + 17*8 is the nearest rung. It is also where the chance
-# that ANY of the five columns overflows and needs scrolling falls to 2.7% (5 rows was 50%).
+# 7 rows (owner, 2026-10-02: "seven rows in each column would be sufficient" -- a hero is never
+# offered that many abilities in one category at once). 508 = 389 + 17*7. The chance that ANY of
+# the five columns overflows and has to be scrolled is 8.7% at 7 rows (2.7% at the previous 8).
 # Vanilla's own list depth was 5 rows (WinHeight 107); see the table in §2.1a of Zig notes/07-ui.md.
-DEFAULT_ROWS = 8
-DEFAULT_H = FURNITURE_H + ROW_H * DEFAULT_ROWS       # 525
+DEFAULT_ROWS = 7
+DEFAULT_H = FURNITURE_H + ROW_H * DEFAULT_ROWS       # 508
 
 VMT = 0x4458C8
 VMT_FIELDTABLE = VMT - 0x2C
@@ -299,9 +317,19 @@ UPGRADEPNL_OFF = 0x74             # box B
 # is still wrong). Values come from layout(), so --width/--height stay authoritative.
 # Left/Top for Dlg are deliberately NOT restored: it is awCenter/ahCenter, so ReAlign owns them.
 GEOM_ROWS = 3                     # Dlg, StatePnl, UpgradePnl
+GEOM_ROW_SIZE = 24                # {field off, W, H, Left, Top, fit floor}
+NO_FIT = -1                       # fit floor meaning "never shorten this row"
 CTL_W, CTL_H, CTL_L, CTL_T = 0x7C, 0x80, 0x84, 0x88
 CTL_ALIGNED, CTL_SIZED = 0x2D, 0x2E   # zeroing both is the toolkit's "re-layout me" signal
 CTL_CHILDREN = 0xD0               # Classes.TList: count at +8, item array at +4
+# The dialog's clamp bound (aowInt, read 2026-10-02). TAOWGenericWindow.SetOwner @0x59808844
+# copies the parent -- the window manager -- into +0x1D8; TAOWWindow.Create @0x59808CC7 sets
+# UseManagerBorders (+0x170) to 1; TAOWWindow.SetSize @0x59808CE4 then bounds the dialog by the
+# manager's height less its top/bottom border insets (the 48 px toolbar strip is the bottom one).
+WIN_BOUND, WIN_USEMGRBORDERS = 0x1D8, 0x170
+MGR_INSET_T, MGR_INSET_B = 0x118, 0x120
+# Box B shortened to fit is never cut below its header plus one list row.
+B_FIT_FLOOR = B_LIST_TOP + B_LIST_BOT + LIST_BORDER + ROW_H
 
 COL_NAME  = [0x80, 0x1E0, 0x1E4, 0x1E8, 0x1EC]
 COL_COST  = [0x98, 0x1F0, 0x1F4, 0x1F8, 0x1FC]
@@ -600,19 +628,24 @@ def layout(width, height):
 
 
 def geom_table(width, height):
-    """-> the cave's {field offset, W, H, Left, Top} rows, in restore order (parents first).
+    """-> the cave's {field offset, W, H, Left, Top, fit floor} rows, in restore order (parents
+    first).
 
     Same numbers build_dfm() writes into the DFM, derived from layout() rather than repeated, so
     --width/--height can never drift between the resource and the self-heal. Left/Top of -1 means
     "leave alone": Dlg is awCenter/ahCenter, so ReAlign owns its origin and writing one would
-    fight the centring.
+    fight the centring. The fit floor is how short cave_geom may make the row when the dialog will
+    be clamped below its design height: NO_FIT for the dialog itself and for box A (rigid), the
+    header plus one list row for box B.
     """
     L = layout(width, height)
-    rows = [(DLG_OFF, width, height, -1, -1),
-            (STATEPNL_OFF, L["box_w"], BOXA_H, BOX_X, BOXA_Y),
-            (UPGRADEPNL_OFF, L["box_w"], L["boxb_h"], BOX_X, BOXB_Y)]
+    rows = [(DLG_OFF, width, height, -1, -1, NO_FIT),
+            (STATEPNL_OFF, L["box_w"], BOXA_H, BOX_X, BOXA_Y, NO_FIT),
+            (UPGRADEPNL_OFF, L["box_w"], L["boxb_h"], BOX_X, BOXB_Y, B_FIT_FLOOR)]
     assert len(rows) == GEOM_ROWS
-    return b"".join(struct.pack("<Iiiii", *r) for r in rows)
+    blob = b"".join(struct.pack("<Iiiiii", *r) for r in rows)
+    assert len(blob) == GEOM_ROWS * GEOM_ROW_SIZE
+    return blob
 
 
 def build_dfm(pristine, width, height):
@@ -902,21 +935,56 @@ def cave_sources(D, LBL):
         # Restoring the three panel rects is enough: everything else is anchored and recomputes.
         # The ahBoth lists were already doing correct arithmetic against the wrong box.
         #
-        # ⚠ That measurement was at the old 860 px height; the table is generated by layout(), so
-        # it tracks --height with no edit. Per-axis verdict at a 640x432 client, current 960x525:
-        #   Dlg         960x525          both axes overflow -> healed (Left/Top -1, ReAlign owns)
-        #   StatePnl    908x224@26,53    26+908=934 > 640 horizontal clamped; bottom 277 <= 432 ok
-        #   UpgradePnl  908x195@26,285   934 > 640 AND bottom 285+195 = 480 > 432 -> BOTH clamped
-        # ⚠ UpgradePnl's vertical axis is clamped again at 525. It was clamped at 860, briefly was
-        # not at 474 (bottom 429 <= 432), and is at 525. The heal writes W/H/L/T unconditionally
-        # for all three rows, so it covers the axis either way -- but this is why the heal is
-        # load-bearing again for that panel and not merely a superset.
-        # ebx = the form. eax/ecx/edx/esi/edi are free here; ebp must be preserved (cave_fill
-        # uses [ebp-0x10] and [ebp-0x0c] further down).
+        # THE CLAMP ITSELF (read 2026-10-02, aowInt). It is not "overflow -> 0 and full extent"
+        # but shift-then-pin, per axis: if Top+H overflows the bound, Top := bound-H; if Top is
+        # then negative, Top := 0 and H := bound. TAOWWindow.SetSize @0x59808CE4 does it for the
+        # dialog against the window manager (less its border insets); TAOWPanel.SetSize
+        # @0x5981D358 does it for each box against its AOWWindow (+0x1F8), i.e. the dialog.
+        # TAoWComponent.Setup @0x598033D0 runs SetSize, ReAlign, then SetSize AGAIN, so the
+        # shift beats a box's ahTop anchor.
+        #
+        # ⚠ SO A BOX THAT FITS BUT SITS TOO LOW IS SHIFTED UP OVER ITS NEIGHBOUR. At a 640x480
+        # screen the dialog is clamped to 432 high; box B (Top 285, 195 high at 8 rows) was moved
+        # to Top 237, under box A's bottom 40 px, hiding Remove/Add/Done/Cancel and half the
+        # column headers (player report 2026-10-02). The heal therefore computes the height the
+        # dialog WILL get (ebp, below) and shortens each fittable row to the room under its own
+        # Top, never below the row's floor. Box B keeps Top 285, its ahBoth lists lose rows from
+        # the bottom and scroll, and box A is never touched (floor NO_FIT).
+        #
+        # Per-axis verdict at a 640x432 client, current 800x508 (7 rows); at 800x552 (an
+        # 800x600 screen) nothing is clamped:
+        #   Dlg         800x508          both axes clamped by the engine (Left/Top -1, ReAlign owns)
+        #   StatePnl    748x224@26,53    horizontal clamped; bottom 277 <= 432 fits
+        #   UpgradePnl  748x178@26,285   horizontal clamped; vertical FITTED here to 147 (5 rows)
+        # ebx = the form. eax/ecx/edx/esi/edi are free here; ebp is pushed and popped because
+        # cave_fill uses [ebp-0x10] and [ebp-0x0c] further down.
         ("cave_geom", f"""
     push esi
     push edi
+    push ebp
     mov esi, {D['geom']}
+    mov ebp, [esi + 8]
+    mov eax, [esi]
+    mov eax, [ebx + eax]
+    test eax, eax
+    je cg_start
+    mov edx, [eax + {WIN_BOUND}]
+    test edx, edx
+    je cg_start
+    cmp dword ptr [edx + {CTL_W}], 0
+    jle cg_start
+    mov ecx, [edx + {CTL_H}]
+    test ecx, ecx
+    jle cg_start
+    cmp byte ptr [eax + {WIN_USEMGRBORDERS}], 0
+    je cg_noinsets
+    sub ecx, [edx + {MGR_INSET_T}]
+    sub ecx, [edx + {MGR_INSET_B}]
+cg_noinsets:
+    cmp ecx, ebp
+    jge cg_start
+    mov ebp, ecx
+cg_start:
     mov edi, {GEOM_ROWS}
 cg_row:
     mov eax, [esi]
@@ -926,6 +994,22 @@ cg_row:
     mov ecx, [esi + 4]
     mov [eax + {CTL_W}], ecx
     mov ecx, [esi + 8]
+    mov edx, [esi + 20]
+    cmp edx, {NO_FIT}
+    je cg_seth
+    push eax
+    mov eax, ebp
+    sub eax, [esi + 16]
+    cmp eax, edx
+    jge cg_room
+    mov eax, edx
+cg_room:
+    cmp ecx, eax
+    jle cg_fits
+    mov ecx, eax
+cg_fits:
+    pop eax
+cg_seth:
     mov [eax + {CTL_H}], ecx
     mov ecx, [esi + 12]
     cmp ecx, -1
@@ -955,9 +1039,10 @@ cg_kidnext:
     dec ecx
     jnz cg_kid
 cg_next:
-    add esi, 20
+    add esi, {GEOM_ROW_SIZE}
     dec edi
     jnz cg_row
+    pop ebp
     pop edi
     pop esi
     ret
@@ -1461,7 +1546,7 @@ def plan(width, height, pristine):
     D["colmode"] = va;   va += 4 * NCOL       # per-column sort mode (0 name asc .. 3 cost desc)
     D["colsbtbl"] = D["colsb"]
     D["sortfns"] = va;   va += 4 * 4
-    D["geom"] = va;      va += 4 * 5 * GEOM_ROWS   # {field off, W, H, Left, Top} x 3 panels
+    D["geom"] = va;      va += GEOM_ROW_SIZE * GEOM_ROWS   # geom_table(): 3 rows of 6 dwords
     va = (va + 0xF) & ~0xF
     D["code"] = va
     return D, dfm
@@ -1542,7 +1627,7 @@ def apply_to(exe, width, height, verbose=True):
     #
     # Bounded at SQUATTER_FLOOR and never beyond: every byte from there up belongs to one of the
     # five other tenants listed at the top of this file. [SEC_VA, SQUATTER_FLOOR) is ours alone
-    # (verified 2026-09-10: the live blob ends at 0x00624200 and 0x00624200..0x00628000 is zero).
+    # (verified 2026-10-02: the live blob ends at 0x00624250).
     assert SEC_VA < SQUATTER_FLOOR <= SEC_VA + SEC_SIZE
     exe.wr(SEC_VA, b"\0" * (SQUATTER_FLOOR - SEC_VA))
 

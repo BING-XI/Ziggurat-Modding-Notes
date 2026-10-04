@@ -105,7 +105,7 @@ CAVE
 0x0062A000..0x0062A3FF, in section `.hcol` (RVA 0x212000, file 0x20C200, characteristics
 0xE0000060 = read/write/execute).  File offset of the cave is 0x00224200.  Verified all
 zero before install and inside the section's 0x8E84-byte zero run starting at 0x0062417C.
-No other build script references any address in 0x0062xxxx below 0x0062417B.
+No other build script references any address in 0x0062xxxx below 0x00624250.
 
     0x0062A000  ORDER[4]   slot  -> level   = 3, 0, 1, 2
     0x0062A010  RORDER[4]  level -> slot    = 1, 2, 3, 0

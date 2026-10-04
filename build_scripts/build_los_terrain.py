@@ -2,6 +2,7 @@
 r"""
 AoW1 mod -- strategic-map terrain LOS blocking + fog-refcount rebuild on terrain change
             + Mantle of Gloom (v4, 2026-09-26): enemy Trail of Darkness armies thicken the fog.
+            + sight snapshot (v6, 2026-10-04): terrain edits can no longer unbalance fog counts.
 
 Terrain 7 (Earth) and 8 (Rock) block strategic line of sight. Every area fill in
 TAoWMapLevel (fog on, fog off, explore, unfog+explore) is filtered per hex: a hex is only
@@ -88,10 +89,9 @@ site, live-verified):
   TFloodControl.Flood                 0x557F15BE   (mass terrain change: immediate heal)
   TFloodControl.Restore               0x557F1851   (mass terrain change: immediate heal)
 No recursion: with the slot vanilla, UpdateVisibility's own InvalidateMap call and the
-fills' MapChangedRad path are vanilla-equivalent. PROTECTION TRADED AWAY: a mid-turn
-terrain change (Ice Storm, raise terrain...) no longer rebuilds immediately; fog counts
-can be transiently stale until the next trigger (at latest the next NewTurn), then heal
-completely -- the rebuild reconstructs counts from live observers, not from history.
+fills' MapChangedRad path are vanilla-equivalent. Before v6 a mid-turn terrain change
+(and every editor brush stroke) could unbalance the counts until the next trigger; the
+editor has no NewTurn, so there the damage was permanent. v6 (PART 4) closes both.
 If visibility is locked ([map+0x1F4]) UpdateVisibility defers and re-fires at unlock;
 PENDING waits for the first unlocked run.
 
@@ -189,6 +189,52 @@ Beyond that range the army's wider sight is gloomed as before; Earth/Rock still 
   Cave 2 0x5584F480..0x5584F77F (EXCLUSIVE, asserted zero-or-ours): tsqual, tslook, tsrec,
   tscheck. Cave 1 grew by the lookup in los_core, the walkclear test, stub_army's tsck/tsr.
 
+================================================================================
+PART 4 -- the sight snapshot (v6, 2026-10-04, APPLIED, UNTESTED)
+================================================================================
+Bug (owner report, editor with Fog of War on): painting Earth/Rock left hexes permanently
+inverted, and signs and towers became unselectable (TStructure.CanSelect @0x5575E994 refuses
+a structure while fog is on and its cached hidden byte +0x2C is set; that byte follows the
+fog counts of its hexes). Cause: an observer's fog-on and its later fog-off each ran LOS
+against the terrain of their own moment, so an Earth/Rock edit between them unbalanced
+[field+0x1A]. Owner ruling: fogged structures stay unselectable in the editor (vanilla);
+only the counts are fixed.
+
+  Snapshot bit: [field+0x1B] & 0x80 (dword bit 31 of [field+0x18]; engine flags reach bit
+  27, every vanilla writer ORs into the dword or masks only bits 12..15; the one exception,
+  TAoWBorderHexagon.UpdateMapField's `and 0xFFFFF000`, also zeroes the fog count there).
+  1 = this hex was Earth/Rock when the last rebuild ran. Written ONLY by `snapreset`, which
+  uv_hook's wipe now calls in place of ResetFog (snapshot every field, then ResetFog).
+  Serialized with the dword, so a saved map/game carries snapshot and counts that match.
+
+  los_core has two entries. a_los (FOG: FogArea, UnFogArea, UnFogExploreArea's unfog half)
+  tests the snapshot bit; a_live (EXPLORATION: ExploreArea, UnFogExploreArea's explore half)
+  tests the live terrain byte as before, so explored bits are unchanged from v5. Mode lives
+  in the frame at [esp+0x3C]. Between rebuilds the fog answer is a pure function of the
+  snapshot, so every fog-off matches its fog-on whatever the terrain did.
+  stub_ue: fog-visible + live-clear -> vanilla path; fog-visible + live-blocked -> unfog
+  only (vanilla's count lines, replayed in the stub); fog-hidden + live-clear -> explore
+  only; both blocked -> skip.
+
+  Refresh: `tc_mark` (call retarget @0x557724FB, TriggerTerrainChangedEvent's inherited
+  call) sets G_CHK 0x558FAD46. Every terrain change reaches it -- the editor brush via
+  TMapObject.PlaceOnMap -> TerrainChangedRad, spells via ChangeTerrain/Ex -- and so does
+  every map-changed notification, so it only marks. `dds` (call retarget @0x55778A6A,
+  TAoWHSMap.DrawDynamicScene's inherited draw) runs before each frame: when G_CHK is set,
+  this is the live map and no rebuild is running (G_INUV), it clears G_CHK and `scan`s every
+  level; any field whose snapshot bit disagrees with its terrain -> PEND=1 + UpdateVisibility.
+  The rebuild's own fills set G_CHK again, so the next frame scans once more and finds
+  nothing. A scan costs one pass over the fields (byte compare each); it runs only on frames
+  after a map change, and a rebuild only when an Earth/Rock hex actually appeared or vanished.
+  Flood/Restore write terrain raw and keep their own trig sites.
+
+  Old maps and saves carry bit 0 everywhere: the first frame after load scans, finds every
+  Earth/Rock hex unsnapshotted and rebuilds.
+  Unproven: a rebuild runs inside the drawing path (before the inherited draw); a frame
+  drawn with half-invalidated static scene would show for one frame only.
+  Cave 3 0x55852000..0x558521FF (EXCLUSIVE, asserted zero-or-ours): snapreset, scan, dds,
+  tc_mark (265 B).
+
 Trail of Darkness itself: ExecuteTrailOfDarkness's ring bound `cmp dword [esp+0x14], N`
 @0x5578016C is TRAIL_R = 6 (vanilla 1; an unowned hand edit had made it 5 -- --undo
 restores the 5).
@@ -264,12 +310,22 @@ assert T_ENT + T_MAX * 8 <= 0x558FAD00
 CAVE2_VA = 0x5584F480
 CAVE2_LIMIT = 0x300
 
+# v6 third cave: the sight-snapshot helpers. EXCLUSIVE, asserted zero-or-ours.
+CAVE3_VA = 0x55852000
+CAVE3_LIMIT = 0x200
+G_CHK    = 0x558FAD46           # byte: 1 = terrain may have changed since the last scan
+SNAP_OFF = 0x1B                 # field byte holding the snapshot bit (bits 24..27 are engine flags)
+SNAP_BIT = 0x80                 # 1 = this hex blocked sight when the last rebuild ran
+
 # engine entry points (all AoWEPACK.dpl, live-verified this session)
 UPDVIS    = 0x55778408          # TAoWHSMap.UpdateVisibility
 LOCKMCE   = 0x5577246C          # TAbstractAoWHSMap.LockMapChangedEvent
 INITMSG   = 0x5570347C          # thunk EngineP!Engine.InitMsg
 GETLVL    = 0x557020EC          # thunk HSEPack!TMapContainer.GetMapLevel
 RESETFOG  = 0x557721D4          # TAoWMapLevel.ResetFog (zero callers in vanilla)
+SETFOG    = 0x55771C64          # TAoWMapField.SetFogCount (eax=field, dl=count)
+HSTTCE    = 0x5570257C          # thunk HSEPack!THSMap.TriggerTerrainChangedEvent
+HSDDS     = 0x55702654          # thunk HSEPack!THSMap.DrawDynamicScene
 INVMAP    = 0x557725C0          # TAbstractAoWHSMap.InvalidateMap
 GETPLAYERS = 0x557544D0         # TPlayerList.GetPlayers (eax=list, edx=idx -> player|nil)
 GETREL    = 0x55750A10          # TPlayerDiplomaticRelations.GetDiplomaticRelation (dl=other)
@@ -293,6 +349,10 @@ TRIG_SITES = [
 CALL_SITES = [
     ("uv_end",    0x5577844D, INVMAP, "uv_end"),    # UpdateVisibility's closing call
     ("trig_dipl", 0x5575433E, UPDVIS, "trig_uv"),   # TPlayerList.SetDiplomaticRelation
+    # v6: TAbstractAoWHSMap.TriggerTerrainChangedEvent's inherited call -> mark G_CHK
+    ("tc_mark",   0x557724FB, HSTTCE, "tc_mark"),
+    # v6: TAoWHSMap.DrawDynamicScene's inherited call -> scan + rebuild before the frame
+    ("dds",       0x55778A6A, HSDDS,  "dds"),
 ]
 
 # v4 raw byte edits: (name, va, pre-script bytes, new bytes)
@@ -349,7 +409,8 @@ def is_ours_hook(kind, va, c, length):
     if len(c) != length or c[0] != op or c[5:] != b"\x90" * (length - 5):
         return False
     tgt = va + 5 + struct.unpack("<i", c[1:5])[0]
-    return CAVE_VA <= tgt < CAVE_VA + CAVE_LIMIT
+    return any(lo <= tgt < lo + n for lo, n in
+               ((CAVE_VA, CAVE_LIMIT), (CAVE2_VA, CAVE2_LIMIT), (CAVE3_VA, CAVE3_LIMIT)))
 
 
 def build():
@@ -367,6 +428,147 @@ def build():
         b = bytes(ks.asm(src, addr)[0])
         out[name] = (addr, b)
         return addr + len(b)
+
+    # ======== CAVE 3 (v6): the sight snapshot ========
+    # --- snapreset: eax = TAoWMapLevel. Copies "terrain is Earth/Rock" into every field's
+    # snapshot bit, then tail-jumps into ResetFog. Called only from uv_hook's wipe, so the
+    # snapshot changes only while every fog count is being rebuilt from zero.
+    a3 = CAVE3_VA
+    a_snap = a3
+    blk_cmp = "\n".join("        cmp  al, %d\n        je   sset" % t for t in BLOCKING)
+    nxt3 = asm("snapreset", a3, f"""
+        push ebx
+        push edi
+        push eax
+        mov  ebx, eax
+        mov  edx, [eax]
+        call dword ptr [edx+0x54]       ; field count (as ResetFog)
+        mov  ecx, eax
+        mov  edi, [ebx+0x2C]            ; first field
+        test ecx, ecx
+        jle  sdone
+    sl:
+        and  byte ptr [edi+0x{SNAP_OFF:X}], 0x{0xFF ^ SNAP_BIT:X}
+        mov  al, [edi+0x14]
+{blk_cmp}
+        jmp  snext
+    sset:
+        or   byte ptr [edi+0x{SNAP_OFF:X}], 0x{SNAP_BIT:X}
+    snext:
+        add  edi, [ebx+0x28]            ; field stride
+        dec  ecx
+        jnz  sl
+    sdone:
+        pop  eax
+        pop  edi
+        pop  ebx
+        jmp  0x{RESETFOG:X}
+    """)
+
+    # --- scan: eax = map -> eax = 1 when some field's snapshot bit disagrees with its live
+    # terrain on any level, else 0. Preserves ebx/esi/edi/ebp.
+    a3 = align(nxt3)
+    a_scan = a3
+    blk_cmp2 = "\n".join("        cmp  al, %d\n        je   blk" % t for t in BLOCKING)
+    nxt3 = asm("scan", a3, f"""
+        push ebx
+        push esi
+        push edi
+        push ebp
+        mov  ebp, eax
+        xor  esi, esi
+    lv:
+        mov  eax, [ebp+0x10]            ; level container
+        test eax, eax
+        jz   same
+        cmp  esi, [eax+0x14]
+        jge  same
+        mov  edx, esi
+        call 0x{GETLVL:X}
+        test eax, eax
+        jz   nextlv
+        mov  ebx, eax
+        mov  edx, [eax]
+        call dword ptr [edx+0x54]
+        mov  ecx, eax
+        mov  edi, [ebx+0x2C]
+        test ecx, ecx
+        jle  nextlv
+    fl:
+        mov  al, [edi+0x14]
+{blk_cmp2}
+        test byte ptr [edi+0x{SNAP_OFF:X}], 0x{SNAP_BIT:X}
+        jnz  diff                       ; snapshot blocks, terrain no longer does
+        jmp  fn
+    blk:
+        test byte ptr [edi+0x{SNAP_OFF:X}], 0x{SNAP_BIT:X}
+        jz   diff                       ; terrain blocks, snapshot does not
+    fn:
+        add  edi, [ebx+0x28]
+        dec  ecx
+        jnz  fl
+    nextlv:
+        inc  esi
+        jmp  lv
+    diff:
+        mov  eax, 1
+        jmp  sout
+    same:
+        xor  eax, eax
+    sout:
+        pop  ebp
+        pop  edi
+        pop  esi
+        pop  ebx
+        ret
+    """)
+
+    # --- dds: TAoWHSMap.DrawDynamicScene's first call (inherited draw), retargeted. eax =
+    # map, edx = surface. When terrain may have changed (G_CHK) and this is the live map,
+    # scan; on any snapshot mismatch request a rebuild and run UpdateVisibility now, so the
+    # frame about to be drawn already shows the new sight lines. Never inside a rebuild
+    # (G_INUV): G_CHK then stays set for the next frame.
+    a3 = align(nxt3)
+    pop_at = a3 + 6                 # pushad(1) + call(5)
+    nxt3 = asm("dds", a3, f"""
+        pushad
+        call 0x{pop_at:X}
+        pop  ebp
+        sub  ebp, 0x{pop_at:X}          ; ebp = load delta
+        cmp  byte ptr [ebp + 0x{G_CHK:X}], 0
+        je   dout
+        cmp  byte ptr [ebp + 0x{G_INUV:X}], 0
+        jne  dout
+        mov  esi, eax
+        cmp  esi, [ebp + 0x{MAPVAR:X}]
+        jne  dout
+        mov  byte ptr [ebp + 0x{G_CHK:X}], 0
+        call 0x{a_scan:X}
+        test eax, eax
+        jz   dout
+        mov  byte ptr [ebp + 0x{PEND:X}], 1
+        mov  eax, esi
+        call 0x{UPDVIS:X}
+    dout:
+        popad
+        jmp  0x{HSDDS:X}
+    """)
+
+    # --- tc_mark: TAbstractAoWHSMap.TriggerTerrainChangedEvent's inherited call, retargeted.
+    # Every terrain change (editor brush, ChangeTerrain/Ex, object place/remove) reaches it,
+    # and so does every map-changed notification -- so it only marks; dds decides.
+    a3 = align(nxt3)
+    pop_at = a3 + 6                 # push eax(1) + call(5)
+    nxt3 = asm("tc_mark", a3, f"""
+        push eax
+        call 0x{pop_at:X}
+        pop  eax
+        sub  eax, 0x{pop_at:X}
+        mov  byte ptr [eax + 0x{G_CHK:X}], 1
+        pop  eax
+        jmp  0x{HSTTCE:X}
+    """)
+    out["_end3"] = nxt3
 
     # ======== CAVE 2 (v5): True Seeing sees through the Mantle of Gloom ========
     # --- tsqual: eax = army -> eax = TAoWMapLevel (0 = not an observer for the seated
@@ -643,11 +845,26 @@ def build():
     #        +0x14 t_x  +0x18 t_z (cube)  +0x1C side  +0x20/+0x24 best x,y
     #        +0x28 mode (0 = walk A first-tie-wins, 1 = walk B last-tie-wins)
     #        +0x2C radius  +0x30 walk cost  +0x34 1 = some walk was terrain-clear
+    #        +0x38 True Seeing range  +0x3C v6 mode (0 = fog: snapshot bit, 1 = live terrain)
+    # v6: two entries. a_los (FOG) tests each intermediate's snapshot bit, which only the
+    # rebuild writes, so a fog-on and its later fog-off always see the same blockers however
+    # the terrain changed in between. a_live (EXPLORATION) tests the live terrain byte, as
+    # every version before v6 did for everything -- explored bits stay exactly as they were.
     a_los = align(a_tab + 0x80)
-    pop_at = a_los + 9          # pushad(1) + sub esp,0x40(3) + call(5)
+    nxt = asm("los_fog", a_los, f"""
+        pushad
+        sub  esp, 0x40
+        mov  dword ptr [esp+0x3C], 0
+        jmp  0x{a_los + 0x1C:X}
+    """)
+    assert nxt <= a_los + 0x10, "los_fog entry outgrew its 16-byte slot"
+    out["los_fog"] = (a_los, out["los_fog"][1].ljust(0x10, b"\x90"))
+    a_live = a_los + 0x10
+    pop_at = a_live + 17        # pushad(1) + sub esp,0x40(3) + mov [esp+0x3C],1(8) + call(5)
     src_los = f"""
         pushad
         sub  esp, 0x40
+        mov  dword ptr [esp+0x3C], 1
         call 0x{pop_at:X}
         pop  eax
         sub  eax, 0x{pop_at:X}
@@ -742,6 +959,12 @@ def build():
         mov  eax, [eax + esi*4]
         mov  edx, [ebx+0x78]
         add  eax, [edx + edi*4]         ; field
+        cmp  dword ptr [esp+0x3C], 0
+        jne  live
+        test byte ptr [eax+0x{SNAP_OFF:X}], 0x{SNAP_BIT:X}  ; v6 fog: the rebuild's snapshot
+        jnz  walkfail
+        jmp  step
+    live:
         mov  dl, [eax+0x14]             ; terrain
         cmp  dl, {BLOCKING[0]}
         je   walkfail
@@ -867,7 +1090,10 @@ def build():
         pop  ebp
         ret
     """
-    nxt = asm("los_core", a_los, src_los)
+    nxt = asm("los_core", a_live, src_los)
+    # the fog entry's jmp lands on the shared body, just past the live entry's mode store
+    assert out["los_core"][1][:12] == bytes.fromhex("6083EC40C744243C01000000"), \
+        "live entry is not the expected 12-byte prologue -- the fog jmp would land wrong"
 
     # --- fill stubs (jmp'd into; jmp back). All four call the SAME los_core.
     # Fog counts (FogArea, UnFogArea, UnFogExploreArea's unfog) honour gloom; EXPLORATION
@@ -895,24 +1121,40 @@ def build():
     skip:
         jmp  0x55771FB7
     """)
+    # stub_ue (v6): the unfog half asks the fog entry, the explore half the live entry.
+    # They differ only between a terrain change and the next rebuild.
     a = align(nxt)
     nxt = asm("stub_ue", a, f"""
         call 0x{a_los:X}
-        jz   skip
-        jc   exonly
+        jz   fogno
+        jc   fogno
+        call 0x{a_live:X}
+        jz   unfogonly
         cmp  byte ptr [esi+0x1A], 0
         jne  taken
         jmp  0x55772053
     taken:
         jmp  0x5577205E
-    exonly:
-        jmp  0x55772069
+    unfogonly:                          ; vanilla's unfog lines, then skip the explore half
+        cmp  byte ptr [esi+0x1A], 0
+        jne  uo1
+        or   byte ptr [ebp-1], 1
+    uo1:
+        mov  dl, [esi+0x1A]
+        inc  edx
+        mov  eax, esi
+        call 0x{SETFOG:X}
+        jmp  0x557720B6
+    fogno:
+        call 0x{a_live:X}
+        jz   skip
+        jmp  0x55772069                 ; explore only
     skip:
         jmp  0x557720B6
     """)
     a = align(nxt)
     nxt = asm("stub_ex", a, f"""
-        call 0x{a_los:X}
+        call 0x{a_live:X}
         jz   skip
         movsx edi, byte ptr [ebp+0x0C]
         mov  edx, edi
@@ -1192,7 +1434,7 @@ def build():
         call 0x{GETLVL:X}
         test eax, eax
         jz   nxt
-        call 0x{RESETFOG:X}
+        call 0x{a_snap:X}               ; v6: snapshot Earth/Rock, then ResetFog
     nxt:
         inc  esi
         jmp  lvl
@@ -1246,12 +1488,14 @@ def build():
 
     out["_end"] = nxt
 
-    # SYMMETRY ASSERTION: fog and unfog filter through one byte-identical code path.
-    for k in ("stub_fog", "stub_unfog", "stub_ue", "stub_ex"):
+    # SYMMETRY ASSERTION: fog and unfog filter through one byte-identical code path -- the
+    # fog entry (snapshot); exploration through the live entry.
+    for k, want in (("stub_fog", a_los), ("stub_unfog", a_los), ("stub_ue", a_los),
+                    ("stub_ex", a_live)):
         va, b = out[k]
         assert b[0] == 0xE8, k
         tgt = va + 5 + struct.unpack("<i", b[1:5])[0]
-        assert tgt == a_los, f"{k} does not call the shared los_core"
+        assert tgt == want, f"{k} does not call the expected los_core entry"
     # ...and fog-on and fog-off both skip on ZF (jz) and then on CF (jc).
     for k in ("stub_fog", "stub_unfog"):
         b = out[k][1]
@@ -1259,10 +1503,12 @@ def build():
     return out
 
 
-CAVE_ORDER = ("table", "los_core", "stub_fog", "stub_unfog", "stub_ue", "stub_ex",
+CAVE_ORDER = ("table", "los_fog", "los_core", "stub_fog", "stub_unfog", "stub_ue", "stub_ex",
               "qualify", "stub_army", "stub_ps", "stub_pool", "stub_watch", "stub_gate",
               "uv_hook", "trig", "uv_end", "trig_uv")
 CAVE2_ORDER = ("tsqual", "tslook", "tsrec", "tscheck")
+CAVE3_ORDER = ("snapreset", "scan", "dds", "tc_mark")
+ALL_ORDER = CAVE_ORDER + CAVE2_ORDER + CAVE3_ORDER
 
 STUB_FOR_SITE = {
     "fill_fog": "stub_fog", "fill_unfog": "stub_unfog", "fill_ue": "stub_ue",
@@ -1297,6 +1543,7 @@ def reloc_check(data):
     ranges += [(va, va + len(ob)) for _, va, ob, _ in RAW_SITES]
     ranges.append((CAVE_VA, CAVE_VA + CAVE_LIMIT))
     ranges.append((CAVE2_VA, CAVE2_VA + CAVE2_LIMIT))
+    ranges.append((CAVE3_VA, CAVE3_VA + CAVE3_LIMIT))
     base = 0x55700000
     i = 0
     while i + 8 <= len(rd):
@@ -1686,6 +1933,67 @@ def run_test():
     else:
         print("  [8] True Seeing does not see through Earth/Rock: ok")
 
+    # 9. v6 sight snapshot: observers fog-on and fog-off through the snapshot, and terrain is
+    #    edited between the two (the editor brush, Raise/Level Terrain). The counts must
+    #    always equal the sum of the live observers' contributions under the snapshot, so
+    #    nothing leaks before the next rebuild. The pre-v6 rule (live terrain both ways) runs
+    #    alongside and must leak somewhere -- otherwise this test proves nothing.
+    def fill(counts, terr, obs, delta):
+        (cx, cy), r = obs
+        for x in range(cx - r, cx + r + 1):
+            for y in range(cy - r - 1, cy + r + 2):
+                t = (x, y)
+                if _dist((cx, cy), t) <= r and model_visible(terr, (cx, cy), t):
+                    counts[t] = counts.get(t, 0) + delta
+
+    def nonzero(counts):
+        return {k: v for k, v in counts.items() if v}
+
+    rng = random.Random(0x5EE6)
+    bad_snap = leaks_live = 0
+    for trial in range(25):
+        terrain = {(x, y): rng.choice(BLOCKING) for x in range(8, 33) for y in range(8, 33)
+                   if rng.random() < 0.18}
+        snap = dict(terrain)
+        observers = [((rng.randrange(14, 27), rng.randrange(14, 27)), rng.randrange(2, 6))
+                     for _ in range(3)]
+        c_live, c_snap = {}, {}
+        for o in observers:
+            fill(c_live, terrain, o, +1)
+            fill(c_snap, snap, o, +1)
+        for step in range(25):
+            h = (rng.randrange(10, 31), rng.randrange(10, 31))
+            if h in terrain:
+                del terrain[h]                  # dug out to Dirt
+            else:
+                terrain[h] = rng.choice(BLOCKING)
+            i = rng.randrange(len(observers))
+            old = observers[i]
+            new = ((old[0][0] + rng.choice((-1, 0, 1)), old[0][1] + rng.choice((-1, 0, 1))),
+                   old[1])
+            fill(c_live, terrain, old, -1)
+            fill(c_live, terrain, new, +1)
+            fill(c_snap, snap, old, -1)
+            fill(c_snap, snap, new, +1)
+            observers[i] = new
+        want_snap, want_live = {}, {}
+        for o in observers:
+            fill(want_snap, snap, o, +1)
+            fill(want_live, terrain, o, +1)
+        if nonzero(c_snap) != nonzero(want_snap) or any(v < 0 for v in c_snap.values()):
+            bad_snap += 1
+        if nonzero(c_live) != nonzero(want_live):
+            leaks_live += 1
+    if bad_snap:
+        fails += 1
+        print("  [9] FAIL: snapshot counts drifted in %d of 25 trials" % bad_snap)
+    elif not leaks_live:
+        fails += 1
+        print("  [9] FAIL: the pre-v6 live rule never leaked -- the fixture is too weak")
+    else:
+        print("  [9] snapshot keeps fog counts balanced across terrain edits (25 trials); "
+              "the pre-v6 live rule leaked in %d: ok" % leaks_live)
+
     # 6. symmetry by construction: one function models both directions; the build
     #    asserts stub_fog/stub_unfog target the same cave entry (run it now).
     build()
@@ -1733,15 +2041,18 @@ def main():
     used2 = cv["_end2"] - CAVE2_VA
     print("  cave 2 (True Seeing) 0x%08X..0x%08X (%d B of %d)"
           % (CAVE2_VA, cv["_end2"] - 1, used2, CAVE2_LIMIT))
-    if used > CAVE_LIMIT or used2 > CAVE2_LIMIT:
+    used3 = cv["_end3"] - CAVE3_VA
+    print("  cave 3 (sight snapshot) 0x%08X..0x%08X (%d B of %d)"
+          % (CAVE3_VA, cv["_end3"] - 1, used3, CAVE3_LIMIT))
+    if used > CAVE_LIMIT or used2 > CAVE2_LIMIT or used3 > CAVE3_LIMIT:
         sys.exit("ERROR: cave overflows its reservation")
-    for k in CAVE_ORDER + CAVE2_ORDER:
+    for k in ALL_ORDER:
         va, b = cv[k]
         print("    %-10s 0x%08X  %4d B" % (k, va, len(b)))
 
     if args.dis:
         print()
-        for k in CAVE_ORDER + CAVE2_ORDER:
+        for k in ALL_ORDER:
             if k == "table":
                 continue
             va, b = cv[k]
@@ -1796,7 +2107,7 @@ def main():
                 st, allok = "FOREIGN", False
             print("  %-20s 0x%08X  %-14s %s" % (lbl, va, c.hex().upper(), st))
         cave_ok = all(cur(cv[k][0], len(cv[k][1])) == cv[k][1]
-                      for k in CAVE_ORDER + CAVE2_ORDER)
+                      for k in ALL_ORDER)
         vmt_ok = vmt_cur == VMT_ORIG
         print("  %-20s 0x%08X  %-14s %s" % ("vmt_slot", VMT_SLOT, vmt_cur.hex().upper(),
               "vanilla (correct)" if vmt_ok else "LEGACY v1 repoint -- run --apply"))
@@ -1822,6 +2133,7 @@ def main():
         data[off(VMT_SLOT):off(VMT_SLOT) + 4] = VMT_ORIG   # vanilla whichever state
         data[off(CAVE_VA):off(CAVE_VA) + CAVE_LIMIT] = b"\x00" * CAVE_LIMIT
         data[off(CAVE2_VA):off(CAVE2_VA) + CAVE2_LIMIT] = b"\x00" * CAVE2_LIMIT
+        data[off(CAVE3_VA):off(CAVE3_VA) + CAVE3_LIMIT] = b"\x00" * CAVE3_LIMIT
         if cur(HAND_EDIT_VA, len(HAND_EDIT)) != HAND_EDIT:
             sys.exit("BUG: undo would damage the hand edit -- not writing.")
         open(DLL, "wb").write(data)
@@ -1856,12 +2168,21 @@ def main():
     if zone2 != b"\x00" * CAVE2_LIMIT and zone2 != bytes(payload2):
         sys.exit("ABORT: cave 2 zone 0x%08X is neither zero nor this script's payload -- "
                  "someone else owns it (or an older cave-2 layout: --undo first)" % CAVE2_VA)
+    # cave 3 (v6): same rule.
+    payload3 = bytearray(CAVE3_LIMIT)
+    for k in CAVE3_ORDER:
+        va, b = cv[k]
+        payload3[va - CAVE3_VA: va - CAVE3_VA + len(b)] = b
+    zone3 = cur(CAVE3_VA, CAVE3_LIMIT)
+    if zone3 != b"\x00" * CAVE3_LIMIT and zone3 != bytes(payload3):
+        sys.exit("ABORT: cave 3 zone 0x%08X is neither zero nor this script's payload -- "
+                 "someone else owns it (or an older cave-3 layout: --undo first)" % CAVE3_VA)
     # non-fresh: the whole 0x800 reservation was claimed (zone-zero-verified) by the
     # first apply; the hook checks above prove the install is ours, so rewriting the
     # full reservation in place is safe (in-place re-tune convention).
 
     caves_ok = all(cur(cv[k][0], len(cv[k][1])) == cv[k][1]
-                   for k in CAVE_ORDER + CAVE2_ORDER)
+                   for k in ALL_ORDER)
     if done and caves_ok:
         print("Already applied and up to date -- nothing to do.")
         return
@@ -1889,6 +2210,7 @@ def main():
         payload[va - CAVE_VA: va - CAVE_VA + len(b)] = b
     data[off(CAVE_VA):off(CAVE_VA) + CAVE_LIMIT] = payload
     data[off(CAVE2_VA):off(CAVE2_VA) + CAVE2_LIMIT] = payload2
+    data[off(CAVE3_VA):off(CAVE3_VA) + CAVE3_LIMIT] = payload3
     for va, ob, nb, _, _ in edits:
         data[off(va):off(va) + len(ob)] = nb
     data[off(VMT_SLOT):off(VMT_SLOT) + 4] = VMT_ORIG   # v2: slot stays vanilla

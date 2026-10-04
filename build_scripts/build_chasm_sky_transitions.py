@@ -44,6 +44,10 @@ SITES
   cave  0x55812000 (verified zero region in CODE, 8KB).
   Register-only + rel32 => position independent, which AoWEPACK requires.
 
+⚠ FORWARD HAZARD (2026-10-03): build_skychasm_edges.py rewrites this cave in place (v3: water
+and cave-water cases).  Run its --undo before running this script; this one aborts on the
+longer cave rather than clobbering it.
+
 Idempotent (accepts pristine, v1 or v2 state), verify-before-write, auto-backup to
 AoWEPACK.dpl.pre-skytrans2, dry-run by default -- pass --apply.
 Close AoW.exe / AoWCompat.exe / AoWDevEd.exe first (all three lock the DLL).

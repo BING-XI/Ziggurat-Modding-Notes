@@ -57,11 +57,18 @@ BACKUP_DIR = os.path.join(GAME, "backups")
 #
 # `old` must occur EXACTLY ONCE in the field, and must not be a substring of `new` or vice versa --
 # both are checked at start-up, because either would make "is this already applied?" unanswerable.
+#
+# ⚠ The spellbook shows THREE word-wrapped lines of a spell description and clips the rest. The
+# 2026-09-01 Grip of Winter text showed 146 characters, ending mid-sentence at "...grass to snow.
+# The ice"; the cut falls at a word boundary, so the real ceiling is ~145-150 depending on word
+# widths. Keep spell descriptions well under 146.
 # --------------------------------------------------------------------------------------------
 FIXES = [
     ("Spells.pfs",   20,  10,
-     'Freezes a small area of water, rendering it solid enough to walk over.\r\n',
-     'Freezes a small area of water solid enough to walk over, and chills the land it touches: desert to steppe, steppe to grass, grass to snow. The ice and the chill both thaw after a few turns.\r\n',
+     ('Freezes a small area of water, rendering it solid enough to walk over.\r\n',
+      # 2026-09-01 text, 189 chars -- clipped by the spellbook after 146 (see the note above)
+      'Freezes a small area of water solid enough to walk over, and chills the land it touches: desert to steppe, steppe to grass, grass to snow. The ice and the chill both thaw after a few turns.\r\n'),
+     'Brings winter to the land, and temporarily freezes water to ice.\r\n',
      "Freeze Water -> Grip of Winter (build_gripofwinter.py): the spell gained a terrain-"
      "cooling ladder and became castable on land, and both effects revert"),
     ("Ability.pfs",  24,   5,
@@ -604,9 +611,12 @@ FIXES = [
 
     # Slow -> Lethargy, 2026-09-25 (build_lethargy.py; the name is build_resstr_names.py's).
     ("Spells.pfs", 120,  10,
-     "Halves the target's mobility for the duration of combat.\r\n",
-     "Saps the target's vigour for the rest of combat: its movement is halved, rounded up, and "
-     "it loses one melee strike when attacking and one when defending, never below one.\r\n",
+     ("Halves the target's mobility for the duration of combat.\r\n",
+      # 2026-09-25 text, 172 chars -- clipped by the spellbook after three lines
+      "Saps the target's vigour for the rest of combat: its movement is halved, rounded up, and "
+      "it loses one melee strike when attacking and one when defending, never below one.\r\n"),
+     "Saps the target's vigour for the rest of combat, halving its movement speed and removing one "
+     "melee strike per exchange.\r\n",
      "record 120 = Slow -> Lethargy (spell 110)"),
     ("Ability.pfs", 142,  5,
      "Halves the target's mobility for the duration of combat.\r\n",
