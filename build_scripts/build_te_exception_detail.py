@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-r"""DIAGNOSTIC INSTRUMENT -- make "Exception occured during <TE>" reveal WHERE it failed.
+r"""Make "Exception occured during <TE>" say WHERE it failed -- one dialog, release-grade.
 
-####################################################################################
-##  DIAGNOSTIC ONLY.  REVERT BEFORE CUTTING A RELEASE:                            ##
-##      python build_scripts/build_te_exception_detail.py --undo                  ##
-##  It adds a SECOND modal dialog after every swallowed turn-event exception.     ##
-####################################################################################
+v2 (2026-10-10, owner: "adding the fault address to error messages would be nice in
+general"): the stock line and the exception detail now share ONE dialog, so the patch
+is no longer diagnostic-only and stays on in releases. v1 (2026-09-11) showed a second
+modal dialog after the stock one.
 
 WHY
     Every turn event runs inside a try/except in
@@ -21,11 +20,14 @@ WHY
 
 WHAT THIS DOES
     Retargets the 5-byte `call Dialogs.ShowMessage` at 0x55803DD2 to a cave.  The cave
-    shows the stock dialog unchanged, then calls SysUtils.ExceptionErrorMessage on the
-    still-live exception and shows a second dialog:
+    copies the stock line (at most 120 chars), adds CR LF, appends
+    SysUtils.ExceptionErrorMessage of the still-live exception, and shows ONE dialog:
 
+        Exception occured during TArmyMoveTE
         Exception EAccessViolation in module AoWEPACK.dll at 00110C93.
         Access violation at address 01260C93 in module 'AoWEPACK.dll'. Read of ...
+
+    No live exception (ExceptObject = nil) -> the stock dialog alone.
 
     ExceptionErrorMessage (not `E.Message`) is the point: a *raised* Delphi exception
     such as HSEngine's 'Index out of bounds' carries no address of its own, and
@@ -89,10 +91,11 @@ RTL DELTAS -- the three routines we need are NOT imported by Network.dpl.  They 
 
 CAVE FRAME
     0x140 bytes of locals.  [ebp-0x111] = ShortString length byte, [ebp-0x110..] = 250
-    chars (ends at ebp-0x16), [ebp-4] = a local AnsiString.  The PChar that
-    ExceptionErrorMessage fills is turned into a ShortString by writing min(len,250)
-    into the byte immediately before the buffer, then @LStrFromString -> ShowMessage ->
-    @LStrClr, so nothing leaks.
+    chars (ends at ebp-0x16), [ebp-8] = the exception object, [ebp-4] = a local
+    AnsiString.  The stock line and CR LF go first; ExceptionErrorMessage fills the rest
+    of the 250 (its Size is pushed from a register).  The buffer becomes a ShortString by
+    writing min(total,250) into the byte before it, then @LStrFromString -> ShowMessage
+    -> @LStrClr, so nothing leaks.  v2 also saves/restores EDI (rep movsb).
 
 HAND-ASSEMBLED, NOT KEYSTONE -- deliberate.  The byte sequence is a straight port of a
     proven v2 patch; re-assembling it would add risk for no gain, and the one place the
@@ -166,6 +169,8 @@ LOCALS = 0x140
 O_STR = 0x04                    # [ebp-0x004]  local AnsiString
 O_LEN = 0x111                   # [ebp-0x111]  ShortString length byte
 O_BUF = 0x110                   # [ebp-0x110]  chars (250 -> ends at ebp-0x16)
+O_E = 0x08                      # [ebp-0x008]  the exception object
+STOCK_MAX = 0x78                # the stock line keeps at most 120 chars of the 250
 
 LOCKING = ("AoW", "AoWz", "AoWCompat", "AoWzCompat",
            "AoWDevEd", "AoWzEd", "AoWEd", "AoWSetup")
@@ -287,12 +292,20 @@ def build_cave(base):
         j8.append((len(buf), n))
         db(0)
 
+    j32 = []
+
+    def jnear(n):
+        db(0xE9)
+        j32.append((len(buf), n))
+        dd(0)
+
     # --- prologue -----------------------------------------------------------------
     db(0x55)                                    # push ebp
     db(0x8B, 0xEC)                              # mov ebp, esp
     db(0x81, 0xC4); dd(-LOCALS)                 # add esp, -0x140
     db(0x53)                                    # push ebx
     db(0x56)                                    # push esi
+    db(0x57)                                    # push edi
     db(0x8B, 0xF0)                              # mov esi, eax     ; the finished AnsiString
     db(0x33, 0xC0)                              # xor eax, eax
     db(0x89, 0x45, 0x100 - O_STR)               # mov [ebp-4], eax ; local AnsiString := nil
@@ -303,17 +316,32 @@ def build_cave(base):
     db(0x5B)                                    # pop ebx
     db(0x81, 0xEB); dd(popva)                   # sub ebx, <static VA of the pop>
 
-    # --- 1) the stock dialog, unchanged --------------------------------------------
-    db(0x8B, 0xC6)                              # mov eax, esi
-    call(F_SHOWMESSAGE)
-
-    # --- 2) E := SysUtils.ExceptObject ---------------------------------------------
+    # --- 1) E := SysUtils.ExceptObject; none live -> the stock dialog alone ---------
     db(0x8B, 0x83); dd(IAT_EXC_CREATE)          # mov eax, [ebx+0x55809564]
     db(0x2D); dd(D_EXCOBJ)                      # sub eax, 0x308
     db(0xFF, 0xD0)                              # call eax
     db(0x85, 0xC0)                              # test eax, eax
-    jcc(0x74, "done")                           # je done      ; no live exception
-    db(0x50)                                    # push eax     ; save E
+    jcc(0x75, "have")                           # jne have
+    db(0x8B, 0xC6)                              # mov eax, esi
+    call(F_SHOWMESSAGE)
+    jnear("done")                               # jmp done (near)
+    label("have")
+    db(0x89, 0x45, 0x100 - O_E)                 # mov [ebp-8], eax ; E
+
+    # --- 2) buf := the stock line (at most STOCK_MAX chars) + CR LF ------------------
+    db(0x8D, 0xBD); dd(-O_BUF)                  # lea edi, [ebp-0x110]
+    db(0x33, 0xC9)                              # xor ecx, ecx
+    db(0x85, 0xF6)                              # test esi, esi
+    jcc(0x74, "nostock")                        # je nostock
+    db(0x8B, 0x4E, 0xFC)                        # mov ecx, [esi-4]   ; AnsiString length
+    db(0x83, 0xF9, STOCK_MAX)                   # cmp ecx, STOCK_MAX
+    jcc(0x76, "c_ok")                           # jbe c_ok
+    db(0xB9); dd(STOCK_MAX)                     # mov ecx, STOCK_MAX
+    label("c_ok")
+    db(0xF3, 0xA4)                              # rep movsb (esi -> edi)
+    label("nostock")
+    db(0x66, 0xC7, 0x07, 0x0D, 0x0A)            # mov word [edi], 0x0A0D
+    db(0x83, 0xC7, 0x02)                        # add edi, 2
 
     # --- 3) addr := SysUtils.ExceptAddr --------------------------------------------
     db(0x8B, 0x83); dd(IAT_EXC_CREATE)          # mov eax, [ebx+0x55809564]
@@ -321,15 +349,24 @@ def build_cave(base):
     db(0xFF, 0xD0)                              # call eax
     db(0x8B, 0xD0)                              # mov edx, eax
 
-    # --- 4) len := ExceptionErrorMessage(E, addr, @buf, 250) -----------------------
+    # --- 4) len := ExceptionErrorMessage(E, addr, edi, room left) ------------------
+    db(0x8D, 0x8D); dd(-O_BUF)                  # lea ecx, [ebp-0x110]
+    db(0x8B, 0xC7)                              # mov eax, edi
+    db(0x2B, 0xC1)                              # sub eax, ecx        ; chars so far
+    db(0xB9); dd(BUFSZ)                         # mov ecx, 250
+    db(0x2B, 0xC8)                              # sub ecx, eax        ; room left
+    db(0x51)                                    # push ecx            ; Size (callee cleans)
     db(0x8B, 0xB3); dd(IAT_EXC_CREATE)          # mov esi, [ebx+0x55809564]
     db(0x81, 0xEE); dd(D_EXCMSG)                # sub esi, 0x2BC
-    db(0x58)                                    # pop eax      ; eax = E
-    db(0x8D, 0x8D); dd(-O_BUF)                  # lea ecx, [ebp-0x110]
-    db(0x68); dd(BUFSZ)                         # push 250     ; imm32! 6A would sign-extend
-    db(0xFF, 0xD6)                              # call esi     ; ret 4 -- callee cleans
+    db(0x8B, 0x45, 0x100 - O_E)                 # mov eax, [ebp-8]    ; E
+    db(0x8B, 0xCF)                              # mov ecx, edi        ; Buffer
+    db(0xFF, 0xD6)                              # call esi            ; ret 4
 
-    # --- 5) PChar -> ShortString -> AnsiString -> ShowMessage ----------------------
+    # --- 5) one dialog: PChar -> ShortString -> AnsiString -> ShowMessage ----------
+    db(0x8D, 0x8D); dd(-O_BUF)                  # lea ecx, [ebp-0x110]
+    db(0x8B, 0xD7)                              # mov edx, edi
+    db(0x2B, 0xD1)                              # sub edx, ecx
+    db(0x03, 0xC2)                              # add eax, edx        ; total length
     db(0x3D); dd(BUFSZ)                         # cmp eax, 250
     jcc(0x76, "fits")                           # jbe fits
     db(0xB8); dd(BUFSZ)                         # mov eax, 250
@@ -345,6 +382,7 @@ def build_cave(base):
 
     # --- epilogue -------------------------------------------------------------------
     label("done")
+    db(0x5F)                                    # pop edi
     db(0x5E)                                    # pop esi
     db(0x5B)                                    # pop ebx
     db(0x8B, 0xE5)                              # mov esp, ebp
@@ -353,6 +391,8 @@ def build_cave(base):
 
     for off, tgt in rel:
         buf[off:off + 4] = (tgt - (base + off + 4)).to_bytes(4, "little", signed=True)
+    for off, n in j32:
+        buf[off:off + 4] = (lab[n] - (off + 4)).to_bytes(4, "little", signed=True)
     for off, n in j8:
         d = lab[n] - (off + 1)
         if not -128 <= d <= 127:
@@ -396,15 +436,12 @@ def check_pic(blob, base):
 
 
 def check_imm32_push(blob, base):
-    """The standing keystone/hand-assembly trap: `push 250` must not be `6A FA` = -6."""
+    """The standing keystone/hand-assembly trap: no `push imm8` (6A xx sign-extends) may
+    stand in for a size. The buffer size is pushed from a register in v2."""
     for i in _md().disasm(blob, base):
         if i.mnemonic == "push" and i.operands and i.operands[0].type == capstone.x86.X86_OP_IMM:
-            v = i.operands[0].imm
-            if len(i.bytes) != 5 or v != BUFSZ:
-                raise SystemExit(f"push imm trap at {i.address:#x}: {i.bytes.hex()} "
-                                 f"= push {v} ({len(i.bytes)} bytes); wanted 5-byte push {BUFSZ}")
-            return
-    raise SystemExit("no `push imm` found in the cave -- the buffer size never got pushed")
+            if len(i.bytes) != 5:
+                raise SystemExit(f"push imm8 at {i.address:#x}: {i.bytes.hex()}")
 
 
 def check_targets(blob, base, lo, hi):
@@ -601,7 +638,7 @@ def main():
 
     # --- dry run -------------------------------------------------------------------
     if not args.apply:
-        print("\n  DIAGNOSTIC ONLY -- revert with --undo before cutting a release.")
+        print("\n  Release-grade since v2 (one dialog).")
         print("  DRY RUN -- nothing written. Re-run with --apply.")
         return
 
@@ -650,7 +687,7 @@ def main():
     print("\n  Second dialog now reads:")
     print("    Exception <class> in module <module> at <offset>. <message>")
     print_bases()
-    print("\n  DIAGNOSTIC ONLY -- run --undo before cutting a release.")
+    print("\n  Applied. Release-grade since v2 (one dialog).")
 
 
 if __name__ == "__main__":

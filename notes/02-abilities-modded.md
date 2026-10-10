@@ -3055,6 +3055,17 @@ and armies with Leadership heroes still move normally.
 
 ## Open items
 
+- **Wall Crushing in auto-combat: one unreproduced crash (owner, 2026-10-10).** A `TArmyMoveTE`
+  exception dialog, and every army in the battle vanished from the map; the save (`Test 2.asg`) did
+  not reproduce it on a second run. Checked and ruled out: the auto-resolve damage thunk
+  (`fcExecuteCombatCommand` → `th_cdca`, `ESI` = attacking unit, damage at `[esp+8]`), and the two
+  caves in `TCombatObject.ExecuteDamageRole` (`build_weakness.py`, `build_embrittle.py` `0x5582D130`)
+  — both call `GetAbilityEnabled`, which `TCombatWall` inherits as `xor eax,eax`. Not checked:
+  32 unguarded `[reg+0x4C]` reads in AoWEPACK caves (sweep 2026-10-10; densest in
+  `build_command_bond.py` `0x5584EC0C..0x5584EF68`) — the wall-alias family
+  ([[aow1-blt-error-wall-4c-alias]]). If it recurs, the dialog now carries the fault's module + offset
+  (`build_te_exception_detail.py` v2, applied 2026-10-10); or run under `re_tools/veh_capture.py --census`.
+
 - ⚠ **`build_turnundead_res.py` has a broken self-verifier.** Running it with no arguments reports
   `[x] cave zone 5580E2A0 not free` against **its own installed patch** — a keystone encoding
   difference: the script's re-verification pass assembles `shr eax,1` as 2 bytes, but the actually

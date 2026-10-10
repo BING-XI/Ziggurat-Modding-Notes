@@ -1385,6 +1385,11 @@ addresses, caves and `--undo`. Owner's design: d5 physical damage on melee attac
 melee blow counts, attack and retaliation alike, once per strike that lands; a Round Attacker that
 dies partway may stop there.
 
+- **Items** (`build_zigail_razorplate.py`, `User/Zig.ail`, 2026-10-10, owner: 0–5 items where it
+  fits): Blacksteel Shield (29), Scale Mail (235), Sandworm Scales (232), Vine Shield (311). Works
+  from an item: the caves ask `TCombatUnit.GetAbilityEnabled`, which forwards to the hero's
+  item-aware `+0x148`. Tag 2 is the set size in bits (190) and tag 3 grows to 24 bytes; the
+  directory is shifted, never re-derived. Undo is byte-exact until the editor re-saves the file.
 - **Scope:** strikes from all three builders — `TMeleeRound.CreateStrikeCA` (both sides) and
   `AoWE.CreateStrikeCA` (Round Attack, the free swing at a unit moving away, the touched unit's swing
   back at a failed touch), in both engines. Ranged attacks are another CA class. "Lands" is

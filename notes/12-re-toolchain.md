@@ -24,7 +24,7 @@ status. The few applied patches this file documents in technical depth:
 | RNG lockstep fix (3 terrain caves moved from RAW to SYNCED) | 🔨 APPLIED, UNTESTED (2026-08-31) | `build_rng_lockstep.py` | AoWEPACK.dpl |
 | Per-hex ring detection, worked example (Path radius +1, 25% outer-ring proc) | ✅ CONFIRMED WORKING (2026-07-08) — technique only; feature record lives in the movement/Path file | `build_path_outerring.py` | AoWEPACK.dpl |
 | Mind Decay draw-count-invariance fix (worked example for RNG discipline inside combat) | 🔨 APPLIED, UNTESTED (2026-09-03) — full record in `11-engine-internals.md` (combat-math file) | `build_minddecay_oos.py` | AoWEPACK.dpl |
-| **TE exception detail** — ⚠ **DIAGNOSTIC, revert before shipping**. Makes "Exception occured during `<TE>`" print the module + offset of the real fault. §3a | 🔨 APPLIED, UNTESTED (2026-09-11) | `build_te_exception_detail.py` | Network.dpl |
+| **TE exception detail** — part of the mod since v2. "Exception occured during `<TE>`" also prints the module + offset of the real fault, in the same dialog. §3a | applied 2026-10-10 (v2) | `build_te_exception_detail.py` | Network.dpl |
 
 Ghidra's own annotation layers (patched-site comments, structs, enums) are tooling state, not a
 game patch, and don't fit the ladder above — see "The `[LIVE-PATCH]` layer" below for their own
@@ -447,10 +447,21 @@ warning about.
 ---
 ## 3a. Locating a swallowed turn-event exception — the TE exception-detail instrument
 
-**Status: 🔨 APPLIED, UNTESTED (2026-09-11). ⚠⚠ DIAGNOSTIC ONLY — `--undo` it before cutting a
-release.** Script: `build_scripts/build_te_exception_detail.py`. Ported from Inioch's proven v2
+**Status: v2 applied 2026-10-10 and part of the mod (owner: fault addresses in error messages "in
+general"). v2 shows ONE dialog — the stock line, then the exception detail — so it ships; v1
+(2026-09-11) added a second modal dialog and was diagnostic-only.** Script: `build_scripts/build_te_exception_detail.py`. Ported from Inioch's proven v2
 (`Modding Resources/Inioch/share5/patch scripts/`), re-verified address by address against this
 install.
+
+### Companion: the other catch-all boxes (`build_error_detail.py`, 2026-10-10)
+
+aowInt's control `Draw` handlers ("Error - <name>": "Blt Error", "Draw Error", ...) and AoWz.exe's
+`TFastCombatForm.FCWinDrawSurface` arm (`0x435F26`, which re-raises a generic
+`'Exception during FastCombatWin.DrawSurface'`) discard the real exception too. All 36 aowInt
+`MessageBoxA` calls now go through `mbox_detail` (adds `ExceptionErrorMessage` when an exception is
+live, else passes through), and the exe's `call Exception.Create` at `0x435F32` goes through
+`fc_create`, which puts the original fault into the new exception's message — so the aowInt box that
+catches it shows both. Release-grade; ships with the mod.
 
 ### The defect it instruments
 
@@ -1618,7 +1629,7 @@ telling you to run it after an exe patch is stale.):
 | `0x0062B000`–`0x0062B0FF` | `build_taskbar_icon.py` | **exclusive**, `0x100` (96 B used) — sets `WM_SETICON` ICON_BIG + ICON_SMALL on the `TApplication` owner window so the taskbar button stops showing the grey placeholder. Reached by **retargeting the existing `call Forms.TApplication.Initialize` at `0x004599DE`** (4 bytes of operand, nothing displaced); the cave tail-jumps to the real thunk `0x00401754`. Borrows `user32!LoadIconA`/`SendMessageA` and the `'MAINICON'` literal out of **vcl30.dpl** via the rebase delta `[0x0045D56C] − 0x4133C0F8` (that IAT slot is `Forms.TApplication.GetExeName`, preferred VA `0x4133C0F8`) — AoWz.exe imports exactly one user32 function (UnionRect) and neither of those two. Editor half is the `.vgo` row below |
 | `0x00630000`–`0x00632FFF` | `build_itembanner_hpmv.py` | **exclusive**, its own new RWX section **`.ibnr`** (`0x3000`, appended after `.pyar`; SizeOfImage `0x230000` → `0x233000`). Layout: the grown `TITEMBANNER` DFM at `0x00630000` (9469 B), the relocated 17-entry field table at `0x00632500`, `cave_hpmv` at `0x00632700` (328 B) and `cave_clamp` at `0x00632848` (40 B) — top of blob `0x00632870`, leaving `0x00632870..0x00633000` = **1936 B** spare (measured all-zero, file-backed at file `0x22CA70..0x22D200`). ⚠ **`--apply` zeroes the whole `0x3000` before writing**, so a squatter in that tail is wiped by the next re-apply exactly as `.hcol`'s below-floor squatters would be — take one of the three `.hcol` runs listed below the table instead unless you also add a floor here. ⚠⚠ **This section consumed the LAST free section-header slot in the exe**: the table starts at file `0x1F8` and SizeOfHeaders is `0x400`, so 13 headers end at exactly `0x400`. No 14th section can be added — squat in a zero tail, or `--undo` this first (its `--undo` removes the section and gives the slot back). ⚠ Its relocated field table carries **one absolute with no `.reloc` entry** — the class-table VA `0x00406AA0` at `0x00632502`, whose original at `0x0040697A` did have a HIGHLOW entry. That is precedent, not a defect: `build_herodlg_columns.py` relocates `THeroUpgradeDlg`'s table with the byte-identical shape and is CONFIRMED WORKING, and AoWz.exe is `RELOCS_STRIPPED=0 / DYNAMIC_BASE=0` (DllCharacteristics `0x0000`), so the image always loads at `0x00400000`. **`build_relocfix.py` detects only STALE relocations, never a MISSING one**, so a clean audit says nothing either way. Full record in `07-ui.md` §9 |
 | `0x00633000`–`0x0063CFFF` | `build_taskbar_coords.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **tenant above `.ibnr`'s owner**: grows `.ibnr` `0x3000 → 0xD000` (SizeOfImage `0x233000 → 0x23D000`, file +40 KB, both exes). Grown `TTBWINDOW` DFM `0x00633000` (35923 B), relocated `TTBWindow` field table `0x0063BC60`, data + code `0x0063BFF0..0x0063C1DC`. Hooks `0x450F77` (7 B), `DisplayMouseMove` method entry file `0x51BB0`, VMT field-table/instance-size, resource entry file `0x731A0`. ⚠ `build_itembanner_hpmv.py --undo` refuses while `.ibnr` > `0x3000`: undo this first. `07-ui.md` §16 |
-| `0x0062AA00`–`0x0062AAFF` | `build_unit_ai.py` (v2 2026-10-03) | **exclusive**, `0x100` (146 B used, `.hcol`) — Space key cave reached by retargeting the default `jmp 0x45189C` at `0x4513AB` (rel32 only), plus the `AutoBtn2Click` / `TCMapSeatedPlayerChanged` published-method wrappers (code dwords at VA `0x457281` / `0x4580B9`). v1's grown `.ibnr` tenancy above `build_taskbar_coords.py` is gone. `07-ui.md` §18 |
+| `0x0062AA00`–`0x0062AAFF` | `build_unit_ai.py` (v3 2026-10-10) | **exclusive**, `0x100` (162 B used, `.hcol`) — Space / Q key cave reached by retargeting two default `jmp 0x45189C`s of `MapWindowKeyDown`, at `0x4513AB` and `0x451404` (rel32 only), plus the `AutoBtn2Click` / `TCMapSeatedPlayerChanged` published-method wrappers (code dwords at VA `0x457281` / `0x4580B9`). v1's grown `.ibnr` tenancy above `build_taskbar_coords.py` is gone. `07-ui.md` §18 |
 | `0x0062D100`–`0x0062D2FF` | `build_powerleech_ui.py` | **exclusive**, `0x200` (0xA8 B of data + 107 B of code at `0x0062D1A8`) — the Power Leech income row in `TMagicWin` tab 4, hooked from `0x0042CFD9` (7 B). Also `.hcol`, the next clear `0x100`-aligned slot above `build_savedate_format.py`'s cave (last non-zero `0x0062D07A`); the script asserts `0x0062D0A0..0x0062DFFF` is zero outside its own span. The data half is two Delphi literal AnsiStrings plus a **fake object + 24-slot fake VMT of `xor eax,eax ; ret`** — the name list's `AddObject` object may not be nil, because `PowerSourceListDoubleClick @0x0042D944` and `PowerValueListMouseDown @0x0042D988` deref it unchecked. DLL half is `build_powerleech.py`, cave `0x55848000` |
 | `0x0062A400`–`0x0062A43F` | `build_eventlog_hover.py` | **exclusive**, 22 B used — `cave_evhover`, reached by retargeting the `call SetListOff` operand at `0x0042336A` (4 B, nothing displaced). Skips the event list's scroll-to-newest while `build_wheel_aowint.py`'s hover latch holds it. Patched through `build_scripts/exe_patch.py`; `07-ui.md` §13 |
 | `0x00611EE0`–`0x00611FFF` | `build_tierresearch_btnfix.py` (v2 2026-10-03) | **exclusive**, `.tres` slack above `build_tierresearch_exe.py`'s blob (32 B slot table + 151 B code at `0x00611F00`), hooked from `0x0042F2DC` (6 B). ⚠ Coupled to `cave_layout`: it repairs the zero cast-button heights that cave stores, so its `--undo` re-breaks the cast book |
@@ -1640,7 +1651,7 @@ declares the whole `0x100` exclusive):
 | run | size | note |
 |---|---|---|
 | `0x0062AB00..0x0062B000` | 1280 B | above `build_unit_ai.py`'s `0x0062AA00..0x0062AAFF` (2026-10-03), itself above `build_magictab_tiername.py`'s `0x0062A520..0x0062A9FF` (2026-09-27), itself above `build_customize_name.py`'s, `build_magictab_refresh.py`'s and `build_eventlog_hover.py`'s slots, below the taskbar cave |
-| `0x0062B100..0x0062C000` | 3840 B | above `build_taskbar_icon.py`'s exclusive `0x0062B000..0x0062B0FF` |
+| `0x0062B300..0x0062C000` | 3328 B | above `build_error_detail.py`'s exclusive `0x0062B100..0x0062B2FF` (2026-10-10: `fc_create`, the fast-combat DrawSurface exception carries the original fault), itself above `build_taskbar_icon.py`'s `0x0062B000..0x0062B0FF` |
 | `0x0062C400..0x0062D000` | 3072 B | above `build_pbem_leadersetup.py`'s exclusive `0x0062C000..0x0062C3FF` (claimed 2026-09-23 out of the former 7936 B run) |
 | `0x0062D213..0x0062E000` | 3565 B | `.hcol`'s real tail, above `build_powerleech_ui.py`'s last byte `0x0062D212` — **not** everything from `0x0062D000`, which is that script's own cave |
 
@@ -1749,7 +1760,7 @@ as AoWEPACK applies):
 | `0x00439400` | `build_breath_line.py` | breath / Flame Throwing strikes aim at their own damage hex (`01-combat-maths.md`, "Breath and Flame Throwing aim each strike at its own hex"). Hook `0x40D5F1` (5 B), cave 164 B, PIC; zone **`0x439400`–`0x4397FF`** reserved to this script |
 | `0x0043A400` | `build_ooze_extinguish.py` | Ooze puts out fires and Burning (`04-spells-modded.md`). Hook `0x40C93E` (10 B, relocation-free), `cave_ooze` 134 B, PIC; zone **`0x43A400`–`0x43A4FF`** reserved to this script (above `build_group_move_tc.py`'s `0x439800`–`0x43A3FF`) |
 | `0x0043A500` | `build_ai_selfheal.py` | AI units with Healing heal themselves (`10-ai-and-structures.md` §11.2). Hooks `0x419212` (8 B), `0x41ACE4` (10 B); `cave_prop` 368 B (PIC, two import slots through call/pop), `cave_exec` `0x43A670` 106 B; zone **`0x43A500`–`0x43A6FF`** reserved to this script |
-| `0x0043A700` | `build_unit_ai.py` | Space hands the selection to the combat AI; right-click arms the selected unit's first usable ability (`07-ui.md` §18). Hooks `0x418421` (9 B), `0x41C629` (10 B), `0x41BAB8` (6 B), `0x41BB30` (6 B), `0x41EE7F` (6 B); caves `bss_ptr`/`cancel`/`start`/`space`/`rclick`/`filter`/`done`/`seat`/`turn` `0x43A700`–`0x43A9CB`, PIC. The exe calls `space` `0x43A820` and `cancel` `0x43A710` through `[IAT 0x45EBAC] + (X − 0x430B68)`; the script rebuilds both halves together, so re-apply it after moving a cave. Zone **`0x43A700`–`0x43ABFF`** reserved to this script. |
+| `0x0043A700` | `build_unit_ai.py` (v3 2026-10-10) | Space hands the selection to the combat AI; Q cycles the selected unit's abilities (`07-ui.md` §18). Hooks `0x418421` (9 B), `0x41C629` (10 B), `0x41BAB8` (6 B), `0x41BB30` (6 B); v2's `0x41EE7F` right-click hook is restored to vanilla. Caves `bss_ptr`/`cancel`/`start`/`space`/`cycle`/`key`/`filter`/`done`/`seat`/`turn` `0x43A700`–`0x43AA4A`, PIC. The exe calls `key` `0x43A920` and `cancel` `0x43A710` through `[IAT 0x45EBAC] + (X − 0x430B68)`; the script rebuilds both halves together, so re-apply it after moving a cave. Zone **`0x43A700`–`0x43ABFF`** reserved to this script. |
 | `0x0043AC00` | `build_wallcrush_dam.py` (AoWTCPCK half) | manual-combat Wall Crushing damage = attacker DAM. Call retarget `0x40A27D` (`LastMove` → `ExecuteDamageRole` thunk), `th_lastmove` 34 B, PIC; zone **`0x43AC00`–`0x43AC3F`** reserved to this script |
 | `0x0043AC40` | `build_spell_unit_target.py` | single-unit spells refuse an empty hex, cursor included (`04-spells-modded.md`, "Lethargy"). Call retarget `0x41F59C` (`MouseDownEvent` → `ExecuteMoveSelection`), hook `0x41F8AF` (8 B, `UpdateMoveCursor`); `pred` 270 B, `cave_click` `0x43AD50` 84 B, `cave_cursor` `0x43ADB0` 48 B, PIC (one anchor for `0x46C064`); zone **`0x43AC40`–`0x43AE3F`** reserved to this script |
 | `0x0043AE40` | `build_razorplate.py` (AoWTCPCK half) | Razor Plate in manual combat (`03-abilities-added.md`): melee round ends when either combatant falls, flinch and blood on a cut striker, nil-safe `SetAction` and free-swing wait (a dead unit's HS is freed). Hooks `0x4096CD`, `0x409726` (15 B each), `0x4236E0` (6 B, `SetAction` prologue), `0x408BE5` (23 B), `0x408C39` (19 B), `0x40AF2C`, `0x40A5B1` (11 B each); 6 caves, register-only; zone **`0x43AE40`–`0x43B03F`** reserved to this script. Next free `0x43B040` |
@@ -1766,6 +1777,7 @@ as AoWEPACK applies):
 | VA | script | feature |
 |---|---|---|
 | `0x59822800` | `build_glowboost.py` | doubles the spellbook hover-glow intensity |
+| `0x59826000` | `build_error_detail.py` | **exclusive** `0x59826000`–`0x598261FF` (`mbox_detail` 199 B). All 36 `call MessageBoxA` in aowInt retargeted: with an exception live, the box adds `ExceptionErrorMessage` (module + offset + message) under its fixed text. RTL from the `@DoneExcept` import by VCL30 deltas. §3a |
 | `0x59823000` | `build_bltprobe.py` | diagnostic: captures what fails when aowInt raises "Blt Error" |
 | `0x59824800` | `build_wheel_combo.py` | wheel scrolls an open `TAOWComboBox` (`07-ui.md` §17): `cave_setc` 41 B, `WheelCombo` `0x59824840` 93 B → header slot 3 `0x5982401C`, latch[7] `0x5983E05C`. Zone `0x59824800`–`0x598248FF`; CODE is zero from `0x598248A0` to `0x5983D0E4` (~98 KB) |
 
@@ -1776,7 +1788,7 @@ executable, and it ends exactly at CODE's raw end.
 
 | VA | script | feature |
 |---|---|---|
-| `0x55806210`–`0x558063FF` | `build_te_exception_detail.py` | **exclusive**, `0x1F0` (150 B used). ⚠⚠ **DIAGNOSTIC — `--undo` before cutting a release.** Makes the swallowed turn-event exception print its module + offset; hook is the `call ShowMessage` at `0x55803DD2`. §3a |
+| `0x55806210`–`0x558063FF` | `build_te_exception_detail.py` | **exclusive**, `0x1F0` (217 B used, v2). Ships with the mod since v2 (2026-10-10): the swallowed turn-event exception's module + offset in the same dialog as the stock line. Hook `0x55803DD2` (5 B call retarget). §3a |
 
 ⚠ **That `0x1F0` is the whole CODE budget — there is no second code cave in Network.dpl.** The full
 section map, for anyone who needs to allocate here next (SectionAlignment `0x1000`, FileAlignment
@@ -5327,18 +5339,16 @@ this pipeline will catch one. Run each with no args and read the `state:` line:
 
 | script | binary | what a player would see if it shipped |
 |---|---|---|
-| `build_te_exception_detail.py` (§3a) | `Network.dpl` | a second modal dialog with a hex offset after every swallowed turn-event exception |
 | `build_razediag.py` (`10-ai-and-structures.md` §3.6) | `AoWEPACK.dpl` | with `--want-open`, an AI that razes everything it stands on, its own race's cities included |
 
 ```bash
-python "Ziggurat/Modding Resources/build_scripts/build_te_exception_detail.py" --undo
 python "Ziggurat/Modding Resources/build_scripts/build_razediag.py"    # all three levers must read STOCK
 ```
 
-⭐ **The revert is visible in the report, and that is the confirmation to wait for.** Undoing the TE
-patch returns `Network.dpl` to its GOG hash, so it leaves CHANGED and joins SAME: the counts move
-`CHANGED 53 → 52`, `SAME 843 → 844`. A diagnostic whose revert does **not** move those counts either
-was not applied or did not fully revert.
+⭐ **The revert is visible in the report, and that is the confirmation to wait for.** A diagnostic
+whose revert does not move the manifest's CHANGED/SAME counts either was not applied or did not
+fully revert. (`build_te_exception_detail.py` left this list on 2026-10-10: v2 is one dialog and
+ships, so `Network.dpl` is now CHANGED in every release.)
 
 ⭐ **`goggame-1207658883.hashdb` in the game root is a complete vanilla reference for the whole
 install** — the one thing this project otherwise lacks. It is a zip containing a single file of the

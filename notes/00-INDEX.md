@@ -175,7 +175,8 @@ file carries the specific checklist for its own rows.
   the AI's melee estimate all include it. Melee rounds now end when either combatant falls; ⚠ a unit
   dying in manual combat has its HS freed on the spot. `build_razorplate.py` (`AoWEPACK.dpl` +
   `AoWTCPCK.dpl`) + `build_razorplate_pfs.py`, applied 2026-10-09, v2 2026-10-10.
-  `03-abilities-added.md`, "Razor Plate".
+  Four `Zig.ail` items carry it (`build_zigail_razorplate.py`, 2026-10-10): Blacksteel
+  Shield, Scale Mail, Sandworm Scales, Vine Shield. `03-abilities-added.md`, "Razor Plate".
 - **Mantle of Gloom (was Trail of Darkness)** — 🔨 APPLIED, UNTESTED (2026-09-26): hexes within 6 of an
   enemy Trail of Darkness army cost double sight (fog only, not exploration); the aura follows the
   unit via a fog rebuild per step; the trail un-explores radius 6. **v5 (APPLIED, UNTESTED
@@ -442,9 +443,10 @@ file carries the specific checklist for its own rows.
 - Scroll as a permanent per-hero spellbook grant — cave extended 2026-09-03
 
 ### UI — `07-ui.md`
-- **"Unit AI": Space hands the selection to the combat AI; right-click opens the selected unit's
-  first usable ability** (`build_unit_ai.py`, `AoWTCPCK.dpl` + `AoWz.exe`), v2 applied 2026-10-03,
-  migrating v1 (checkbox-armed right-click, 2026-09-27) in place. The AI's end-of-turn is diverted. §18.
+- **"Unit AI": Space hands the selection to the combat AI; Q cycles the selected unit's
+  abilities** (`build_unit_ai.py`, `AoWTCPCK.dpl` + `AoWz.exe`), v3 applied 2026-10-10: Q replaces
+  v2's right-click (2026-10-03), which is vanilla again; migrates v1 or v2 in place. The AI's
+  end-of-turn is diverted. §18.
 - **The taskbar shows the hex under the cursor** (`build_taskbar_coords.py`) — 🔨 APPLIED,
   UNTESTED (2026-09-25). "X,Y,Z" at the right end of the message box. Grows `.ibnr` to `0xD000` as a
   tenant above `build_itembanner_hpmv.py`, whose `--undo` now refuses while it is there. §16.
@@ -980,23 +982,21 @@ file carries the specific checklist for its own rows.
 - Registry isolation — `HKCU\Software\Triumph Studios\Age of Wonders` → `…\Age of Wonders Z`. ⭐ **The point is side-by-side installs, not settings**: `Startup Directory` is the data root, so before this, two copies of the folder both loaded `Release/`, `Dict/`, `Images/` from whichever one wrote the key last. 🔨 APPLIED, UNTESTED 2026-09-09: `build_regiso.py`, 9 in-place Delphi-const edits (6 in `AoWEPACK.dpl`, **3 in `AoWSetup.exe`** — Inioch's write-up misses those), no cave, no hook, surgical `--undo`. Registry seeded the same day. ⚠ 43-character ceiling on the path. ⚠ Which key a folder uses is a property of the FILES in it — a copied folder is a second `Z` install, not a vanilla one
 - AoWSetup install check collapsed to Install/Exit after the above. Cured by `build_aowsetup_installcheck.py` — ✅ CONFIRMED WORKING 2026-09-09 — Inioch's `'.'` fallback: call-rel32 retarget at `0x004675A0`, cave `0x00469820` (31 B, **next free `0x00469840`**, R-X). ⚠ `0x0046719C` is `ret 8` — the cave re-pushes its own args. ⚠⚠ **The cause is still unknown, and the fix proves it is worse than it looked**: the fallback only fires on a nil read, so `TRegistry` really was failing in-process on a key that reads fine out-of-process. AoWEPACK reads the same tree — the isolation is unproven until the game's own settings are shown to persist there
 - Mind Decay — MP determinism + nil-check — 2026-09-03
-- **TE exception detail — ⚠⚠ DIAGNOSTIC, `--undo` it before cutting a release.** The
-  "Exception occured during `<TE>`" dialog is followed by a second one naming the real fault:
-  `Exception <class> in module <module> at <offset>.` 🛑 **REVERTED 2026-09-13** — undone for the
-  2026.09.13 release and **not currently installed**; `--apply` again to diagnose, and expect the
-  manifest to move `CHANGED 52 → 53` / `SAME 844 → 843` when you do. Was 🔨 APPLIED, UNTESTED (2026-09-11):
-  `build_te_exception_detail.py` on **`Ziggurat/Network.dpl`** (5 B at `0x55803DD2`, the
-  `call Dialogs.ShowMessage` inside `NetworkE.TTokenExecuter.ExecuteTokenEvent @0x55803D24`;
-  cave `0x55806210`, 150 of `0x1F0` B; snapshot `backups\Network.dpl.pre-texcdetail`; surgical
-  `--undo`). ⭐ **DECODE: static VA = `<offset>` + the named module's preferred base** —
+- **TE exception detail — ships with the mod since 2026-10-10.** The
+  "Exception occured during `<TE>`" dialog now also names the real fault, in the same dialog:
+  `Exception <class> in module <module> at <offset>.` v2 applied 2026-10-10 and part of the mod
+  (one dialog, so no longer diagnostic): `build_te_exception_detail.py` on **`Ziggurat/Network.dpl`**
+  (5 B at `0x55803DD2`, cave `0x55806210`, surgical `--undo`). ⭐ **DECODE: static VA = `<offset>` + the named module's preferred base** —
   `AoWEPACK.dpl 0x55700000`, `Network.dpl 0x55800000`, `HSEPack.dpl 0x55600000`,
   `aowInt.dpl 0x59800000`, `Dcpack.dpl 0x55100000`, `vcl30.dpl 0x41300000`,
   `AoWz.exe`/**`AoWTCPCK.dpl` both `0x00400000`**. Built for the walled-structure
   `TArmyCombatMoveTE` bug, but it locates **any** TE fault — the engine discards the exception
   object at `0x55803DD2`, so without this every turn-event crash in the game is unlocatable by
   design. Ported from Inioch's v2; full record + cave + RTL deltas in `12-re-toolchain.md` §3a.
-  **In-game checklist:** reproduce the bug, dismiss the stock dialog, read the second one, decode,
-  then `--undo`
+- **The game's other catch-all error boxes name the real fault too** (`build_error_detail.py`,
+  aowInt.dpl + AoWz.exe) — applied 2026-10-10. Every aowInt "Error - <window>" box and the
+  fast-combat DrawSurface error add `Exception <class> in module <module> at <offset>` and the
+  exception's message. Decode as for the TE dialog. `12-re-toolchain.md` §3a.
 - Firmament map level — a 4th map level at index 3, filled with Sky terrain `0x0E`, surface-like vision, global-target spells, storm spells and Bird's View. 🔨 APPLIED, UNTESTED 2026-09-06 (v2): `build_maplevel4.py` (cap byte `0x5577768E` `03→04`, cave `0x55844000`, 250 B, 8 hooks) + in-place cave re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6: earth elementals excluded from the Firmament, air elementals included); UI half `build_skylevel_ui.py` (v3, caption "Firmament") + editor Level Up/Down display order `build_deved_levelnav.py` (`AoWDevEd.exe`, `AoWEd.exe`). Target binaries: `Ziggurat/AoWEPACK.dpl` + `Ziggurat/AoWz.exe`, not the DLL alone. Editor New-Map dialog and the map-gen tools still to do
 - **Abyss map level** — a 5th map level at index 4, a third cave level **below Depths** (order Firmament 3 / Surface 0 / Caverns 1 / Depths 2 / Abyss 4). 🔨 APPLIED, UNTESTED 2026-09-27. `build_maplevel4.py` **v3**: cap byte `04→05`; all twelve `TCave` level±1 sites (CanPlace, PlaceHX ×4, Destroy ×2, MoveExclusive ×2, EnterMovePoints, CanEnterSelection, EnterEx, ArmyPlaced) routed through one order helper at `0x55844100`, so caves link Depths↔Abyss and never touch the Firmament. In-place re-tunes: `build_skylevel_ui.py` v4 (strip "… \| Depths \| Abyss"), `build_deved_levelnav.py` v2 + `build_zigeditor.py` (Level Down reaches it; underground palette), `build_shipyard_income.py` (`MAX_LEVELS 5`, else no water income on a 5-level map), `build_townquake_retune.py` (Abyss counts as underground). Surgical `--undo` on each. **Checklist:** `11-engine-internals.md` "Abyss map level"
 - **Disabled map levels + the editor's Map Levels popup** — any set of levels, Surface always on; a left-out level below the highest is a disabled placeholder (mask `[TAoWHSMap+0x41C]`, saved as id `0x60`). 🔨 APPLIED, UNTESTED in game 2026-09-27 (editor half driven live). `build_maplevel4.py` v4 (mask + caves skip disabled levels), `build_fly_levels.py` relaid out (`fly_next`), `build_levelset.py` (new: Options > Map Levels replaces Add/Remove Level; New Map level checkboxes), `build_deved_levelnav.py` v3 (Level Up/Down skip). Warp Party's destination levels follow the flying order (`build_fly_levels.py` `cave_warp`, hook `0x557EB2CE`). ⚠ Vanilla Remove Level deleted the *viewed* level and renumbered the rest; it is retired. **Not done:** the game strip as two rows with unexplored/disabled cells blank. **Checklist:** `11-engine-internals.md` "Disabled levels"

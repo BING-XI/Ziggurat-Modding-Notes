@@ -2,12 +2,13 @@
 r"""
 build_unit_ai.py -- tactical combat: SPACE hands the current selection to the combat AI until the AI
 has nothing left to do with it, then the turn is the player's again; SPACE during a run, or clicking
-Auto, cancels it.  RIGHT-CLICK arms the selected unit's first usable ability (ranged attack,
-spellcasting, ...); with an ability already armed, or none usable, right-click is vanilla.
-AoWTCPCK.dpl + AoWz.exe.
-(Owner rulings 2026-10-03, v2: Space instead of right-click, no checkbox; right-click acts on the
-selected unit wherever it is clicked.  v1 2026-09-27 was a "Unit AI" checkbox arming right-click on
-an own unit; this script migrates a v1 install in place.)
+Auto, cancels it.  Q cycles the selected unit's abilities: nothing armed -> the first usable one,
+one armed -> the next usable one after it in list order, after the last -> nothing armed.
+Right-click is vanilla.  AoWTCPCK.dpl + AoWz.exe.
+(Owner rulings: v3 2026-10-10 moves v2's right-click to plain Q and makes it cycle; right-click is
+vanilla again.  v2 2026-10-03: Space instead of v1's checkbox; right-click armed the first usable
+ability.  v1 2026-09-27 was a "Unit AI" checkbox arming right-click on an own unit.  The script
+migrates a v1 or v2 install in place.)
 
 VANILLA
     "Auto" is TTBWindow.AutoBtn (TAOWCheckBox, field +0x12C) with OnChange = AutoBtn2Click 0x457F48,
@@ -26,29 +27,44 @@ VANILLA
     player[+0xC]; it is the only listener on [map+0xF8].
     KEYS: TMWindow.MapWindowKeyDown 0x4512E4 (the exe) handles combat keys in a compare chain on
     the VK in AX: N/P SelectNextUnit, M MoveUnits, Ctrl+E / Ctrl+Enter EndTurn, arrows, PgUp/PgDn,
-    F3-F8.  VK_SPACE (0x20) matches nothing and leaves by the out-of-range `jmp 0x45189C` at
-    0x4513AB, which only VKs in 0x0D..0x26 that match no case reach.  Handled keys set
-    [Sender+0x78] := -1 (Sender = [ebp-4]).
+    F3-F8.  Unmatched VKs leave by one of three `jmp 0x45189C`s: 0x4513AB for VK <= 0x26
+    (VK_SPACE 0x20 among them), 0x451404 for 0x4F..0x73 (VK_Q 0x51 among them), 0x4513D2 for
+    0x27..0x4D.  Handled keys set [Sender+0x78] := -1 (Sender = [ebp-4]), which stops
+    TAOWWinManager.CheckKeyDown offering the key to the next window and to the manager's own
+    OnKeyDown (TGeneral.ManagerKeyDown: debug digits, F11, F12).
+    Q in vanilla: nothing in combat.  On the strategic map MapWindowKeyDown first feeds every
+    key to TAoWHSMapKeyboard.KeyDown (the typed-letter buffer, only when no combat map is up);
+    the cave below acts only while a combat map is up, so that path is untouched.
     ABILITIES: the unit panel's ability list (TTCUnit.UAbilLBMouseDown 0x434938) shows
     [tcu+0x40], a TList of entries whose [+4] is the ability id, in list order, and a left-click
     calls TTacticalCombatUnitHS.SelectAbility 0x422F0C (eax = tcu, edx = id).  SelectAbility
     clears [tcu+0x34] to -1, then applies every gate itself (seated side to move, unit has moves,
     entry index < [tcu+0x3C], full moves for target types 3..5 and for 0x34 Spellcasting) and on
-    success stores the id in [tcu+0x34]; it returns the entry index or -1.
+    success stores the id in [tcu+0x34]; it returns the entry index or -1.  The index is the LAST
+    entry carrying that id.  A failed call still clears the ranged path and fires [map+0x114],
+    exactly as vanilla's cancel SelectAbility(-1) does.
     RIGHT-CLICK on the battle map: TCombatUnitSelectionControl.MouseDownEvent 0x41EE28, after its
     own-turn and not-on-Auto gates, tests the button [mouse+0x10] == 1 at 0x41EE7F, then cancels the
     selected unit's armed ability (SelectAbility(-1) when [tcu+0x34] > -1) or else Unselects.
+    TAB was considered first and rejected: the windowed TDisplay wants only arrows
+    (TCustomDisplay.CMWantSpecialKey), so TCustomForm.CMDialogKey eats Tab for SelectNext before
+    any OnKeyDown runs.
 
 THIS SCRIPT
     DLL (all PIC, state in BSS page slack 0x46C800: +0 active, +4 player, +8 map, +0xC n,
     +0x10 TCombatObject[64]; +1 was v1's `armed` and is unused):
         cancel      if active: active := 0 and, for the same map, SetAuto(player, 0).
-        space       (from the exe) active -> cancel; else start.
+        key         (from the exe, eax = VK) 0x20 -> space; else cycle.
+        space       active -> cancel; else start.
         start       the seated side is the side to move and its player is not on Auto -> snapshot
                     every TCombatObject of the selection, active := 1, SetAuto(player, 1).
-        0x41EE7F    rclick (6 B): right button, a selected unit with no ability armed -> try
-                    SelectAbility on each [tcu+0x40] entry in order; the first that sets [tcu+0x34]
-                    ends MouseDownEvent (0x41F6D4).  Anything else -> vanilla right-click 0x41EE85.
+        cycle       not active, the seated side is the side to move, its player is not on Auto, a
+                    selected unit (GetTCUnitHS) with an ability list [tcu+0x40]: start at entry 0,
+                    or one past the LAST entry carrying the armed id (SelectAbility's own index
+                    rule); SelectAbility each later entry whose id is not the armed one, re-reading
+                    [tcu+0x40] each step, until one sets [tcu+0x34].  None -> SelectAbility(-1)
+                    if something is still armed (vanilla's cancel).
+        0x41EE7F    v2's rclick hook: restored to vanilla `80 78 10 01 75 3C` by --apply and --undo.
         0x418421    filter (9 B): while active for this map and the side-to-move player, an own unit
                     not in the snapshot goes to cai[+0xC] (0x4184AF) instead of cai[+8].
         0x41C629    done (10 B): while active for this map and player, instead of EndTurn(1):
@@ -58,8 +74,9 @@ THIS SCRIPT
                     dereference: the saved player may be freed.
         0x41BB30    NewTurn head (6 B): if active for this map, active := 0, SetAuto(player, 0).
     Exe (absolute addresses; the exe never rebases), cave in .hcol 0x0062AA00:
-        0x4513AB    key: the default jmp's rel32 -> cave.  Plain Space (no Shift/Ctrl/Alt) with a
-                    combat map up -> DLL `space`, Sender[+0x78] := -1; then the vanilla 0x45189C.
+        0x4513AB    key: the two default jmps' rel32s -> one cave.  Plain Space or plain Q (no
+        0x451404    Shift/Ctrl/Alt) with a combat map up -> DLL `key`, Sender[+0x78] := -1; then
+                    the vanilla 0x45189C.  Anything else -> 0x45189C untouched.
         AutoBtn2Click published entry (code dword at VA 0x457281) -> DLL `cancel`, then vanilla.
         TCMapSeatedPlayerChanged entry (code dword at VA 0x4580B9) -> vanilla, then AutoBtn
                     unchecked while a run is active.
@@ -67,16 +84,18 @@ THIS SCRIPT
     live SetAuto, so live X = [0x45EBAC] + (X - 0x430B68).
 
 Rolls: none.  The AI runs locally exactly as under vanilla Auto; its actions travel as tokens.  The
-snapshot and the active flag are local to the machine that pressed Space.
+snapshot and the active flag are local to the machine that pressed Space.  Q only arms an ability,
+local UI state, as a click on the unit panel's list does.
 
 WHERE
     AoWTCPCK.dpl  code zone 0x43A700-0x43ABFF (exclusive), BSS 0x46C800-0x46C90F (no file bytes).
-    AoWz.exe      .hcol 0x0062AA00-0x0062AAFF (exclusive), the 0x4513AB rel32, two published-method
-                  dwords.  v1 grew .ibnr 0xD000 -> 0x17000 above build_taskbar_coords.py and
+    AoWz.exe      .hcol 0x0062AA00-0x0062AAFF (exclusive), the 0x4513AB and 0x451404 rel32s, two
+                  published-method dwords.  v1 grew .ibnr 0xD000 -> 0x17000 above build_taskbar_coords.py and
                   repointed that script's TTBWINDOW resource entry, field table and instance size;
                   v2 restores all of those and shrinks .ibnr back, so the coupling is gone.
     Apply order DLL then exe; --undo exe then DLL (the exe calls into the DLL zone).
-    Any DLL hook that is a jmp into the zone counts as ours, so a retune rewrites in place.
+    Any DLL hook that is a jmp into the zone, and any exe site that points into the exe cave,
+    counts as ours, so a retune rewrites in place (v2 -> v3 moved every cave after `space`).
 
 USAGE
     python build_unit_ai.py            verify / dry run
@@ -109,14 +128,15 @@ H_FILTER, VAN_FILTER, OWN, ALLY = 0x418421, bytes.fromhex("3a42310f8585000000"),
 H_DONE, VAN_DONE, DONE_SKIP, DONE_RET = 0x41C629, bytes.fromhex("b2018b45fce831faffff"), 0x41C67F, 0x41C633
 H_SEAT, VAN_SEAT, SEAT_RET = 0x41BAB8, bytes.fromhex("558bec83c4f8"), 0x41BABE
 H_TURN, VAN_TURN, TURN_RET = 0x41BB30, bytes.fromhex("558bec83c49c"), 0x41BB36
-H_RCLICK, VAN_RCLICK, LEFT, RIGHT, MD_EXIT = 0x41EE7F, bytes.fromhex("80781001753c"), 0x41EEC1, 0x41EE85, 0x41F6D4
-EVALBATTLE, NEWFRAME, MOUSEDOWN = (0x418170, 0x41AFCD), (0x41C440, 0x41C69A), (0x41EE28, 0x41F6D9)
+H_RCLICK, VAN_RCLICK = 0x41EE7F, bytes.fromhex("80781001753c")   # v2 only: restored, never hooked
+EVALBATTLE, NEWFRAME = (0x418170, 0x41AFCD), (0x41C440, 0x41C69A)
+RETIRED = [(H_RCLICK, VAN_RCLICK)]                # hooks of older versions, restored to vanilla
 
 # ---- AoWz.exe ---------------------------------------------------------------
 CAVE_EXE = (0x0062AA00, 0x0062AB00)
 G_COMBATMAP_IAT = 0x45EBDC                        # exe import slot -> the DLL's combat-map variable
 G_TBWINDOW, IAT_SETAUTO, AUTO_FIELD, VMT_SETCHECKED = 0x45B2C8, 0x45EBAC, 0x12C, 0xAC
-H_KEY, KEY_DEFAULT, VK_SPACE = 0x4513AB, 0x45189C, 0x20
+H_KEY, H_QKEY, KEY_DEFAULT, VK_SPACE, VK_Q = 0x4513AB, 0x451404, 0x45189C, 0x20, 0x51
 MT_CLICK_VA, VAN_CLICK = 0x457281, 0x457F48       # published-method code dwords
 MT_SEAT_VA, VAN_SEATCHG = 0x4580B9, 0x458B38
 
@@ -132,7 +152,7 @@ V1_SITES = [  # (file offset or VA, old bytes, v1 bytes)
 
 
 def build_dll():
-    """Returns [(name, va, blob)], the hooks, and the `space` / `cancel` entry VAs (the exe calls them)."""
+    """Returns [(name, va, blob)], the hooks, and the `key` / `cancel` entry VAs (the exe calls them)."""
     caves, va = [], ZONE[0]
 
     def put(name, src):
@@ -245,48 +265,91 @@ def build_dll():
         cmp byte ptr [ecx], 0
         jne {cancel:#x}
         jmp {start:#x}""")
-    rclick = put("rclick", lambda v: f"""
-        cmp byte ptr [eax + 0x10], 1
-        jne {LEFT:#x}
-        mov eax, dword ptr [ebp - 4]
-        call {GETTCUNITHS:#x}
-        test eax, eax
-        je {RIGHT:#x}
-        cmp dword ptr [eax + 0x34], -1
-        jg {RIGHT:#x}
+    cycle = put("cycle", lambda v: f"""
         push ebx
         push esi
         push edi
+        call {bss_ptr:#x}
+        cmp byte ptr [ecx], 0
+        jne q_out
+        mov esi, dword ptr [ecx + {MAPVAR}]
+        test esi, esi
+        je q_out
+        mov al, byte ptr [esi + 0xEC]
+        test al, al
+        js q_out
+        cmp al, byte ptr [esi + 0xED]
+        jne q_out
+        mov dl, al
+        mov eax, dword ptr [esi + 0xE0]
+        call {GETPLAYERS:#x}
+        test eax, eax
+        je q_out
+        cmp byte ptr [eax + 0xC], 0
+        jne q_out
+        mov eax, dword ptr [esi + 0x100]
+        test eax, eax
+        je q_out
+        call {GETTCUNITHS:#x}
+        test eax, eax
+        je q_out
         mov ebx, eax
         mov esi, dword ptr [ebx + 0x40]
         test esi, esi
-        je r_van
+        je q_out
+        push dword ptr [ebx + 0x34]
         xor edi, edi
-    r_loop:
+        cmp dword ptr [esp], -1
+        jle q_loop
+        mov ecx, dword ptr [esi + 8]
+    q_find:
+        dec ecx
+        js q_loop
+        mov eax, dword ptr [esi + 4]
+        mov eax, dword ptr [eax + ecx*4]
+        test eax, eax
+        je q_find
+        mov edx, dword ptr [eax + 4]
+        cmp edx, dword ptr [esp]
+        jne q_find
+        lea edi, [ecx + 1]
+    q_loop:
+        mov esi, dword ptr [ebx + 0x40]
+        test esi, esi
+        je q_none
         cmp edi, dword ptr [esi + 8]
-        jge r_van
+        jge q_none
         mov eax, dword ptr [esi + 4]
         mov eax, dword ptr [eax + edi*4]
         test eax, eax
-        je r_next
+        je q_next
         mov edx, dword ptr [eax + 4]
+        cmp edx, dword ptr [esp]
+        je q_next
         mov eax, ebx
         call {SELECTABILITY:#x}
         cmp dword ptr [ebx + 0x34], -1
-        jg r_done
-    r_next:
+        jg q_pop
+    q_next:
         inc edi
-        jmp r_loop
-    r_done:
+        jmp q_loop
+    q_none:
+        cmp dword ptr [ebx + 0x34], -1
+        jle q_pop
+        or edx, -1
+        mov eax, ebx
+        call {SELECTABILITY:#x}
+    q_pop:
+        pop eax
+    q_out:
         pop edi
         pop esi
         pop ebx
-        jmp {MD_EXIT:#x}
-    r_van:
-        pop edi
-        pop esi
-        pop ebx
-        jmp {RIGHT:#x}""")
+        ret""")
+    key = put("key", lambda v: f"""
+        cmp ax, {VK_SPACE:#x}
+        je {space:#x}
+        jmp {cycle:#x}""")
     filt = put("filter", lambda v: f"""
         cmp al, byte ptr [edx + 0x31]
         jne f_ally
@@ -384,9 +447,8 @@ def build_dll():
     hooks = [(H_FILTER, VAN_FILTER, P.jmp_to(H_FILTER, filt, len(VAN_FILTER))),
              (H_DONE, VAN_DONE, P.jmp_to(H_DONE, done, len(VAN_DONE))),
              (H_SEAT, VAN_SEAT, P.jmp_to(H_SEAT, seat, len(VAN_SEAT))),
-             (H_TURN, VAN_TURN, P.jmp_to(H_TURN, turn, len(VAN_TURN))),
-             (H_RCLICK, VAN_RCLICK, P.jmp_to(H_RCLICK, rclick, len(VAN_RCLICK)))]
-    return caves, hooks, space, cancel
+             (H_TURN, VAN_TURN, P.jmp_to(H_TURN, turn, len(VAN_TURN)))]
+    return caves, hooks, key, cancel
 
 
 def zone_image(d, caves):
@@ -406,17 +468,20 @@ def hook_is_ours(cur, va, n):
 
 
 def dll_state(d, caves, hooks):
+    """States of the live hooks, then of the RETIRED ones (vanilla, or 'older' = still ours)."""
     states = []
-    for va, van, new in hooks:
+    for va, van, new in hooks + [(va, van, None) for va, van in RETIRED]:
         o = P.va2off(d, va)
         cur = bytes(d[o:o + len(van)])
         states.append("vanilla" if cur == van else "installed" if cur == new
                       else "older" if hook_is_ours(cur, va, len(van)) else "FOREIGN " + cur.hex(" "))
+    live, old = states[:len(hooks)], states[len(hooks):]
     zo, zh = P.va2off(d, ZONE[0]), P.va2off(d, ZONE[1])
     zone = bytes(d[zo:zh])
     if all(s == "vanilla" for s in states) and not any(zone):
         st = "VANILLA"
-    elif all(s == "installed" for s in states) and zone == zone_image(d, caves):
+    elif (all(s == "installed" for s in live) and all(s == "vanilla" for s in old)
+          and zone == zone_image(d, caves)):
         st = "INSTALLED"
     elif all(s in ("vanilla", "installed", "older") for s in states):
         st = "OLDER"                     # our hooks/zone from another version: rewrite in place
@@ -429,27 +494,30 @@ def dll_checks(d, hooks):
     rl = [v for va, van, _ in hooks for v in P.relocs_in(d, va, va + len(van))] + P.relocs_in(d, *ZONE)
     inner = []
     for va, van, _ in hooks:
-        fn = {H_FILTER: EVALBATTLE, H_DONE: NEWFRAME, H_RCLICK: MOUSEDOWN}.get(va, (va, va + 0x40))
+        fn = {H_FILTER: EVALBATTLE, H_DONE: NEWFRAME}.get(va, (va, va + 0x40))
         inner += P.rel32_into(d, va, va + len(van)) + P.short_into(d, va, va + len(van), *fn)
     return rl, inner
 
 
 # ---- exe half ---------------------------------------------------------------------------------
-def build_exe_code(space, cancel):
-    d_space = (space - SETAUTO) & 0xFFFFFFFF
+def build_exe_code(dkey, cancel):
+    d_key = (dkey - SETAUTO) & 0xFFFFFFFF
     d_cancel = (cancel - SETAUTO) & 0xFFFFFFFF
     d_active = (BSS - SETAUTO) & 0xFFFFFFFF
     key = CAVE_EXE[0]
     b_key = asm(f"""
         cmp ax, {VK_SPACE:#x}
+        je k_mod
+        cmp ax, {VK_Q:#x}
         jne {KEY_DEFAULT:#x}
+    k_mod:
         test byte ptr [ebp + 8], 7
         jne {KEY_DEFAULT:#x}
-        mov eax, dword ptr [{G_COMBATMAP_IAT:#x}]
-        cmp dword ptr [eax], 0
+        mov ecx, dword ptr [{G_COMBATMAP_IAT:#x}]
+        cmp dword ptr [ecx], 0
         je {KEY_DEFAULT:#x}
         mov ecx, dword ptr [{IAT_SETAUTO:#x}]
-        add ecx, {d_space:#x}
+        add ecx, {d_key:#x}
         call ecx
         mov eax, dword ptr [ebp - 4]
         mov dword ptr [eax + 0x78], -1
@@ -530,29 +598,46 @@ class Exe:
         return [((o if kind == "fo" else self.off(o)), old, new) for kind, o, old, new in V1_SITES]
 
 
-def exe_plan(x, space, cancel):
+def exe_site_is_ours(va, cur):
+    """Any version's exe site: a jmp, or a published-method dword, aimed into the exe cave."""
+    if len(cur) == 5:
+        if cur[0] != 0xE9:
+            return False
+        tgt = va + 5 + struct.unpack_from("<i", cur, 1)[0]
+    else:
+        tgt = struct.unpack_from("<I", cur)[0]
+    return CAVE_EXE[0] <= tgt < CAVE_EXE[1]
+
+
+def exe_plan(x, dkey, cancel):
     d = x.d
-    blob, key, click, seat = build_exe_code(space, cancel)
+    blob, key, click, seat = build_exe_code(dkey, cancel)
     sites = [
-        (x.off(H_KEY), P.jmp_to(H_KEY, KEY_DEFAULT, 5), P.jmp_to(H_KEY, key, 5), "key default jmp"),
-        (x.off(MT_CLICK_VA), struct.pack("<I", VAN_CLICK), struct.pack("<I", click), "AutoBtn2Click entry"),
-        (x.off(MT_SEAT_VA), struct.pack("<I", VAN_SEATCHG), struct.pack("<I", seat), "TCMapSeatedPlayerChanged entry"),
+        (H_KEY, P.jmp_to(H_KEY, KEY_DEFAULT, 5), P.jmp_to(H_KEY, key, 5), "key default jmp (VK <= 0x26)"),
+        (H_QKEY, P.jmp_to(H_QKEY, KEY_DEFAULT, 5), P.jmp_to(H_QKEY, key, 5), "key default jmp (0x4F..0x73)"),
+        (MT_CLICK_VA, struct.pack("<I", VAN_CLICK), struct.pack("<I", click), "AutoBtn2Click entry"),
+        (MT_SEAT_VA, struct.pack("<I", VAN_SEATCHG), struct.pack("<I", seat), "TCMapSeatedPlayerChanged entry"),
     ]
+    sites = [(x.off(va), va, old, new, desc) for va, old, new, desc in sites]
     co = x.off(CAVE_EXE[0])
     region = bytes(d[co:co + CAVE_EXE[1] - CAVE_EXE[0]])
     img = blob + bytes(CAVE_EXE[1] - CAVE_EXE[0] - len(blob))
     st = []
-    for off, old, new, _desc in sites:
+    for off, va, old, new, _desc in sites:
         cur = bytes(d[off:off + len(old)])
-        st.append("vanilla" if cur == old else "installed" if cur == new else "FOREIGN " + cur.hex())
+        st.append("vanilla" if cur == old else "installed" if cur == new
+                  else "older" if exe_site_is_ours(va, cur) else "FOREIGN " + cur.hex())
     rs = x.ibnr()[1]
     v1 = rs == V1_SIZE and all(bytes(d[o:o + len(new)]) == new for o, _old, new in x.v1_sites())
-    if v1 and st[0] == "vanilla" and not any(region):
+    if v1 and st[0] == "vanilla" and st[1] == "vanilla" and not any(region):
         state = "V1"
     elif all(s == "vanilla" for s in st) and not any(region) and rs == V1_COORDS_SIZE:
         state = "VANILLA"
     elif all(s == "installed" for s in st) and region == img and rs == V1_COORDS_SIZE:
         state = "INSTALLED"
+    elif (all(s in ("vanilla", "installed", "older") for s in st) and rs == V1_COORDS_SIZE
+          and any(s != "vanilla" for s in st)):
+        state = "OLDER"                  # v2 (or a retune): the cave is ours, rewrite in place
     else:
         state = "MIXED"
     return state, st, img, sites, (key, click, seat, len(blob))
@@ -566,10 +651,10 @@ def exe_undo_v1(x):
 
 def main():
     apply_, undo = "--apply" in sys.argv, "--undo" in sys.argv
-    print("build_unit_ai v2 (Space hands over the selection; right-click arms the first usable ability)")
+    print("build_unit_ai v3 (Space hands over the selection; Q cycles the selected unit's abilities)")
 
     dd = bytearray(open(DLL, "rb").read())
-    caves, hooks, space, cancel = build_dll()
+    caves, hooks, dkey, cancel = build_dll()
     dst, dsts, zone = dll_state(dd, caves, hooks)
     print("  AoWTCPCK.dpl    %-9s  %s" % (dst, ", ".join(s.split()[0] for s in dsts)))
     if dst == "MIXED":
@@ -587,13 +672,13 @@ def main():
     plans = []
     for name in zigexe.EXES:
         x = Exe(name)
-        state, st, img, sites, info = exe_plan(x, space, cancel)
+        state, st, img, sites, info = exe_plan(x, dkey, cancel)
         print("  %-15s %-9s  %s" % (x.name, state, ", ".join(s.split()[0] for s in st)))
         if state == "MIXED":
-            sys.exit("ABORT: %s is neither vanilla, v1 nor v2 at its sites" % x.name)
-        erl = X.relocs_in(x.d, H_KEY, H_KEY + 5)
+            sys.exit("ABORT: %s is neither vanilla, v1 nor ours at its sites" % x.name)
+        erl = X.relocs_in(x.d, H_KEY, H_KEY + 5) + X.relocs_in(x.d, H_QKEY, H_QKEY + 5)
         if erl:
-            sys.exit("ABORT: .reloc entry under the key hook: %s" % erl)
+            sys.exit("ABORT: .reloc entry under a key hook: %s" % erl)
         plans.append((x, state, img, sites, info))
     key, click, seat, n = plans[0][4]
     print("    exe cave: key %08X, auto_click %08X, seat_wrap %08X | ends %08X" % (key, click, seat, key + n))
@@ -614,6 +699,9 @@ def main():
                 for va, _van, new in hooks:
                     f.seek(P.va2off(dd, va))
                     f.write(new)
+                for va, van in RETIRED:
+                    f.seek(P.va2off(dd, va))
+                    f.write(van)
         for x, state, img, sites, _info in plans:
             if state == "INSTALLED":
                 continue
@@ -621,7 +709,7 @@ def main():
                 exe_undo_v1(x)
             co = x.off(CAVE_EXE[0])
             x.d[co:co + len(img)] = img
-            for off, _old, new, _desc in sites:
+            for off, _va, _old, new, _desc in sites:
                 x.d[off:off + len(new)] = new
             open(x.path, "wb").write(x.d)
     else:
@@ -633,12 +721,12 @@ def main():
             else:
                 co = x.off(CAVE_EXE[0])
                 x.d[co:co + len(img)] = bytes(len(img))
-                for off, old, _new, _desc in sites:
+                for off, _va, old, _new, _desc in sites:
                     x.d[off:off + len(old)] = old
             open(x.path, "wb").write(x.d)
         if dst != "VANILLA":
             with open(DLL, "r+b") as f:
-                for va, van, _new in hooks:
+                for va, van in [(va, van) for va, van, _new in hooks] + RETIRED:
                     f.seek(P.va2off(dd, va))
                     f.write(van)
                 f.seek(P.va2off(dd, ZONE[0]))
@@ -648,8 +736,12 @@ def main():
     for va, van, new in hooks:
         o = P.va2off(back, va)
         assert back[o:o + len(van)] == (new if apply_ else van), "%08X did not stick" % va
+    for va, van in RETIRED:
+        o = P.va2off(back, va)
+        assert back[o:o + len(van)] == van, "retired %08X did not return to vanilla" % va
+    assert dll_state(bytearray(back), caves, hooks)[0] == ("INSTALLED" if apply_ else "VANILLA")
     for name in zigexe.EXES:
-        state = exe_plan(Exe(name), space, cancel)[0]
+        state = exe_plan(Exe(name), dkey, cancel)[0]
         assert state == ("INSTALLED" if apply_ else "VANILLA"), "%s reads %s after writing" % (name, state)
     print("\n%s AoWTCPCK.dpl and %s" % ("APPLIED to" if apply_ else "UNDONE on", ", ".join(zigexe.EXES)))
 
