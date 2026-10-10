@@ -64,7 +64,6 @@ IGNORE_DIRS = {
     # in ALWAYS_SHIP_DIRS, which ALSO disabled the junk filters for it -- 14 ipxwrapper.log
     # and stray .txt/.zip files were going out with the maps.
     "1Scenario",
-    "Zig Modding Tools",   # map generator, in development
     "AoWx Modding Tools",  # third-party tools, not ours to redistribute
     "ZigMod",              # loose source art (bmp) for terrain tiles
     "Ziggurat upload",     # the PREVIOUS release staging folder (March 2026)
@@ -86,6 +85,19 @@ ALWAYS_SHIP_DIRS = set()   # empty since 2026-09-11: 1Scenario moved to IGNORE_D
 # so an entry exempts the directory from the junk filters too (*.log, *.ini, *.txt), not
 # just from the extension filter it was added for. That is how 14 ipxwrapper.log files ended
 # up in the release payload.
+
+# Directories that ship ONLY the files matching their patterns, directly inside them (no
+# subdirectories). Everything else there is the tools' own state and must not ship.
+# Zig Modding Tools (owner ruling 2026-10-10): the editor's New -> Generated map and
+# drop-a-picture features shell out to its .bat launchers, so a release without it left the
+# editor waiting 30 minutes for a converter that was not there. The tools also WRITE into
+# this folder -- logs, last_map.txt (an absolute profile path), lastgen/, __pycache__, both
+# *_settings.json (the picture-crop table is keyed by absolute picture paths) and
+# zPngImport.preview.png -- which is why this is an allow-list and not more IGNORE_GLOBS.
+# Both converters fall back to built-in defaults when their settings file is absent.
+SHIP_ONLY = {
+    "Zig Modding Tools": ("*.py", "*.bat"),
+}
 
 # Files that are mod content but are deliberately NOT shipped. Applies to CHANGED
 # as well as ADDED -- IGNORE_GLOBS does not, so a patched file cannot be dropped
@@ -163,6 +175,9 @@ def ignored(rel):
     parts = rel.split("/")
     if rel in NEVER_SHIP or parts[-1] in NEVER_SHIP:
         return True
+    if parts[0] in SHIP_ONLY:
+        return len(parts) != 2 or not any(fnmatch.fnmatch(parts[1], g)
+                                          for g in SHIP_ONLY[parts[0]])
     if any(p in ALWAYS_SHIP_DIRS for p in parts[:-1]):
         return False
     if any(p in IGNORE_DIRS for p in parts[:-1]):

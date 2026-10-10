@@ -48,6 +48,10 @@ are always in the current Ziggurat scale.
 ⚠ **`zig_hsm.py`'s self-test is the safety net for the whole toolchain.** Any change to the format
 layer must keep `round-trip: 30 identical, 0 not`.
 
+**Shipped since 2026.10.10**, but only `*.py` and `*.bat` (`mod_manifest.py` `SHIP_ONLY`): the editor's
+New → Generated map and drop-a-picture call its launchers. Without Python the two editor launchers
+write the `.fail` marker the editor polls, so the editor warns at once instead of waiting.
+
 ⚠ **`Zig Modding Tools/` is NOT covered by the two profile-path scans in `CLAUDE.md`**, which look at
 the game-root binaries and at `Modding Resources/`. This folder is distributable and two of its files
 carry the absolute path as a matter of course: `deved_bridge.log` (every bridge run writes it) and

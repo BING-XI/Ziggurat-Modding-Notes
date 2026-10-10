@@ -94,7 +94,10 @@ MODDED = {0x9F: "Path of Sand", 0x38: "Assassin", 0xAB: "Drillmaster",
           # build_command_bond.py, applied 2026-09-25 -- the bond on a seized unit and the
           # commander's per-thrall Resistance cost. UNTESTED in game.
           0xBB: "Bound",
-          0xBC: "Commanding"}
+          0xBC: "Commanding",
+          # build_razorplate.py, applied 2026-10-09 -- every melee strike that lands on the
+          # unit costs the striker d5 physical damage.
+          0xBD: "Razor Plate"}
 
 # Vanilla ids the constructor scan cannot reach cleanly (set via movement-type tables or a
 # shared enhancement path, not a T<Name>Ability.Create). Sourced from Investigation_Combat.md

@@ -2063,7 +2063,8 @@ LifeStealing flag — **still set by `TMeleeRound.CreateStrikeCA` but never read
 `jmp 0x5580DC80` @`0x5576678C` bypasses the vanilla consumer block — vestigial, not a signal to reuse)
 · `0x04` Entangle Strike→Entangled · **`0x08` = this mod's LifeStealing** (set @`0x5580DCE9`, healed
 @`0x5580DC80`) · **`0x10` = this mod's Dark Gift** (set @`0x5580DD00`, healed @`0x5580DC9F`). Both mod
-bits gate on `¬CA+0x0C bit0` — offensive strikes only.
+bits gate on `¬CA+0x0C bit0` — offensive strikes only. · **`0xE0` = Razor Plate's d5 roll**, a 3-bit
+field (`build_razorplate.py`, `03-abilities-added.md`), applied after these heals.
 
 ### Root cause — why plain lifesteal misses round attack
 
@@ -2213,8 +2214,8 @@ Poisson binomial over the live table and cut where either tail falls below 1 in 
 offered Turn Undead 60 % of the time rather than at every level-up. `always=[...]` in the `OFFERS`
 shorthand still means 100, but the shorthand is not the live table — the JSON is.
 
-**The live table (`heroskill_races.json`, fingerprint `818757b6`, ladder `0/10/25/60`), baked into
-both exes** — `build_heroskill_race.py` reports `applied -- hook, cave, tails and table all current`
+**The live table (`heroskill_races.json`, fingerprint `040b2cb1` = `818757b6` plus Razor Plate's 0 % row,
+ladder `0/10/25/60`), baked into the exe** — `build_heroskill_race.py` reports `applied -- hook, cave, tails and table all current`
 against `AoWz.exe` (verified 2026-09-23). Expected offers of 103, the
 deterministic floor (`det`: cells at 100 — **zero for every row** since the second retune, and kept
 as a column only because `report()` prints it), and the ladder distribution per race:

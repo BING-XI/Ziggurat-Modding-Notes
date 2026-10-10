@@ -1605,6 +1605,20 @@ resource's `ResourceUserClassID`; anything else goes down the create path, whose
 `TAbstractHexagon.PlaceHX` destroys the old hexagon first, as Grass over water always did. Water/Ice
 painted over Earth/Rock now replaces as well instead of re-skinning the wall.
 
+## Animated cloud Sky — trial, reverted 2026-10-05
+
+`build_sky_anim.py` (AoWEPACK.dpl + Release.hss). Worked live in AoWzEd; the owner reverted it
+because the cloud art did not fit the game's style (`--undo` restored both files to their exact
+earlier hashes). Land hexagons cannot animate, so the trial drew the frames over Sky hexes from
+`TAoWHSMap.DrawDynamicScene` (hook at the entry `0x55778A60`), replacing only pixels that still held
+the static tile's frame 0, so curtains, fades, bridges and pads stayed. Reusable facts:
+- The editor copies the whole static scene to the back buffer every frame before the dynamic
+  draw, so a dynamic-pass overlay needs no dirty-rect bookkeeping.
+- AoWzEd's surface is **RGB555** (`0x55509310`); RLE16 tiles are remapped from 565 by
+  `((p>>1)&0xFFE0)|(p&0x1F)`, +`0x400` on a transparent-colour collision (ILPACK `0x55210A68`).
+- Surface descriptor: `+0x0C` pitch, `+0x10..+0x1C` clip, `+0x20` pixels, `+0x28` format.
+- Untested in AoWz.exe: whether the game's view redraws the dynamic layer every frame.
+
 ## Open items
 
 - **Sandworm's numeric unit-type id** — not derivable from the DLL. Read `[[unit+0x40]+0x18]`

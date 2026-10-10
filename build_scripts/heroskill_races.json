@@ -113,6 +113,7 @@
     "174": {"Human": 10, "Azrac": 10, "Lizardman": 10, "Frostling": 10, "Elf": 10, "Halfling": 10, "Dwarf": 10, "HighMen": 10, "DarkElf": 10, "Orc": 10, "Goblin": 10, "Undead": 10},
     "175": {"Human": 10, "Azrac": 10, "Lizardman": 10, "Frostling": 10, "Elf": 10, "Halfling": 10, "Dwarf": 10, "HighMen": 10, "DarkElf": 10, "Orc": 10, "Goblin": 10, "Undead": 10},
     "176": {"Human": 60, "Azrac": 60, "Lizardman": 25, "Frostling": 60, "Elf": 60, "Halfling": 60, "Dwarf": 60, "HighMen": 60, "DarkElf": 60, "Orc": 60, "Goblin": 60, "Undead": 60},
-    "177": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 25}
+    "177": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 25},
+    "189": {"Human": 25, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 25, "HighMen": 0, "DarkElf": 25, "Orc": 60, "Goblin": 25, "Undead": 10}
   }
 }

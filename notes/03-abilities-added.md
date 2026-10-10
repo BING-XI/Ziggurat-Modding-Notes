@@ -34,6 +34,7 @@ canonical cross-project cave-ownership map is `12-re-toolchain.md`.
 | Seven Weakness abilities — Fire/Cold/Lightning/Magic/Poison/Death/Holy (`0xB3`–`0xB9`) | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_weakness.py` + `build_weakness_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Liquid Body — Swimming + Physical Protection + no Burning (`0xBA`) | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_liquidbody.py` + `build_liquidbody_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Bound (`0xBB`) and Commanding (`0xBC`) — the command-ability bond and its RES cost; design and checklist in `02-abilities-modded.md` "Command abilities — bound thralls" | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_command_bond.py` + `build_command_bond_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Razor Plate — melee strikes that land cut the striker for d5 (`0xBD`) | applied 2026-10-09, v2 2026-10-10 | `build_razorplate.py` + `build_razorplate_pfs.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` |
 | Copper Medal — rank ladder, stat bonus, icon | ✅ CONFIRMED WORKING (2026-07-30) | `build_copper_medal.py` | AoWEPACK.dpl + `Images/*Combat.ILB` |
 | Copper Medal — 4th ability-owner slot (copper bonus abilities) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_copper_medal.py` (`COPPER_GRANTS_ABILITIES=True`) | AoWEPACK.dpl + `AoWDevEd.exe` |
 | Ability-id ceiling — 4× `TCAI.EvalBattle` scans + item/hover banner popups | 🔨 APPLIED, UNTESTED (ladder at `0xB3`, 2026-09-01) | `build_abilityid_ceilings.py` | AoWTCPCK.dpl + AoWz.exe |
@@ -98,9 +99,10 @@ and contains roughly 90–149 vanilla `call RegisterAbility` sites (the exact co
 feature that claims one), every one immediately preceded by `mov eax,ebx` — so `EBX` liveness is
 total across the window `0x557BC000`–`0x557BD200`, and any free site works. **Sites already consumed
 and never to be reused:** `0x557675C4` (Assassin — outside the window, a *different* registration
-function, see below), `0x557BC9E9` (Path of Sand), `0x557BCF04` (Caster Cost, all four), `0x557BCF39`
-(Drillmaster), `0x557BCF6E` (Magebane), `0x557BCECF` (Shield — not owned here, see the Magebane
-section). Each build script's `check_id_free()`-style scan prints which sites are already repointed;
+function, see below), and, measured 2026-10-09, 12 repointed sites inside it: `0x557BC9E9` (Path of
+Sand), `0x557BCD98` (Razor Plate), `0x557BCDAF`, `0x557BCDC6` (Liquid Body), `0x557BCDFB`,
+`0x557BCE30`, `0x557BCE65`, `0x557BCE9A`, `0x557BCECF` (Shield), `0x557BCF04` (Caster Cost, all four),
+`0x557BCF39` (Drillmaster), `0x557BCF6E` (Magebane). Each build script's `check_id_free()`-style scan prints which sites are already repointed;
 clone that check into any new script rather than trusting a stale address list, this one included.
 
 **⚠ Two ability-construction factories exist, and only one is usable for a combat-facing passive.**
@@ -159,12 +161,12 @@ byte pattern but is unrelated city-AI code, not an ability). **The only trustwor
 apparent gap is dynamic** — register it and watch for the `"Ability already registered"` assert.
 `0x38` (Assassin) and `0x9F` (Path of Sand) were claimed exactly this way.
 
-**Measured 2026-09-25, for orientation only — re-derive before trusting it:** highest id in use
-`0xBC` (Commanding). Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
+**Measured 2026-10-09, for orientation only — re-derive before trusting it:** highest id in use
+`0xBD` (Razor Plate). Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
 0x66`–`0x69, 0x6E, 0x85`–`0x87, 0x97` (19 gaps; a nil registry slot is necessary but not sufficient —
 per-id verification means scanning both binaries for `mov edx,<id>` / `push <id>` feeding an ability
 call, since cut content can still reference an id that nothing currently registers). Free above the
-current max, under the hard ceiling described next: `0xBD`–`0xCD` (17 ids). Roughly **36 stateful
+current max, under the hard ceiling described next: `0xBE`–`0xCD` (16 ids). Roughly **35 stateful
 slots** and, if the untested bit-only band below turns out to be sound, another **50 passive** slots
 — that is the shape of the budget, not a number to bank on unchanged.
 
@@ -197,7 +199,7 @@ ability *bitset* (`SetAbSet @0x5574E0BC` auto-grows on `id >= count`, asserting 
 `0xCD` regardless; a full save/load round trip (and an MP sync test if relevant) is the thing that
 would settle it, and as of this writing nobody has run one.
 
-**Recommended range for a new stateful ability today: `0xB3`–`0xCD` (27 contiguous ids)**, above
+**Recommended range for a new stateful ability today: `0xBE`–`0xCD` (16 contiguous ids)**, above
 everything registered and under the hard ceiling. This shrinks by one every time any feature —
 inside or outside this file — claims an id; re-measure, do not quote it even from this paragraph.
 Freeze the chosen id before shipping: ids are serialised into saves as bitset indices and every MP
@@ -315,6 +317,23 @@ record (minted by a DevEd assign-and-save round trip, key = id + 10 — no build
 one, see the level-up-cost section below); if it is selectable and minted above id 169, a category
 byte in the relocated `AbilTypes` table; and if it should draw a persistent status icon, its own
 block in the `ShowEx` chain. None of these apply to a plain passive below id 170.
+
+⭐ **Owner's rule (2026-10-10): every new ability goes into the Ziggurat Manual's Hero Offers grid
+at 0 % for every race**, unless the owner rules it unofferable (a status such as Embrittled or
+Bound; the editor-only Weaknesses). The grid lists exactly `heroskill_races.offered_ids()`, so the
+ability has to become offerable at level-up, which takes five steps:
+
+1. `Ability.pfs` tag 9 carries `0x100 | 0x200` — `0x03FF` is the vanilla norm — and the
+   registration cave passes the same mask.
+2. A tag 6 level-up cost; without one the ability is offered free.
+3. A row of 0 for each of the 12 races in `build_scripts/heroskill_races.json`, written through
+   `heroskill_races.json_text()`. ⚠ A missing row is `TABLE_DEFAULT` = 100 %: every race is
+   offered it every time.
+4. A column in `build_scripts/herodlg_cats.py`; without one it lands under Magic.
+5. `build_heroskill_race.py --apply` and `build_herodlg_columns.py --apply` (both bake into
+   `AoWz.exe`), then rebuild the manual.
+
+Worked example: Razor Plate (`build_razorplate_pfs.py`).
 
 ### Ability *levels* are a different resource from ability *ids*
 
@@ -1357,6 +1376,51 @@ with the name). Surgical `--undo` on both scripts.
 5. The ability shows on the unit card with its description, and the editor offers it for units but
    not items.
 6. A save with the unit reloads with the ability intact.
+
+## Razor Plate — melee strikes that land cut the striker (`0xBD`)
+
+Scripts `build_razorplate.py` (AoWEPACK.dpl + AoWTCPCK.dpl) and `build_razorplate_pfs.py`
+(`Release/Ability.pfs` key 199), applied 2026-10-09, v2 2026-10-10; the script docstring holds the
+addresses, caves and `--undo`. Owner's design: d5 physical damage on melee attackers. Rulings: every
+melee blow counts, attack and retaliation alike, once per strike that lands; a Round Attacker that
+dies partway may stop there.
+
+- **Scope:** strikes from all three builders — `TMeleeRound.CreateStrikeCA` (both sides) and
+  `AoWE.CreateStrikeCA` (Round Attack, the free swing at a unit moving away, the touched unit's swing
+  back at a failed touch), in both engines. Ranged attacks are another CA class. "Lands" is
+  `CA+0x10 != 0`: manual combat never executes a missed strike.
+- **Damage:** 1–5, no to-hit roll. Physical Immunity cancels it, Embrittled doubles it before the
+  halve, Physical Protection halves it rounding up. The Razor Plate unit is the dealer (`DoDamage`),
+  so a kill earns it kill XP; if the strike killed it, the cut still lands, with no dealer.
+- **Storage:** the roll rides in bits `0xE0` of `CA+0x18`, the one strike-flag byte
+  `TStrikeCA.ReadWrite` serialises, so the auto-resolve replay, which re-runs `Execute` from the
+  recorded CAs, reproduces it; three bits cap the die at 7. `Execute` writes the cut that lands to
+  `CA+0x16` (TDamageCA alignment padding), which the visuals, the replay number and the logs read.
+- ⭐ **The invariant it breaks.** Vanilla never lets a striker fall to its own blow. Fixes:
+  both melee-round loops end the round when either unit is down, through vanilla's own endings;
+  auto-resolve Round Attack skips its follow-up blows for a fallen attacker. Manual Round Attack
+  needed nothing: the sweep tests `GetEnabled` first every frame (`0x0040A3B4`).
+- ⭐⚠ **A unit that dies in manual combat has its HS freed on the spot** —
+  `TTacticalCombatUnit.ExecuteDamage` frees `[unit+0x60]` and nils it (`0x0042069D`). Any TE code that
+  touches a dead unit's HS afterwards reads a nil pointer. The free swing did, twice (reset to idle,
+  then a wait on `+0x25`), so `SetAction` now returns on a nil HS and the wait treats one as ready.
+- **Visuals:** a surviving cut striker plays the engine's own flinch (`SetAction` 4) and
+  `MakeHitBlood`; Round Attack gets blood only, since a flinch would reset the sweep. The auto-resolve
+  replay draws the number over the striker.
+- **Logs:** "<striker> is cut by Razor Plate for N damage" — into the combat log's ring in live manual
+  combat, and into the log memo from a wrapper on `TStrikeCA`'s Play slot in a replay. Neither log
+  script is modified; their wire constants are cross-checked at run time.
+- **AI:** `TMeleeRound.CalculateDV` adds P(land) × E[cut] to the striker's side's "damage taken
+  back", in both the combat and the prediction mode, so every melee estimate the AI reads includes
+  it. Round Attack and touch estimates do not.
+- **Hero level-up (2026-10-10):** mask `0x03FF` (units, items, leader customisation, level-up),
+  cost 12, Melee column, 0 % for every race in Hero Offers.
+- **Registration:** splice `0x557BCD98` (High Prayer Blessing), mask `0x03FF`. Proved by launching
+  `AoWz.exe` to its main window, 2026-10-09 and again for v2 2026-10-10. LADDER `0xBE`;
+  `ability_names.py` `MODDED`.
+
+Unproven: the flinch's timing against the next strike's wind-up, and the replay number's placement
+over the striker.
 
 ## Open items
 

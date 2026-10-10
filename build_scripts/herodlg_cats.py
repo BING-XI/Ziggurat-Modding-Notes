@@ -26,6 +26,7 @@ so give it one in AoWDevEd. Mod-added so far:
     176 Shield           -> 2 Melee        (build_shield.py, tag 6 = 8 since 2026-08-27)
     177 Reforming Flesh  -> 1 Resistances  (build_reformingflesh.py; no Ability.pfs record yet,
                                             cost 50 comes from its cave's [+0x14] store)
+    189 Razor Plate      -> 2 Melee        (build_razorplate.py, tag 6 = 12 since 2026-10-10)
 Still MISSING from this table (they fall into Magic today, which may or may not be wanted):
 170 Magebane, 171 Drillmaster, 172-175 the caster-cost abilities. Left alone deliberately --
 placing them is the owning feature's call, not this file's.
@@ -67,7 +68,7 @@ ABILITY_CATS = {
     # User-placed in Resistances 2026-08-31 -- it is a survivability passive, not a strike.
     177: (1, "Reforming Flesh"),
 
-    # ---- 2 Melee (21: 20 vanilla + Shield) ----------------------------------------------
+    # ---- 2 Melee (22: 20 vanilla + Shield, Razor Plate) ----------------------------------------------
     14:  (2, "Fire Strike"),          15:  (2, "Cold Strike"),
     16:  (2, "Lightning Strike"),     17:  (2, "Poison Strike"),
     18:  (2, "Death Strike"),         19:  (2, "Holy Strike"),
@@ -83,6 +84,9 @@ ABILITY_CATS = {
     # mod-added (build_shield.py, id 0xB0): +4 DEF against the front and front-left hexes.
     # Placed beside Parry (113), the vanilla ability it is modelled on.
     176: (2, "Shield"),
+    # mod-added (build_razorplate.py, id 0xBD): melee strikes that land on the unit cut the
+    # striker for d5.
+    189: (2, "Razor Plate"),
 
     # ---- 3 Ranged: shots, bolts, breaths (20) -------------------------------------------
     22:  (3, "Archery"),              24:  (3, "Hurl Boulder"),

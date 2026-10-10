@@ -1581,6 +1581,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x55851C00` | `build_warpban.py` (🔨 APPLIED 2026-09-27) | **exclusive**, `0x200` (362 B used: MSG/CAP literals, `c_rw` `0x55851C50`, `c_ban` `0x55851C72`, `ed_disp` `0x55851CA8`) | Per-map Warp Party ban (`04-spells-modded.md`). Hook `0x55777239` (11 B, `TAoWHSMap.ReadWrite`, streams `map+0x193` as id `0x61`); VMT slot `0x557E9634` (`TWarpParty` `+0x68` CanActivate, `.reloc` kept). `ed_*` is editor-only, reached from `AoWDevEd.exe`'s stub `0x0042EFF0`, and holds absolute EXE addresses only. ⚠ Undo both halves together (the script does) |
 | `0x55851E00` | `build_autocombat_roundcap.py` (🔨 APPLIED 2026-09-27) | **exclusive**, `0x40` (`cave_cap` 25 B) | auto-resolve ends after round 200 (`01-combat-maths.md` §13). Retargets the `call ExecuteCombatRound` rel32 at `0x55744A69`; nothing displaced |
 | `0x55852000` | `build_los_terrain.py` v6 (2026-10-04) | **exclusive**, `0x200` (`snapreset`, `scan`, `dds`, `tc_mark`, 265 B) | sight snapshot: fog reads `[field+0x1B]&0x80`, written only by the rebuild. Call retargets `0x557724FB` (TriggerTerrainChangedEvent → `tc_mark`) and `0x55778A6A` (DrawDynamicScene → `dds`). BSS `0x558FAD46` (G_CHK). ⚠ Field bit 31 of `[field+0x18]` is now claimed |
+| `0x5589A000` | `build_razorplate.py` (2026-10-09, v2 2026-10-10) | **exclusive**, `0x800` (12 caves to `0x5589A70F`: `cave_roll`, `cave_s0/s1/s2`, `cave_apply`, `cave_loop`, `cave_rnd`, `cave_show`, `cave_play`, `cave_line` 412 B, `cave_dv` 778 B, `cave_reg`) | Razor Plate `0xBD` (`03-abilities-added.md`). Hooks `0x557BCD98` (registration splice), `0x55767EDA`, `0x55767F3E`, `0x557666FB`, `0x55766806`, `0x557670B9`, `0x5576964E`, `0x55729E34` (35 B), `0x55768045`; VMT slot `0x5571E398` (`TStrikeCA` Play, `.reloc` kept). Owns bits `0xE0` of the strike CA's `+0x18` and the padding byte `+0x16`. AoWTCPCK half `0x0043AE40` |
 
 ⚠ **`build_spellcast_herotier.py --apply` would abort today.** Its `ZONE_END` is `0x55848000`
 (line 125) and it asserts `cave_end..ZONE_END` is zero, but `build_spellward_rescope.py`'s cave
@@ -1589,7 +1590,7 @@ touch that script. Found 2026-09-07 during the Power Leech scoping; the abort is
 corrupting, and `build_powerleech.py` does not make it worse — its cave starts at exactly
 `0x55848000`, which is where both neighbours' zero-asserts stop.
 
-Free above `0x55852200` (and `0x55851E40..0x55851FFF`, and `0x55851B00..0x55851BFF`) (`0x5584F440..0x5584F47F` and `0x5584F780..0x5584F7FF` are small free gaps), all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAA30..0x558FAAF8` (fly-levels popup class clone, `build_fly_levels.py`), `0x558FAB00..0x558FABFF` (shipyard-income header, `build_shipyard_income.py`; 0xA8 B used since its per-level arrays grew to 8 slots), `0x558FAC10..0x558FACFF` (True Seeing list, `build_los_terrain.py` v5), `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move), `0x558FAD20` (command bonds) and `0x558FAD40..0x558FAECF` (Mantle of Gloom, `build_los_terrain.py`) and `0x558FAEE0..0x558FAEF3` (New Map checkboxes, `build_levelset.py`) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
+`0x55852200..0x55899FFF` is reserved, still zero, by `build_sky_anim.py`'s exclusive `SLOT`. Free above `0x5589A800` (and `0x55851E40..0x55851FFF`, and `0x55851B00..0x55851BFF`) (`0x5584F440..0x5584F47F` and `0x5584F780..0x5584F7FF` are small free gaps), all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAA30..0x558FAAF8` (fly-levels popup class clone, `build_fly_levels.py`), `0x558FAB00..0x558FABFF` (shipyard-income header, `build_shipyard_income.py`; 0xA8 B used since its per-level arrays grew to 8 slots), `0x558FAC10..0x558FACFF` (True Seeing list, `build_los_terrain.py` v5), `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move), `0x558FAD20` (command bonds) and `0x558FAD40..0x558FAECF` (Mantle of Gloom, `build_los_terrain.py`) and `0x558FAEE0..0x558FAEF3` (New Map checkboxes, `build_levelset.py`) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
 ⚠ `aowepack_patch.run` (and `exe_patch.run`) assert that a script's caves do not overlap each other, as well
 as that they fit the slot — added 2026-09-25 after `cave_walls` overran a fixed `cave_atk` address by 3 B.
 The three 2026-09-24 scripts above share the helper module `build_scripts/aowepack_patch.py`.
@@ -1697,6 +1698,7 @@ Fixed editor-exe allocations that DO exist (2026-09-06):
 | `0x00599000..0x005993FF` | `AoWDevEd.exe` (`.nmg` page slack, above newmapgen's body) | `build_deved_itemhpmv.py` | **exclusive**, 1024 B reserved / 644 used / 380 spare — Item Properties' Hit Points + Movement spinners. 12 B of globals (`G_FORM`/`G_HPSPIN`/`G_MVSPIN`) at `0x00599000`, two AnsiString literals at `0x00599010`, 580 B of code at `0x00599040` (`cave_change` `0x00599040`, `cave_load` `0x00599093`, `cave_enter` `0x005990C5`), reached by **retargeting three existing `call rel32` operands** (`0x004137DC`, `0x0041389F`, `0x004133AE`), 4 bytes each, nothing displaced. `.nmg` is `0xE0000060` (RWX), so the mutable globals live inside the cave span and `--undo` is one contiguous zero-fill. Reservation was 768 B until 2026-09-13; it was raised to 1024 so the cave can never meet the relocated resource in the row below |
 | `0x0052D640..0x0052D69F` | `AoWDevEd.exe` (`.mtb` page slack) | `build_deved_listarrows.py` | **exclusive**, 96 B reserved / 57 used — the arrow-key gate on `TMainForm`'s `Application.OnMessage` filter, so UP/DOWN reach the Abilities and Spells listboxes. Hook `0x0042812F` (5 B `3b 70 5c 75 23`); the cave compares `TMsg.hwnd` against `[TMainForm+0x4A0]`/`[+0x4DC]` `+0xCC` (`TWinControl.FHandle`) and tail-jumps to vanilla's own `0x00428134` (swallow) or `0x00428157` (pass). ⚠ **Do not hook `0x00428128`** — the type-3 `.reloc` at `0x00428129` would be stranded mid-rel32. `.mtb` is `build_editor_toolbar.py`'s toolbar-bitmap section (VirtualSize `0x4C63B`, SizeOfRawData `0x4C800` → **453 B of slack at `0x0052D63B`**); `--apply` raises VirtualSize to `0x4C800` and Characteristics `0x40000040 → 0x60000040` (adds MEM_EXECUTE — the section is data-only otherwise), `--undo` restores both. No collision: `.mtb` rva `0xE1000 + 0x4C800 = 0x12D800` and `.ctp` starts at `0x12E000`; SizeOfImage and file length unchanged. The rest of the slack, `0x0052D6A0..0x0052D7FF`, belongs to `build_deved_casterfamily.py` (row below); only the 5 B below this cave are free. ⚠⚠ **Its `--undo` breaks `build_deved_casterfamily.py`**, whose cave needs this VirtualSize and MEM_EXECUTE. Undo casterfamily first. ⚠ `build_editor_toolbar.py` owns the section but is a no-op once `.mtb` exists, so it will not wipe this |
 | `0x0052D6A0..0x0052D7FF` | `AoWDevEd.exe` (`.mtb` page slack, above listarrows) | `build_deved_casterfamily.py` | **exclusive**, 352 B reserved / 341 used (2026-09-25). It holds the Settings > Spells "Caster:" label + combo authoring spell byte `+0x23`: a 16 B `'Caster:'` AnsiString, then `getsp 0x0052D6B0`, `cave_change 0x0052D6C2`, `mk 0x0052D6FC` and `cave_load 0x0052D711` (284 B of code), then a 41 B NUL-terminated item list. It is reached by **retargeting one `call rel32` operand**, `0x0042C0B8` (the tier `TSpin.SetValue` in `SpellListBoxClick`), 4 bytes, nothing displaced. Its mutable state, `G_COMBO 0x004E0700` / `G_ID 0x004E0704`, sits in `.dlgd` page slack. ⚠⚠ **It writes no `.mtb` header field and depends on `build_deved_listarrows.py`'s** VirtualSize `0x4C800` + Characteristics `0x60000040`; it refuses to apply without them. It also edits four vaInt16 values in the live TMAINFORM DFM in `.ctp`. No `.reloc` entry in the operand window, the cave, `.dlgd`'s page or the TMAINFORM copy |
+| `0x0050CA00..0x0050D1FF` + BSS `0x00430200..0x00430F84` | `AoWDevEd.exe` (`.mtb`, inside the DEAD TMAINFORM DFM master, file `0x108000`) | `build_deved_pngdrop.py` | **exclusive**, 2048 B (1768 used) + BSS page slack. Drop-a-picture import; hook `0x004280EB` (7 B). The window holds no `MaxValue` / `TPF0`; `--undo` restores the embedded master bytes. ⚠ The dead master is no longer intact in this window -- anything that re-derives from the `.mtb` TMAINFORM copy must undo this first |
 | `0x00599400..0x0059BAE6` | `AoWDevEd.exe` (`.nmg`, above the cave) | `build_deved_itemhpmv.py` | **the relocated `TITEMEDITFORM` DFM**, 9958 B — data, not code. Item Properties grew two `TImage` nodes (`Image13`/`Image14`, the HP and MV stat icons, copied verbatim out of `THEROEDITFORM`) and could not grow in place, so the resource **directory entry** at file `0x000434E0` was repointed here from rva `0x6D1A8`. ⚠ **This is the entry that grew `.nmg`**: VirtualSize **and** SizeOfRawData `0x6E00 -> 0x8C00`, SizeOfImage `0x0019A000 -> 0x0019C000` (RVA space — *not* `0x59C000`), file length `0x00192200 -> 0x00194000`. `.nmg`'s top slack was `0x0059BAE6..0x0059BC00` = 282 B, not the 2816 B this table used to claim; `build_deved_goto_sites.py` took `0x0059BB00..0x0059BBFF` on 2026-09-25 (row below), leaving **26 B**. The `.rsrc` original at file `0x000697A8` is left in place as a dead master — see the dead-master register below |
 | `0x0059BB00..0x0059BBFF` | `AoWDevEd.exe` (`.nmg` top slack, above the TITEMEDITFORM copy) | `build_deved_goto_sites.py` | **exclusive**, 256 B reserved / 247 used (2026-09-25) — Go-to into exploration sites: `goto_item` `+0`, `goto_hero` `+0x17`, `find_site`. Reached from `0x0042CD44` and `0x0042CDE0` (`cmp byte [esp],0FFh / je`, 6 B each → `call`+`nop`). `.nmg` is RWX, file-backed to `0x0059BC00`. ⚠⚠ **`build_deved_newmapgen.py` rebuilds `.nmg` and zeroes this**; re-apply this script after any such rebuild. ⚠⚠ **So does `build_deved_itemhpmv.py --apply`** (it wipes its own slack; seen 2026-09-25). `08-editor.md` §15 |
 | `0x0042EFF0..0x0042EFFF` | `AoWDevEd.exe` (CODE raw tail) | `build_warpban.py` | **exclusive**, 14 B stub (`push [0x0043289C] / add [esp],ed_disp-0x558FA040 / ret`) into `AoWEPACK.dpl`. CODE VirtualSize raised `0x2DFF0` → `0x2E000` (= SizeOfRawData, same page) so the loader maps it; `--undo` restores it. Reached by retargeting `call rel32` at `0x0042DF21` (`TGameSettingsDlg.FormCreate`) and `0x0042E103` (its `OKBtnClick`'s SetModified). Mutable `G_CB` at `0x004E0524` (`.dlgd` page slack; free slack is now `0x004E0528..0x004E06FF`) |
@@ -1749,7 +1751,8 @@ as AoWEPACK applies):
 | `0x0043A500` | `build_ai_selfheal.py` | AI units with Healing heal themselves (`10-ai-and-structures.md` §11.2). Hooks `0x419212` (8 B), `0x41ACE4` (10 B); `cave_prop` 368 B (PIC, two import slots through call/pop), `cave_exec` `0x43A670` 106 B; zone **`0x43A500`–`0x43A6FF`** reserved to this script |
 | `0x0043A700` | `build_unit_ai.py` | Space hands the selection to the combat AI; right-click arms the selected unit's first usable ability (`07-ui.md` §18). Hooks `0x418421` (9 B), `0x41C629` (10 B), `0x41BAB8` (6 B), `0x41BB30` (6 B), `0x41EE7F` (6 B); caves `bss_ptr`/`cancel`/`start`/`space`/`rclick`/`filter`/`done`/`seat`/`turn` `0x43A700`–`0x43A9CB`, PIC. The exe calls `space` `0x43A820` and `cancel` `0x43A710` through `[IAT 0x45EBAC] + (X − 0x430B68)`; the script rebuilds both halves together, so re-apply it after moving a cave. Zone **`0x43A700`–`0x43ABFF`** reserved to this script. |
 | `0x0043AC00` | `build_wallcrush_dam.py` (AoWTCPCK half) | manual-combat Wall Crushing damage = attacker DAM. Call retarget `0x40A27D` (`LastMove` → `ExecuteDamageRole` thunk), `th_lastmove` 34 B, PIC; zone **`0x43AC00`–`0x43AC3F`** reserved to this script |
-| `0x0043AC40` | `build_spell_unit_target.py` | single-unit spells refuse an empty hex, cursor included (`04-spells-modded.md`, "Lethargy"). Call retarget `0x41F59C` (`MouseDownEvent` → `ExecuteMoveSelection`), hook `0x41F8AF` (8 B, `UpdateMoveCursor`); `pred` 270 B, `cave_click` `0x43AD50` 84 B, `cave_cursor` `0x43ADB0` 48 B, PIC (one anchor for `0x46C064`); zone **`0x43AC40`–`0x43AE3F`** reserved to this script. Next free `0x43AE40` |
+| `0x0043AC40` | `build_spell_unit_target.py` | single-unit spells refuse an empty hex, cursor included (`04-spells-modded.md`, "Lethargy"). Call retarget `0x41F59C` (`MouseDownEvent` → `ExecuteMoveSelection`), hook `0x41F8AF` (8 B, `UpdateMoveCursor`); `pred` 270 B, `cave_click` `0x43AD50` 84 B, `cave_cursor` `0x43ADB0` 48 B, PIC (one anchor for `0x46C064`); zone **`0x43AC40`–`0x43AE3F`** reserved to this script |
+| `0x0043AE40` | `build_razorplate.py` (AoWTCPCK half) | Razor Plate in manual combat (`03-abilities-added.md`): melee round ends when either combatant falls, flinch and blood on a cut striker, nil-safe `SetAction` and free-swing wait (a dead unit's HS is freed). Hooks `0x4096CD`, `0x409726` (15 B each), `0x4236E0` (6 B, `SetAction` prologue), `0x408BE5` (23 B), `0x408C39` (19 B), `0x40AF2C`, `0x40A5B1` (11 B each); 6 caves, register-only; zone **`0x43AE40`–`0x43B03F`** reserved to this script. Next free `0x43B040` |
 
 **AoWTCPCK.dpl BSS** (VA `0x46C000`, VirtualSize `0xA1`, no file bytes): the rest of the page,
 `0x46C0A1`–`0x46CFFF`, is loader-zeroed and writable — mutable state only, reached PIC.
@@ -4982,6 +4985,7 @@ per-class rather than resolving to one answer.
 | `+0x11` | 2 | `effective_damage_types` | D | 0 => fully immune |
 | `+0x13` | 2 | `effect_landings` | D |  |
 | `+0x15` | 1 | `applied_damage` | D | written in Execute |
+| `+0x16` | 1 | `razor_cut` | D | TDamageCA alignment padding, not serialised; the Razor Plate cut that landed, written in `TStrikeCA.Execute` by `build_razorplate.py` |
 | `+0x18` | 4 | `effect_flags` | D | ⚠ TStrikeCA ONLY. TCombatSpellCA+0x18 is the SPELL ID; a ranged CA carries the ability id there |
 
 ### TStructure  (instance size `0x30`)
@@ -5364,7 +5368,7 @@ Nothing in the report mentions it, because the report describes the live install
 The check that catches it is a set difference of staged-on-disk against the `--json` manifest;
 run it every time, and re-run the staged-vs-live MD5 pass afterwards (§13.1).
 
-`mod_manifest.py` owns four lists that separate mod content from workshop clutter, GOG install
+`mod_manifest.py` owns five lists that separate mod content from workshop clutter, GOG install
 furniture (`unins000.*`, `goggame-*`, `*.ico`, `EULA.txt`) and player data. **Extend the lists rather
 than filtering by hand** — they are the record of what counts as mod content.
 
@@ -5374,6 +5378,7 @@ than filtering by hand** — they are the record of what counts as mod content.
 | `IGNORE_GLOBS` | ADDED | leaf patterns — `*.pre-*`, `*.hsm`, `*.zip`, `*.ini` … |
 | `ALWAYS_SHIP_DIRS` | ADDED | trees shipped **whole**, exempt from `IGNORE_GLOBS` |
 | `NEVER_SHIP` | **CHANGED and ADDED** | a patched file deliberately held back |
+| `SHIP_ONLY` | ADDED | a folder that ships only files matching its patterns, none from its subfolders: `Zig Modding Tools` → `*.py`, `*.bat` (2026-10-10) |
 
 ⚠ **`IGNORE_GLOBS` never touches CHANGED**, deliberately — otherwise `TCMaps/eCrpt000.HSM` would
 vanish from a release under `*.hsm` and nothing would say so. Withholding a *patched* file is what
@@ -5546,7 +5551,7 @@ creates 14 top-level folders: the 11 `PrepareToInstall` copies plus `EmailIn`, `
 `Save`, which it creates empty. `[Dirs]` covers those three, so a fresh `Ziggurat\` now has all 14.
 Empty subfolders inside a copied tree come across, because `CopyTree` walks the disk. A string scan
 of every Ziggurat binary finds no top-level folder beyond vanilla's except `Zig Modding Tools\`
-(the editor's map generator, withheld), and the editor autosave creates `Scenario\Autosave\`
+(the editor's map generator, shipped since 2026.10.10 — §13 `SHIP_ONLY`), and the editor autosave creates `Scenario\Autosave\`
 itself. `Save` in `[Dirs]` came from Inioch's AoWx installer template, not from this check.
 
 ### 13.3a The web installer — 2026-09-27
@@ -5801,8 +5806,8 @@ to check a cave, ended with both files back on disk.
 So the sequence is: finish every verification run first, **then** delete the caches, **then** run the
 two `grep -laF` / `grep -rlaF` scans (with `-a`, never `-I`), **then** zip. Anything that re-runs a
 tool after the delete invalidates the scan. The same applies to `Modding Resources/Ziggurat
-Manual.log` (rebuilding the manual re-creates it) and to `Zig Modding Tools/`, which the scans below
-do not cover at all — see `Map_Generator.md`.
+Manual.log` (rebuilding the manual re-creates it). `Zig Modding Tools/` ships from 2026.10.10, but
+only its `*.py`/`*.bat` (`SHIP_ONLY`); the staged-payload scan covers what ships.
 
 ⚠⚠ **Guard the pattern, or an empty `$USERNAME` reports the entire tree as leaking.**
 `U="$USERNAME"; grep -rlaF "$U" .` with `U` unset becomes `grep -F ""`, which matches **every
@@ -5995,7 +6000,7 @@ put a duration into `MISC_OVERRIDES` without a live source for it.
 
 Added 2026-09-09. The Hero Offers tab (Project group) edits the race × ability offer table behind
 the hero level-up dialog: 102 offered abilities × 12 races, one `<select>` per cell on a four-rung
-ladder (**0 / 10 / 25 / 60 %** since the second retune of 2026-09-10, colour-ramped), hover plus `Q W E R` to set them,
+ladder (**0 / 10 / 25 / 60 %** since the second retune of 2026-09-10, colour-ramped), hover plus `Q W E R` or the mouse wheel to set them,
 a live expected-offer count per race, and a **Save** that writes `build_scripts/heroskill_races.json`
 straight to disk through pywebview's `js_api` — no dialog, server-side validation, temp file plus
 `os.replace`. Detail in `07-ui.md` §2.8.
@@ -6032,8 +6037,8 @@ hard-coded. The only literals that had to move were the constant itself and pros
 
 ⚠ **Prose is what actually costs on a rung move.** Both moves needed a documentation sweep across
 four notes files while the code needed a one-line constant edit and a data migration. Budget for
-that, and grep the fingerprint (`2a098b10` at the time; the owner's table is **`818757b6`** today,
-`430/357/248/201`) as well as the rung values — the ladder appears
+that, and grep the fingerprint (`2a098b10` at the time; the owner's table is **`040b2cb1`** as of 2026-10-10,
+`442/357/248/201`) as well as the rung values — the ladder appears
 written as `0/10/25/60` and as `0 / 10 / 25 / 60`, and a single-spacing grep misses half of it.
 
 ⚠⚠ **A number the grid does not have a column for is a number nothing checks.** The calibration

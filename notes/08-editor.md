@@ -2078,6 +2078,37 @@ Four editor conveniences from Inioch's share8, on `AoWDevEd.exe`, with `AoWzEd.e
 5. **Validation:** double-clicking a Map Validation entry centres and plays the circle.
 6. **Unchanged neighbours:** Game Settings tab, and Go-to into sites.
 
+## 17. Drop a picture on the editor to rebuild the level (`build_deved_pngdrop.py`)
+
+Applied 2026-10-07; the drop was tested live by the owner (Anatolia). Dropping a picture on the
+editor window asks for confirmation, then opens a crop-and-tune window (`zig_pngcrop.py`): a
+rectangle locked to the level's proportions, a hex preview, and Mountains / Hills / Desert sliders
+whose 100% is the picture's own automatic share. Build replaces the level being viewed; the map
+keeps its own filename and is marked unsaved. Owner rulings: everything on the level is replaced,
+the picture keeps its proportions, and the editor asks first.
+
+- **Editor half** (`AoWDevEd.exe`, then `build_zigeditor.py`): hook `0x004280EB` in TMainForm's
+  `Application.OnMessage` filter (`WM_DROPFILES` 0x233); `DragAcceptFiles` on the first message.
+  shell32 comes through VCL30's `LoadLibraryA`/`GetProcAddress` by the rebase-delta idiom
+  (`[0x00432224]` − `0xE36E4`). Save → `WinExec` → wait → Close → LoadMap is the New-generated-map
+  route (§9); markers `Scenario\Custom\zPngImport.{done,fail,cancel}`.
+- ⚠ **`cmd /c` quoting:** a quoted `.bat` path plus a quoted argument must be wrapped once more,
+  `cmd.exe /c ""<bat>" "<picture>" <n>"`, or cmd strips the wrong quotes.
+- ⚠ **Space:** no section-header slot is left and `.nmg` cannot grow without breaking
+  `build_deved_itemhpmv.py`'s exact-size state test. The code lives in the dead TMAINFORM DFM master
+  in `.mtb` (file `0x108000`, VA `0x0050CA00..0x0050D1FF`), clear of `\x08MaxValue\x02` and `TPF0`;
+  `--undo` restores the embedded original bytes. Data in BSS page slack `0x00430200..0x00430F84`.
+- **Converter** (`Zig Modding Tools\zig_pngmap.py`, via `devedpng.bat` → `deved_pngbridge.py`):
+  everything is relative to the picture (owner, 2026-10-07). Water is Otsu's split of blueness;
+  land is two Otsu breaks in greenness (grassland, then steppe vs desert). Relief is edge density at
+  ~4 picture pixels per hex: a raw gradient also marks coasts, wadis and colour patches, and relief
+  measured after upscaling a small picture reads flat (the first Anatolia run got 3% mountains).
+  Rugged vs smooth is Otsu again; the most rugged part becomes mountain country, threaded with thin
+  ranges by `zig_mapgen.place_mountains`, and hills follow. Choices are remembered per picture in
+  `zig_pngmap_settings.json["crops"]`.
+- Unproven: deleting structures and units by rewriting their tile records was never checked
+  against cross-references elsewhere in the map (player-owned cities, heroes).
+
 ## Open items
 
 Technical opens — investigation gaps, not "please test this in-game" (each feature above that isn't yet `✅ CONFIRMED` already carries its own checklist inline).

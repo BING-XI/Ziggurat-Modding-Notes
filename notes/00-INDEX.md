@@ -169,6 +169,13 @@ file carries the specific checklist for its own rows.
   Checklist: `01-combat-maths.md` §5.
 
 ### Abilities — `02-abilities-modded.md`, `03-abilities-added.md`
+- **Razor Plate** (`0xBD`): every melee strike that lands on the unit costs the striker d5 physical
+  damage — attack, retaliation, Round Attack, free swing, touch swing (Physical Protection halves,
+  Immunity cancels, Embrittled doubles). Flinch and blood, a combat-log line, the replay number and
+  the AI's melee estimate all include it. Melee rounds now end when either combatant falls; ⚠ a unit
+  dying in manual combat has its HS freed on the spot. `build_razorplate.py` (`AoWEPACK.dpl` +
+  `AoWTCPCK.dpl`) + `build_razorplate_pfs.py`, applied 2026-10-09, v2 2026-10-10.
+  `03-abilities-added.md`, "Razor Plate".
 - **Mantle of Gloom (was Trail of Darkness)** — 🔨 APPLIED, UNTESTED (2026-09-26): hexes within 6 of an
   enemy Trail of Darkness army cost double sight (fog only, not exploration); the aura follows the
   unit via a fog rebuild per step; the trail un-explores radius 6. **v5 (APPLIED, UNTESTED
@@ -235,7 +242,7 @@ file carries the specific checklist for its own rows.
 - **Per-race hero level-up offer gate** — each ability now has a race-dependent chance of appearing
   in the Upgrades columns (Turn Undead: High Men / Dark Elf / Undead at 60 %, Human / Azrac / Elf /
   Halfling / Dwarf and raceless at 25 %, Lizardman / Frostling / Orc / Goblin 0 %; Elves see Archery
-  and Forestry at 60 % each; **15.6–22.1** of 103 offered per level-up on average, table `818757b6`,
+  and Forestry at 60 % each; **15.6–22.1** of 104 offered per level-up on average, table `040b2cb1`,
   baked). 🔨 APPLIED, UNTESTED (2026-09-09):
   `build_heroskill_race.py` on `Ziggurat/AoWz.exe` (6 B displaced at `cf_gate`, today
   `0x00623E53` — **it moves on every `build_herodlg_columns.py --apply`**, so never hard-code it;
@@ -266,8 +273,8 @@ file carries the specific checklist for its own rows.
   High Man sees Turn Undead 60 % of level-ups, not every one. Expected offers now run **15.6–22.1**
   (mean 18.2, sd 3.1–3.5); ten of thirteen rows sit under 20, **not** a defect; `report()` prints
   `low` in a `vs 20-30` column and gates nothing. ⚠ Editing it changes nothing until
-  `build_heroskill_race.py --apply` is re-run — the exes carry `818757b6`, the JSON's current table
-  (`table=True` on both, verified 2026-09-23). ⚠ Raceless (row 15) is not in the grid and is **derived** —
+  `build_heroskill_race.py --apply` is re-run — the exes carry `040b2cb1`, the JSON's current table
+  (`table=True`, verified 2026-10-10 after Razor Plate's 0 % row was added to `818757b6`). ⚠ Raceless (row 15) is not in the grid and is **derived** —
   the per-ability mean of the 12, quantised onto the ladder (17.0 expected). It was
   left at `TABLE_DEFAULT` = all 102 offered until 2026-09-09, invisibly, because `report()` skipped
   the row. ⭐ Its three staleness mitigations (DOM-as-model, a `built`/`now` fingerprint pair,
@@ -510,6 +517,11 @@ file carries the specific checklist for its own rows.
 - 12 added hero faces moved into the right resolution set (`H_Faces` 79 @103×128, `_H_Faces` 79 @52×64) — 2026-09-04
 
 ### Editor — `08-editor.md`, `Map_Generator.md`
+- **Drop a picture on the editor to rebuild the level being viewed** (`build_deved_pngdrop.py` +
+  `Zig Modding Tools\zig_pngmap.py` / `zig_pngcrop.py`) — applied 2026-10-07. Confirm, then a crop
+  window with preview and Mountains / Hills / Desert sliders; terrain, mountains and hills are read
+  from the picture's own colours and ruggedness. Hook `0x004280EB`, code in `.mtb`'s dead TMAINFORM
+  master. `08-editor.md` §17.
 - Editor **autosave**: every 5 min, if the map was edited since the last one, the open map goes to `Autosave\Autosave 1..3.hsm` in the map's own folder (v3, 2026-10-03; unsaved maps: `Scenario\Autosave\`) (oldest overwritten); the user's file, title and modified flag are untouched. Applied 2026-09-27: `build_editor_autosave.py` on `Ziggurat/HSEPack.dpl` only, §8. ⚠⚠ `THSEngine.SaveHSM` clears the modified bit itself (`TAoWHSMap.ReadWrite`), so any cave-made save must restore it.
 - Editor **hex groups + area copy/paste**: Shift+right-click toggles a hex into a group (purple 3-D hex glow, `General.ilb` ids 60/61); Ctrl+C / Ctrl+V keep the group's shape; Esc clears everything, a plain left-click drops the group (vanilla's deselect key is Space, not Esc). Armies, cities and events stay behind. `build_editor_hexgroup.py` on `Ziggurat/HSEPack.dpl` (section `.hxg`), §7. ⚠ `.hxg` sits after `.rgt`: undo it before retuning the render gate.
   §7.1 adds a cursor-following paste ghost and 60°-per-notch wheel rotation (the wheel arrives via a

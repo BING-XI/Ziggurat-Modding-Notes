@@ -185,6 +185,11 @@ Grepping for a link between the two abilities finds nothing and would conclude w
 differ from pristine only in the Charge/Parry immediates (both copies retuned together) plus a
 `build_assassin.py` cave jump at `0x55767C5C` — the ordering and gating logic itself is stock.
 
+**The round ends when either combatant falls** (`build_razorplate.py`, 2026-10-09). Vanilla tested
+only the struck unit after each strike, because a striker could not die on its own blow; Razor Plate
+can kill it, so both executors (auto-resolve `TStrikeAbility.fcExecuteCombatCommand`, manual
+`TCMeleeMoveTE.LastMove` state 4) now test both.
+
 ⚠ **Known, unrelated defect on exactly these sites — do not "fix" it as part of anything else.** The
 alignment bonus (Holy/Unholy Champion, `0x92`/`0x93`/`0xA0`/`0xA1`) is applied at two melee sites and
 should agree; it does not. Pristine both **2**; live: `0x5576665D`/`0x55766660` (in `CreateStrikeCA`,
