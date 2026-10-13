@@ -27,9 +27,13 @@ FLOW (all inside TMainForm's Application.OnMessage filter, 0x004280DC)
      4. <exe dir> via GetModuleFileNameA (never baked in); THSEngine.SaveHSM writes the map
         AS IT STANDS to Scenario\Custom\zPngImport.hsm ([0x004329C0] - 0x25C, the
         generator's idiom).  The original filename (THSMEdit+0x1E4) is copied aside.
-     5. WinExec (vclx30 idiom) `cmd.exe /c ""<dir>Zig Modding Tools\devedpng.bat" "<pic>" <n>"`
-        -- the outer pair of quotes is what cmd /c strips; without it a quoted .bat path
-        and a quoted argument together break.
+     5. WinExec (vclx30 idiom) `"<dir>Zig Modding Tools\devedpng.bat" "<pic>" <n>` -- the
+        .bat directly, as build_deved_newmapgen.py does.  v1 wrapped it in `cmd.exe /c "..."`;
+        that string plus a process launch through a runtime-resolved WinExec drew Defender's
+        `Trojan:Win32/Bearfoos.B!ml` on the editor (2026-10-11, a player's 10.10b update), so
+        the wrapper went.  Windows still runs a .bat through cmd itself; measured with WinExec
+        on a .bat and a picture both under paths with spaces: quoted, unquoted and mixed all
+        arrive as %1 = the quoted picture, %2 = the level.
      6. The bridge shows the crop-and-tune window (zig_pngcrop.py). Wait for
         zPngImport.done to go absent then present, 50 ms Sleeps, up to 30 minutes;
         .cancel (the window's Cancel) returns silently, .fail shows the warning.
@@ -153,8 +157,7 @@ def build():
         ("s_done", b"Scenario\\Custom\\zPngImport.done\0"),
         ("s_fail", b"Scenario\\Custom\\zPngImport.fail\0"),
         ("s_canc", b"Scenario\\Custom\\zPngImport.cancel\0"),
-        ("s_cmd1", b'cmd.exe /c ""\0'), ("s_cmd2", b'" "\0'), ("s_cmd3", b'" \0'),
-        ("s_cmd4", b'"\0'),
+        ("s_cmd1", b'"\0'), ("s_cmd2", b'" "\0'), ("s_cmd3", b'" \0'),
         ("s_cap", CAPTION.encode() + b"\0"),
         ("s_ask1", b"Rebuild the \0"),
         ("s_ask2", b" level from this picture?\r\n\r\n\0"),
@@ -345,8 +348,6 @@ def build():
         add  al, 0x30
         mov  [edi], al
         inc  edi
-        mov  ebx, {L['s_cmd4']:#x}
-        call copyz
         mov  byte ptr [edi], 0
 
         mov  eax, [{VCLX_SLOT:#x}]

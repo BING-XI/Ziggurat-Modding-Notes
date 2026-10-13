@@ -42,13 +42,22 @@ THE UI -- no exe patch
     Flying is a TMovementAbility (its GetWallCombatFeatures tests [self+0xC] == 1).  Two of
     that class's VMT slots are repointed; each cave tests id == 1 and tail-jumps to the
     original for every other movement ability:
-      +0x98 GetControlType  0x557B7374   -> cave_gct: id 1 -> [strategic] on a map with >1 level
+      +0x98 GetControlType  0x557B7374   -> cave_gct: id 1 -> [strategic] only when a flight is
+                                            possible now (owner ruling 2026-10-13)
       +0xB4 Activate        0x557B7390   -> cave_act
-    GetControlType bit 0 is what makes an ability clickable: TGeneral.ManagerUpdate (exe
-    0x455DAE) sorts such abilities to the front of the unit banner, whose click handler
-    TUnitBanner.AbLBMouseDown (0x404327) calls Activate; the unit window enables its Use button
-    on the same bit (T1AbilityLBChange 0x4098A0) and TUnitWindow.UseAbility (0x409F4C) calls
-    Activate(ability, unit, var err) and shows `err` when it returns False.
+    GetControlType bit 0 is what makes an ability clickable, and every caller passes the owning
+    unit in EDX (GetControlType(ability, owner)), so the gate needs no exe patch.  Exe callers:
+    the unit window's sort comparator 0x407B40/0x407B7C (clickable rows first), its row colour
+    TUnitWindow.PreDrawAbilityItem 0x407C37 (clickable rows pale, 0xDFFEFF), its Use button
+    T1AbilityLBChange 0x4098A0, and the unit banner list 0x455DAE (clickable abilities at the
+    front; TUnitBanner.AbLBMouseDown 0x404327 activates only those).  In the DLL only
+    TAbility.CanActivate 0x5574EF56 calls it.  The combat callers (0x407CA7, 0x409A39, AoWTCPCK
+    0x4234E1) test bit 1 only; cave_gct answers 0 while [map+0x11C] (the combat map) is set.
+    cave_gct answers 1 when the owner IsClass TAbstractUnit, [owner+4] IsClass TArmy, that army
+    is on the map and belongs to the seat to move, and fly_check (gmask) returns a direction.
+    TUnitWindow.UseAbility (0x409F4C, also the ability list's OnDoubleClick) has no
+    GetControlType gate: it calls Activate(ability, unit, var err) and shows `err` when it
+    returns False, so a double-clicked Flying row still shows cave_act's refusal message.
 
 THE MOVE -- the vanilla cave route
     cave_exec copies Cave.TCave.EnterEx @0x557B3A1C: a two-node TMovepath [target, start]
@@ -130,6 +139,7 @@ CAVELOG_VMT  = 0x557B335C      # Cave..TEnterCaveEventLog
 LSTRASG_IAT  = 0x558FB674      # VCL30 System.@LStrAsg (IAT cell)
 ISCLASS      = 0x557010C0      # System.@IsClass(eax=obj, edx=classref)
 ARMY_CLS     = 0x557130AC      # cell -> AoWE..TArmy
+UNIT_CLS     = 0x55710700      # cell -> AoWE..TAbstractUnit (vanilla TAbility.Activate tests it)
 ARMY_GETHS   = 0x5578C8B8      # TArmy.GetArmyHS(eax=army) -> TArmyHS | nil
 SEL_GETHS    = 0x557923E8      # TSelectedArmy.GetArmyHS(eax=[map+0xD8]) -> TArmyHS | nil
 SEL_GETSEL   = 0x5579240C      # TSelectedArmy.GetSelection(eax=[map+0xD8]) -> al unit mask
@@ -295,6 +305,8 @@ def sources(a):
         push edi
         movsx edx, byte ptr [ebx+0x13]
         movsx ecx, byte ptr [ebx+0x14]
+        mov  eax, [ebp+0x{MAPVAR:X}]
+        mov  eax, [eax+0x10]
         call 0x{GETFIELD:X}
         test eax, eax
         jz   fd_no
@@ -738,26 +750,64 @@ def sources(a):
         mov  al, 1
         ret
     """
-    # ---- cave_gct: TMovementAbility VMT +0x98.  eax=ability -> al ------------------------
+    # ---- cave_gct: TMovementAbility VMT +0x98.  eax=ability edx=owner -> al ----------------
+    # 1 only when cave_act would fly now: the owner is a unit in an army of the seat to move,
+    # on the strategic map, and fly_check passes with at least one direction open.
     at = a["cave_gct"]
     S["cave_gct"] = anchored(f"""
         cmp  dword ptr [eax+0xC], {ABIL_FLY}
         jne  0x{GCT_ORIG:X}
-        push ecx""", "ecx", at) + f"""
-        mov  ecx, [ecx+0x{MAPVAR:X}]
-        test ecx, ecx
+        push ebx
+        push esi
+        push ebp
+        mov  ebx, edx""", "ebp", at) + f"""
+        mov  eax, [ebp+0x{MAPVAR:X}]
+        test eax, eax
         jz   g0
-        mov  ecx, [ecx+0x10]
-        test ecx, ecx
+        cmp  dword ptr [eax+0x11C], 0
+        jne  g0
+        mov  eax, [eax+0x10]
+        test eax, eax
         jz   g0
-        cmp  dword ptr [ecx+0x14], 1
+        cmp  dword ptr [eax+0x14], 1
         jle  g0
-        pop  ecx
-        mov  al, 1
-        ret
+        mov  eax, ebx
+        mov  edx, [ebp+0x{UNIT_CLS:X}]
+        call 0x{ISCLASS:X}
+        test al, al
+        jz   g0
+        mov  ebx, [ebx+4]
+        mov  eax, ebx
+        mov  edx, [ebp+0x{ARMY_CLS:X}]
+        call 0x{ISCLASS:X}
+        test al, al
+        jz   g0
+        mov  eax, ebx
+        call 0x{ARMY_GETHS:X}
+        test eax, eax
+        jz   g0
+        mov  esi, eax
+        cmp  [esi+0x1C], ebx
+        jne  g0
+        mov  eax, [ebp+0x{MAPVAR:X}]
+        mov  al, [eax+0xA5]
+        cmp  al, [ebx+0x12]
+        jne  g0
+        call 0x{a['gmask']:X}
+        mov  edx, eax
+        call 0x{a['fly_check']:X}
+        test eax, eax
+        jz   g0
+        cmp  eax, 3
+        ja   g0
+        mov  eax, 1
+        jmp  g_out
     g0:
-        pop  ecx
         xor  eax, eax
+    g_out:
+        pop  ebp
+        pop  esi
+        pop  ebx
         ret
     """
     # ---- cave_vp: ValidPath epilogue.  bl = vanilla verdict, esi = path; all else dead -----

@@ -731,14 +731,16 @@ file carries the specific checklist for its own rows.
   Road and Structure exempt, Flying untouched; applies in tactical combat too (AoWTCPCK builds its
   tables through the same function); race cave `0x55851880` from the entry of
   `CreateMovePointTable` (`0x5577FDC4`, 6 B). Surgical `--undo`.
-- **Flying between map levels** (`build_fly_levels.py`) — 🔨 APPLIED, UNTESTED (2026-09-26).
-  Clicking Flying flies the selected units one level up (Sky/Chasm above) or down (standing on
-  Sky/Chasm, no Earth/Rock below); each needs 4 MP and spends all, with a wind gust; a
+- **Flying between map levels** (`build_fly_levels.py`) — applied 2026-09-26; the click crashed until
+  2026-10-13 (`fly_dir` passed a level index as the map container). Flying is clickable only when a
+  flight is possible (2026-10-13). Clicking Flying flies the selected units one level up (Sky/Chasm
+  above) or down (standing on Sky/Chasm, no Earth/Rock below); each needs 4 MP and spends all, with
+  a wind gust; a
   Yes/No/Cancel prompt when both are valid. A flying transport (Air Galley, Dwarven Balloon, Guild
   Zeppelin) carries non-flyers: only the transport is checked (2026-09-27). Card text row in
   `build_pfs_typos.py`.
   VMT `+0x98`/`+0xB4` of `TMovementAbility`, `ValidPath` epilogue `0x55746979`, `MovedTo` clamp
-  `0x55780343`; cave `0x5584F800`, BSS `0x558FAA30..0x558FAAF8`. Surgical `--undo`. Checklist:
+  `0x55780343`; cave `0x5584F800`, BSS `0x558FAA30..0x558FAAF8`. Surgical `--undo`. Record:
   `09-terrain-movement.md`, "Flying between map levels".
 - **World-map group move: plan front-first, pass over parties that are leaving**
   (`build_group_move_map.py`) — 🔨 APPLIED, UNTESTED (2026-09-25). Parties are planned in route-length

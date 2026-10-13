@@ -1584,7 +1584,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x5584F200` | `build_command_resroll.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x100` (4 caves, ends `0x5584F2C5`) | command roll 2 = commander RES. Hooks `0x557681ED`, `0x55768270`, `0x55768171`, `0x557680EE` (6 B each) |
 | `0x5584F300` | `build_monster_slaying.py` + `monsterslay.py` (🔨 APPLIED, UNTESTED 2026-09-26) | **exclusive**, `0x100` (`ms_test` `0x5584F300` 89 B, `cave_sdv` `0x5584F380` 38 B, `cave_cus` `0x5584F3C0` 34 B) | Monster Slaying DAM + DEF (`02-abilities-modded.md`). Hooks `0x55766564`, `0x55767904` (5 B each). **⚠ COUPLED**: `ms_test` is also called from `build_assassin.py`'s `cave_melee`/`cave_melee3` and `build_ranged_slayers.py`'s `cave_rng`; all three scripts install it zero-or-ours. Register/rel32 only |
 | `0x5584F400` | `build_firmament_vision.py` (🔨 APPLIED, UNTESTED 2026-09-26) | **exclusive**, `0x40` (`cave_fvis` 26 B) | +3 sight on the Firmament, clamped to 15. Hook `0x55780F79` (6 B, `VisibilityRange` exit incl. `ret`) |
-| `0x5584F800` | `build_fly_levels.py` (🔨 APPLIED, UNTESTED 2026-09-26; relaid out 2026-09-27) | **exclusive**, `0x1000` = `0x5584F800..0x558507FF` (data 692 B + 14 blocks incl. `fly_next` and `cave_warp` `0x55850120`, ends `0x5585015F`; hooks also `0x557EB2CE` 23 B, Warp Party) | Flying between map levels. VMT slots `0x557B7374`/`0x557B7390` (`TMovementAbility` `+0x98`/`+0xB4`, `.reloc` kept), hooks `0x55746979` (6 B, `ValidPath` epilogue), `0x55780343` (19 B, `MovedTo` clamp). **BSS `0x558FAA30..0x558FAAF8`** (runtime clone of `TEnterCaveEventLog`'s VMT + built flag) |
+| `0x5584F800` | `build_fly_levels.py` (2026-09-26; relaid out 2026-09-27 and 2026-10-13) | **exclusive**, `0x1000` = `0x5584F800..0x558507FF` (data 692 B + 14 blocks incl. `fly_next`, the unit-aware `cave_gct` `0x5584FFE0` and `cave_warp` `0x558501B0`, ends `0x558501EF`; hooks also `0x557EB2CE` 23 B, Warp Party) | Flying between map levels. VMT slots `0x557B7374`/`0x557B7390` (`TMovementAbility` `+0x98`/`+0xB4`, `.reloc` kept), hooks `0x55746979` (6 B, `ValidPath` epilogue), `0x55780343` (19 B, `MovedTo` clamp). **BSS `0x558FAA30..0x558FAAF8`** (runtime clone of `TEnterCaveEventLog`'s VMT + built flag) |
 | `0x55850800` | `build_levelset.py` (🔨 APPLIED 2026-09-27; editor half driven live) | **exclusive**, `0x1000` = `0x55850800..0x558517FF` (≈2.3 KB: strings, the popup `levelset` `0x55850980`, `cave_bits`, `repair`, `nm_click`, `nm_apply`, the New Map table, `nm_show`) | The editor's Map Levels popup and the New Map level checkboxes. Reached from `AoWDevEd.exe` only, through `[0x0043289C]` + a link-time difference. **BSS `G_CB 0x558FAEE0..0x558FAEF3`**. Exe side: `0x0042BDD0` (9 B), `0x0042BDDE` (18 B), `0x0042BCB8` (5 B), stubs `0x0042BD01`/`0x0042BD43` in the dead `RemoveMapLevelClick` body, `0x00429A70` (rel32), `0x004034DB` (6 B), and a length-neutral menu-item edit in the live `TMAINFORM` (`.ctp`) |
 | `0x55851800` | `build_cave_flyer_morale.py` (2026-09-27) | **exclusive**, `0x80` (`cave_flymor` 111 B) | flyers lose raw morale underground (−5/−10/−15 on levels 1/2/4), units only, Cave Crawling (id 4) exempt. Hook `0x5577EF9B` in `TAbstractUnit.GetUnitMoraleValue`; call/pop anchor to the THero classref cell `0x55711FAC` |
 | `0x55851880` | `build_race_terrain_move.py` (🔨 APPLIED, UNTESTED 2026-09-27) | **exclusive**, `0x80` (`cave_race` 75 B) | Frostlings on Snow / Azracs on Desert at the Grass cost (`09-terrain-movement.md`). Hook `0x5577FDC4` (6 B, `CreateMovePointTable` entry; prologue replayed in the cave). Also writes the Desert/Snow rows of movement tables 0/3/4/5/7. Register/rel32 only |
@@ -5235,7 +5235,10 @@ loudly-failing variant (`open(GAME/"AoW.exe")` → `FileNotFoundError`) is the h
 `zigexe.EXES` for "the mod game", `zigexe.ALL_EXES` for "any mod binary".
 
 ⚠ **One `re_tools` script names an old exe CORRECTLY — do not sweep it into this.**
-`mod_manifest.py:85` lists `AoWEd.exe` in `NEVER_SHIP`, a filename to exclude from the payload.
+`mod_manifest.py` lists `AoWEd.exe` in `NEVER_SHIP`, a filename to exclude from the payload.
+`AoWDevEd.exe` joined it 2026-10-11 (owner ruling): it is the editor scripts' patch source, players
+run the derived `AoWzEd.exe`, and it had shipped only because nobody withheld it. Being ADDED (not
+in the hashdb), it is withheld without appearing in the WITHHELD report.
 (`AoWEd.exe` no longer exists in the overlay at all — only the root's stock copy, md5
 `f45bebf5627d5900cd39da45d21eb792`, MATCH against the GOG hashdb.)
 
@@ -5690,6 +5693,22 @@ would install a release over the working tree, and it now also registers the tas
   install a release over the live data root.
 
 ⚠ Installs from before 2026.09.29 have no task; each player updates once by hand.
+
+⚠⚠ **A background install that failed was invisible until 2026-10-11.** `-Scheduled` started Setup
+and exited. When a player's Defender blocked `AoWDevEd.exe` mid-install (`Bearfoos.B!ml`), Auto mode's
+`/SUPPRESSMSGBOXES` answered the per-file Abort/Retry box with **Abort**, Setup rolled back and exited
+**5**, and the next check simply tried again. Now `Install-Update` passes `/LOG=Ziggurat\update.log`,
+waits, and on a non-zero exit — or exit 0 with a skipped file — shows a warning box quoting the log's
+last message-box block (the file and Windows' reason; Setup logs in English, Windows' reason is
+localised). A downloaded installer that vanishes at once, or one Windows refuses to start, is loud too;
+an unreachable GitHub stays silent. Waiting is safe only in `-Scheduled`: PowerShell has parsed the
+whole script, whereas `ZigUpdater.cmd`'s cmd reads its batch file as it runs, so the hand-run path
+still hands off. Tested against a `/DTestNoRegistry` build in a fake tree: a clean run shows nothing;
+a destination locked by another process gives exit 5 and the box — through Restart Manager's
+"unable to close applications" block by default, or the file's `DeleteFile … code 32` block with
+`/NOCLOSEAPPLICATIONS`. Not reproduced: an antivirus block itself, and the Skip path (it needs a click).
+⚠ It reaches a player only once they have installed a release that carries it: the update INTO that
+release still runs their old script.
 
 ### ⚠⚠ `createvalueifdoesntexist` made the install location unfixable — removed 2026-09-15
 

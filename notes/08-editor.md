@@ -2092,8 +2092,14 @@ the picture keeps its proportions, and the editor asks first.
   shell32 comes through VCL30's `LoadLibraryA`/`GetProcAddress` by the rebase-delta idiom
   (`[0x00432224]` − `0xE36E4`). Save → `WinExec` → wait → Close → LoadMap is the New-generated-map
   route (§9); markers `Scenario\Custom\zPngImport.{done,fail,cancel}`.
-- ⚠ **`cmd /c` quoting:** a quoted `.bat` path plus a quoted argument must be wrapped once more,
-  `cmd.exe /c ""<bat>" "<picture>" <n>"`, or cmd strips the wrong quotes.
+- ⚠ **No `cmd.exe` in the editor.** The command is `"<bat>" "<picture>" <n>`, run directly as
+  §9 runs `devedgen.bat`. v1 wrapped it in `cmd.exe /c "…"`; in the 10.10b update a player's
+  Defender flagged the editor as `Trojan:Win32/Bearfoos.B!ml` (a cloud ML guess; a local
+  Defender scan and VirusTotal's hash lookup found nothing), and the shell string next to a
+  `WinExec` resolved at runtime is the likeliest feature it keyed on. Removed 2026-10-11 —
+  whether that clears the guess is unproven. `WinExec` on a `.bat` and a picture, both under
+  paths with spaces, delivers `%1` = the quoted picture and `%2` = the level whether the `.bat`
+  path is quoted or not.
 - ⚠ **Space:** no section-header slot is left and `.nmg` cannot grow without breaking
   `build_deved_itemhpmv.py`'s exact-size state test. The code lives in the dead TMAINFORM DFM master
   in `.mtb` (file `0x108000`, VA `0x0050CA00..0x0050D1FF`), clear of `\x08MaxValue\x02` and `TPF0`;

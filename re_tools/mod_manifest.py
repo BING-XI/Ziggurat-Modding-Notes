@@ -104,6 +104,11 @@ SHIP_ONLY = {
 # by accident here.
 NEVER_SHIP = {
     "AoWEd.exe",           # superseded by AoWDevEd.exe (owner ruling 2026-09-07)
+    # The editor scripts' patch source; build_zigeditor.py derives AoWzEd.exe from it (same
+    # code, purple icons), and players run AoWzEd.exe. It shipped only because it was never
+    # withheld, and it is the copy a player's Defender flagged (Bearfoos.B!ml) in the 10.10b
+    # update. Owner ruling 2026-10-11. Old installs keep a stale copy; nothing launches it.
+    "AoWDevEd.exe",
     # The manual is hosted on GitHub Pages; shipping it too put 28 MB (22% of the download)
     # into every install to duplicate a web page. Owner ruling 2026-09-11.
     "Ziggurat Manual.exe",

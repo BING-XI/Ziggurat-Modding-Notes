@@ -31,7 +31,7 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Chasm & Sky — structures: no ground under a pad on Water/Lava/CaveWater/Chasm | ✅ CONFIRMED WORKING (2026-09-20) | `build_pad_transparent.py` | Release/Release.hss + 6 ILBs |
 | **Firmament map level** — a 4th map level (index 3) filled with SKY terrain `0x0E`; surface-like vision, global-target spells, storm spells and Bird's View, `TCave.PlaceHX` guarded. Full record in `11-engine-internals.md` §"Firmament map level" | 🔨 APPLIED, UNTESTED (2026-09-06, v2) | `build_maplevel4.py` (+ in-place re-tunes of `build_shipyard_income.py`, `build_waterheal.py` v6; UI half `build_skylevel_ui.py`) | AoWEPACK.dpl + AoWz.exe |
 | **Abyss map level** — a 5th map level (index 4), an ordinary cave level below Depths; caves link Depths↔Abyss through the level order instead of level±1. Full record in `11-engine-internals.md` §"Abyss map level" | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_maplevel4.py` v3 (+ in-place re-tunes of `build_skylevel_ui.py` v4, `build_deved_levelnav.py` v2, `build_shipyard_income.py`, `build_townquake_retune.py`) | AoWEPACK.dpl + AoWz.exe + AoWDevEd.exe → AoWzEd.exe |
-| Flying between map levels — click Flying to fly the party up/down; Sky/Chasm rule, all movement spent | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_fly_levels.py` | AoWEPACK.dpl |
+| Flying between map levels — click Flying to fly the party up/down; Sky/Chasm rule, all movement spent; clickable only when a flight is possible | 🔨 APPLIED (2026-09-26) · broke in game (AV on click), fixed 2026-10-13 | `build_fly_levels.py` | AoWEPACK.dpl |
 | Terrain rolls draw from the synced RNG (3 sites) | 🔨 APPLIED, UNTESTED (2026-08-31) | `build_rng_lockstep.py` (owned by the RNG/core-engine doc; two of the three sites are caves this file covers) | AoWEPACK.dpl |
 | Ice Storm: Lava → Wasteland + per-proc gate | 🔨 APPLIED, UNTESTED — base redirect + 50% skip ✅ confirmed 2026-07-07. Since 2026-09-25 each proc **takes effect** 25% of the time (owner ruling; one byte, `0x5580DB4E` `je`→`jne`) | `build_icestorm_lava.py` — **⚠ never run `--apply` again**, see below; the rate flip is `build_icestorm_gate25.py` | AoWEPACK.dpl |
 | Raise Terrain: lava → 50% dirt, no mountain (surface) | ✅ CONFIRMED WORKING (2026-07-08) | `build_raiseterrain_lavadirt.py` | AoWEPACK.dpl |
@@ -1499,12 +1499,21 @@ party's movement.
 
 ## Flying between map levels
 
-🔨 **APPLIED, UNTESTED (2026-09-26).** Owner's design. `build_fly_levels.py` (its docstring holds
-the addresses, cave layout and both engine gates). `AoWEPACK.dpl` only; no exe patch.
+Owner's design, applied 2026-09-26. `build_fly_levels.py` (its docstring holds the addresses,
+cave layout and both engine gates). `AoWEPACK.dpl` only; no exe patch.
+
+⚠ **Broke in game until 2026-10-13:** `fly_dir` called `TMapContainer.GetField` with the target
+level index still in EAX instead of the container `[map+0x10]`, so every click that found a
+reachable level died in `HSEPack.dpl` at `0x55608D88` reading *level + 8* (Caverns: address 9).
+The move half (path, `MoveArmyEx`, prompt, ValidPath widening, MP drain) first runs with that fix.
 
 - **Click Flying** (unit banner icon or unit window Use button) to fly the whole party one level up
-  or down at the same x,y. Level order, top to bottom: Firmament 3, Surface 0, Caverns 1, Depths 2,
-  a future Abyss 4 (table rows already present; inert until the map has a fifth level).
+  or down at the same x,y. **Flying is clickable only when the flight would succeed now** (owner
+  ruling 2026-10-13): pale row, Use button and front of the banner only then; otherwise it is
+  listed like a passive ability. `cave_gct` reads the owning unit that every `GetControlType`
+  caller passes in EDX and runs the same `fly_check` as the click. Level order, top to bottom:
+  Firmament 3, Surface 0, Caverns 1, Depths 2, a future Abyss 4 (table rows already present; inert
+  until the map has a fifth level).
 - **Up** needs Sky or Chasm on the hex above. **Down** needs Sky or Chasm on the hex you stand on
   and anything but Earth, Rock or the border ring below, so every down-flight reverses an allowed
   up-flight.
@@ -1527,7 +1536,9 @@ the addresses, cave layout and both engine gates). `AoWEPACK.dpl` only; no exe p
   MP, spends all)." — a row in `build_pfs_typos.py`. The record's last field now sits at offset
   246 of the u8 ceiling 255, so that text can grow by only 9 more bytes.
 - One valid direction → it flies at once. Both → a Yes/No/Cancel prompt ("Fly up to the X? Choose
-  No to fly down to the Y."). Refusals put a message in the unit window; the banner stays silent.
+  No to fly down to the Y."). Double-clicking a Flying row that is not clickable still runs
+  `Activate` (`TUnitWindow.UseAbility` has no clickability gate), which puts the refusal in the unit
+  window.
 - The move is vanilla cave travel: a two-node path through `MoveArmyEx`, so multiplayer sync,
   animation, fog and merging are the engine's. `TMoveControl.ValidPath` is widened to accept a
   two-node vertical path that obeys the terrain rule, and `TAbstractUnit.MovedTo` charges 127
@@ -1540,26 +1551,6 @@ the addresses, cave layout and both engine gates). `AoWEPACK.dpl` only; no exe p
   selection from `TSelectedArmy.GetArmyHS([map+0xD8])`.
 - The AI never uses it; its pathfinder has no vertical links outside caves.
 - Revert: `build_fly_levels.py --undo` (surgical).
-
-In-game checklist:
-1. On a map with only one level, Flying is not clickable. On a multi-level map it is, on both the
-   unit banner and in the unit window.
-2. A flying party on the Surface under Firmament Sky: clicking Flying flies it up at once with a
-   wind gust. The view follows to the Firmament, and the party has no movement left.
-3. Back down: on the Firmament over Surface grassland it flies down at once. Over Surface Earth or
-   Rock the unit window says "There is nowhere to fly from here."
-4. A party standing on Surface Sky with Firmament Sky above and cave floor below: the prompt
-   appears; Yes goes up, No goes down, Cancel does nothing.
-5. Select a non-flyer along with a flyer (no transport): "Every selected unit must be able to
-   fly." Select a flyer with under 4 MP: "Every selected unit needs 4 movement points." A Dwarven
-   Balloon with non-flyers selected flies them all.
-6. Two flyers, one with 0 MP: select only the other and click Flying — it alone changes level and
-   the unselected one stays put.
-7. Target hex holding an enemy army: refused. Holding your own army: they merge (or the move is
-   refused if the stack would exceed eight).
-8. Multiplayer or hotseat: the other seat sees the party arrive on the new level, with no desync.
-9. Save and reload after flying: the party is on the new level with zero movement.
-10. Walk through an ordinary cave entrance: the cost is unchanged (the drain must not fire).
 
 ## Earth and Rock block sight
 
