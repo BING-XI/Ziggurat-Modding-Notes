@@ -56,7 +56,7 @@ at length below because it exists nowhere else; the build script itself only sho
 | Arena: empty-state map sprite + notice (part of G1/G2) | 🔨 APPLIED, UNTESTED (2026-07-31) | `build_arena.py` | `AoWEPACK.dpl` |
 | Arena: dialog re-layout, three category rows | 🔨 APPLIED, UNTESTED (2026-08-02) | `build_arenadlg.py` | `AoWz.exe` |
 | Arena: tactical combat | SPECULATIVE — hardening contract designed (§5.5), nothing built | — | — |
-| Shipyard water income (1 gold / 5 hexes, divided per water body) | ✅ CONFIRMED WORKING (2026-08-26) · 🔨 v2 MAX_LEVELS=4 re-tune APPLIED, UNTESTED (2026-09-06) | `build_shipyard_income.py` | `AoWEPACK.dpl` |
+| Shipyard water income (1 gold / 12 hexes, divided per water body, +25 % when idle) | ✅ CONFIRMED WORKING (2026-08-26); rate 12 + idle bonus 2026-10-14 | `build_shipyard_income.py` | `AoWEPACK.dpl` |
 | Shipyard income display (map panel gate + Realm-window row) | ✅ CONFIRMED WORKING (2026-08-26) | `build_shipyard_income_display.py` | `AoWz.exe` |
 | Terror — one cast per combat, per side | 🔨 APPLIED, UNTESTED (2026-08-31, v2 per-side) | `build_terror_oncepercombat.py` | `AoWEPACK.dpl` |
 | AI combat-spell anti-spam — Turn Undead / Terror / Slow / Ooze | reference only — a third party's confirmed build; no build script here, nothing applied | — | — |
@@ -2194,11 +2194,11 @@ no binary patch.
 
 ---
 
-## 6. Shipyard water income — ✅ CONFIRMED WORKING (2026-08-26), both halves · 🔨 v2 MAX_LEVELS=4 re-tune APPLIED, UNTESTED (2026-09-06)
+## 6. Shipyard water income — ✅ CONFIRMED WORKING (2026-08-26), both halves
 
-A shipyard produces **1 gold per 5 hexes** of contiguously adjacent water (`HEXES_PER_GOLD`, a single
-named constant; shipped at 10, halved to 5 the same day at the user's request — one byte,
-`0x55822102` `0A`→`05`), divided between every un-razed, fully-built shipyard adjoining that body.
+A shipyard produces **1 gold per 12 hexes** of contiguously adjacent water (`HEXES_PER_GOLD`, a single
+named constant and the immediate of the `mov ecx` before `entry`'s first `div ecx`; shipped at 10, 5
+from 2026-08-26, 12 from 2026-10-14), divided between every un-razed, fully-built shipyard adjoining that body.
 Razed and under-construction shipyards are excluded entirely from both the divisor and the payout;
 independent/unflagged shipyards **dilute the pot but collect nothing** — ruled deliberate, not a bug
 to "fix" in the cave. A shipyard touching more than one distinct water body gathers a divided share
@@ -2208,7 +2208,11 @@ from **each** one it touches.
 pot(region)   = area(region) div HEXES_PER_GOLD
 share         = pot div N                              (N = qualifying shipyards on the body)
 income(yard)  = SUM over every distinct region the yard touches of that region's share
+paid(yard)    = income + Round(income / 4)  when idle, else income          (§6.7)
 ```
+
+A body of fewer than 12 hexes pays 0, and the threshold for one shipyard to collect anything is
+`12 × N` hexes (the pot is split after it is floored).
 
 ### 6.1 Why this was cheap: the whole income pipeline already existed
 
@@ -2228,9 +2232,8 @@ five modules found consumers that change real **gameplay**, not just display: `A
 production-screen control, flips the Realm-window activity column to "Producing Merchandise", and
 opens a latent nil-dereference in `ListIncomeInfo`'s gate. Repointing `GetIncome` (`+0x1F4`) instead
 and leaving `GetBaseIncome` (`+0x22C`) at its vanilla zero switches all of that off at once, because
-every one of those sites reads `+0x22C` specifically. It also incidentally replaces
-`TProductionPlace.GetIncome`'s own `+25%`-when-idle branch outright — the reason the shown number is
-stable instead of visibly dropping when a shipyard starts building a ship.
+every one of those sites reads `+0x22C` specifically. Replacing `TProductionPlace.GetIncome` also
+replaces its `+25%`-when-idle branch; the cave re-implements it (§6.7).
 
 **The apparent cost of this choice was not actually a cost.** `AoW.exe`'s map structure-info panel
 *gates* the gold row on `GetBaseIncome` but *prints* `GetIncome` — the gate and the value it protects
@@ -2322,19 +2325,34 @@ Recorded here because the shipyard feature shares the same terrain-adjacent cave
 same author considered and rejected the identical shortcut for its own cache-invalidation needs
 (landing on the day-counter key in §6.3 instead).
 
-### 6.6 v2 re-tune — `MAX_LEVELS = 4` for the Firmament map level — 🔨 APPLIED, UNTESTED (2026-09-06)
+### 6.6 Level ceiling — `MAX_LEVELS = 8`
 
-In-place cave rewrite, not a revert-and-reapply: the entry guard and the three `build_t1` loop
-bounds now read `cmp edx, 4` at `0x55822174` / `0x55822390` / `0x558224C4` / `0x55822540`, and the
-per-level BSS header re-lays to hold four slots instead of three (`HDR_END` now `0x558FAB78`, 120 B
-of the `0x80` window — see `11-engine-internals.md` §"The two in-place cave re-tunes" for the full
-field-by-field shift; not duplicated here). Cave length unchanged. Each iteration still re-gates on
-the map's own live level count, so a 3-level map's fourth slot is written zero with no
-`GetMapLevel` call, and a map with fewer than 4 levels is unaffected.
+The entry guard and `build_t1`'s three per-level loops are bounded by `MAX_LEVELS`, and the BSS
+header holds three `MAX_LEVELS`-slot arrays (`HDR_END` `0x558FABA8`, `0xA8` of the `0x100` window).
+8 since 2026-09-27, above the editor's own z ≤ 7 ceiling, so it no longer tracks the cap byte at
+`0x5577768E`. Each iteration re-gates on the map's live level count. History of the 3 → 4 → 8
+re-lays: `11-engine-internals.md` §"The two in-place cave re-tunes".
 
-**In-game check (needs the user):** on a 4-level map, income from water on every level is counted
-(a Firmament lake must not merge with a surface one); on a 3-level map, shipyard income is unchanged from
-before this re-tune.
+### 6.7 The idle bonus — re-implemented in `entry` (2026-10-14)
+
+Vanilla `TProductionPlace.GetIncome` (`0x557BE500`, byte-identical live and pristine) adds
+`Round(base × 0.25)` unless the production control `[s+0x44]` has status `[+0x20] = 2`
+(`pcsProducing`; RTTI `TProductionControlStatus` `0x5570A42C`: 0 `pcsIdle`, 1 `pcsWaiting`) with a
+non-Merchandise item (`[item+8] ≠ 0x0A`) at the head of its queue (`TProductionQueue.GetItem`
+`0x5575C80C` on `[+0x14]`, index 0). `entry` applies the same test to the summed water income, after
+both divides. It omits vanilla's `GetMagicSphere() == 8` test (`TShipyard` inherits `mov al,8`) and
+adds two guards vanilla lacks, a nil control and a nil head item, both meaning no bonus.
+
+Round is integer round-half-to-even (`q = g shr 2`, +1 when `g and 3` is 3, or 2 with `q` odd),
+which is `System.@ROUND` at the default FPU control word: income 1–2 get +0, 3–5 +1, 6 +2, 10 +2.
+`--sim` checks the ladder against Python's `round()` for 0–4999; `verify_cave` check 9 asserts the
+status test, the Merchandise test, the ladder and the single `GetItem` call on the assembled bytes.
+Both display surfaces print `GetIncome`, so the panel and the Realm row show the bonus with no
+change to `build_shipyard_income_display.py`.
+
+Unproven: the treasury's cached income follows a status change only when something calls
+`TPlayer.UpdateIncome`. `TProductionPlace.Update` does, unguarded, which is the path vanilla's own
+bonus relies on.
 
 ---
 

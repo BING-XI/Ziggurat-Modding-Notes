@@ -158,6 +158,7 @@ LSTRARRCLR=0x55701148          # eax=@first, edx=count
 RING=0x60D000; MAGIC=0x31474C43   # 'CLG1'
 GVAR_INSTANCE=0x45B2E0            # our TCombatLogWin instance (exe global)
 MEMO_OFF=0x48; FSTRINGS_OFF=0x118; ADD_V=0x34
+SCROLL_FLAG=0x70                  # form byte TChatWindow.ChatMemoUpdate reads (scroll to bottom)
 SLOT_SZ=128; SLOTS_N=64           # retained only for the wire-format cross-check below
 def _check_wire():
     """The ring is a wire format shared with the two combat-log scripts. A silent mismatch reads every
@@ -434,6 +435,8 @@ def emit(lit_va):
             mov  edx, [ebp-0x04]
             mov  ecx, [eax]
             call dword ptr [ecx+0x{ADD_V:X}]
+            mov  eax, [0x{GVAR_INSTANCE:X}]
+            mov  byte ptr [eax+0x{SCROLL_FLAG:X}], 1   /* scroll to the newest line: build_combatlog_autoscroll.py */
         _clean:
             lea  eax, [ebp-0x10]
             mov  edx, 4

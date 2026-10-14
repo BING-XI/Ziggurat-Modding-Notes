@@ -298,9 +298,10 @@ Release/Ability.pfs
         Shield's hero level-up cost is 8, the same as Parry, whatever this script stores. The
         cave's `mov dword [eax+0x14],6` is decorative from here on. Changing the number is an
         AoWDevEd edit, not a script edit.
-      * record 186 carries NO tag 5, so Shield has no info-card description. Adding one is a
-        record-LENGTH change, so it must go through AoWDevEd -- never through this script,
-        which only ever rewrites fixed-width values in place.
+      * tag 5 (the info-card text) is owned by build_pfs_typos.py (row for record 186, which
+        appended "75% proc chance in auto combat." 2026-10-14). A text edit is a record-LENGTH
+        change -- never through this script, which only rewrites fixed-width values in place
+        and finds tag 9 through the record directory, so it survives the text moving it.
 
 ⚠ THE HERO LEVEL-UP COLUMN IS NOT THIS SCRIPT'S TO WRITE -- AND EDITING herodlg_cats.py IS NOT
   ENOUGH. Shield is hero-buyable, so it needs a column in the level-up dialog. The category map

@@ -706,9 +706,10 @@ throughout:
 | `TCombat.Execute` (the per-combat re-anchor, below) | `TSetupControl.hPickMap`, `TEmailGameControl.*`, `FillWithRandomUnits` — pre-game / map generation |
 | every AI `Process` / `ExecuteAI` | `TAoWWaterHexagon.Create/ShowDynamic` — tile art phase |
 
-### 4.4 ⭐⚠ Inside tactical combat, RAW is the correct answer and SYNCED is wrong
+### 4.4 ⭐⚠ Combat: where the raw stream is anchored, and what a synced draw does to it
 
-`TCombat.Execute @0x557282C8` is nothing but one line:
+**Auto-resolve.** `TFastCombat.Execute` calls `TCombat.Execute @0x557282C8` (`+0x1B`), which is nothing
+but one line:
 
 ```asm
 557282C8  mov  edx, 0xFFFFFF
@@ -718,10 +719,29 @@ throughout:
 557282DD  mov  [edx], eax            ; System.RandSeed := that
 ```
 
-A battle re-anchors `System.RandSeed` from **one** synchronised draw and then runs the whole fight
-off raw draws, deterministically, on every peer. Calling the synced generator mid-combat is wrong
-twice over: `GetSynchronised` is false there (modal popup, returns 0), and it would advance
-`[map+0x230]` — the very value the desync comparator watches.
+The fight then runs off raw draws (`HitRole`, `ExecuteDamageRole`), deterministically on every
+peer as long as the draw count matches (§4.5). The context stays synchronised: vanilla itself draws
+synced mid-fight at `TBreathAbility.fcExecuteCombatCommand 0x5576F154`,
+`TRoundAttackAbility.fcExecuteCombatCommand 0x55769626` and `TCombatSpell.fcExecuteCombatCommand
+0x557F79B0`.
+
+**Tactical (AoWTCPCK).** TE code is synchronised: AoWTCPCK's 74 SYNC sites sit in 12 functions,
+6 of them `MapFieldMsgProc` handlers or `CombatFire.CreateFire`, the rest TE methods
+(`TCMeleeMoveTE.ExecuteStrike`, `TCAbRangedTE.Execute`/`NextStrike`, `TCAbTouchMoveTE.LastMove`,
+`TCEndTurnTE.Execute`, `TCombatMoveTE.DefaultMove`). Between TEs the per-frame cosmetic raw draws
+(`TfxHS.NewFrame`, `TTacticalCombatUnitHS.NewFrame` …) move the raw seed differently on every
+machine, so `TCMeleeMoveTE.ExecuteStrike @0x00409B39` re-anchors `System.RandSeed` from a synced draw
+before **each** strike. A raw draw in tactical TE code is replicated only straight after such a
+re-anchor (e.g. `HitRole` under `CreateStrikeCA`); anywhere else in a TE (e.g. `LastMove`) use P1.
+
+**⚠ The raw-seed side effect of a synced draw.** `TAoWHSMap.Random` loads `System.RandSeed` from
+`[map+0x230]`, draws, writes the new seed back to the map and **never restores `RandSeed`**
+(`0x55778298`..`0x557782B4`). Mid-fight in auto-resolve that rewinds the raw stream onto the synced
+one, so the following raw combat rolls repeat patterns from it — not a desync, a correlation. The
+three vanilla sites above accept that; a cave should not. Save `[[0x558FB720]]` (the IAT cell for
+VCL30 `System.RandSeed`, reached PIC through the call/pop anchor) before the call and restore it
+after: the synced stream advances by one, the raw stream does not move. Worked example:
+`build_lethargy.py`'s `cave_roll`.
 
 That single-draw re-anchor is also the sanctioned **bridge** when a cave must use raw draws in a
 synchronised context because it calls an engine routine that draws internally:
@@ -839,6 +859,7 @@ inspection). Re-measured 2026-09-23 with every other module diffed against its r
 | `build_ai_sitesearch.py` | none | neither cave draws; the search's own rolls stay inside `ExecuteSearch` on the existing synced stream |
 | `build_ai_itemloot.py` | none | no cave draws; the script's own `selfcheck()` asserts it for call/jmp rel32 **and** bare address constants |
 | `build_minddecay_oos.py` | **none, by construction** | reaches the RNG through `HitRole`, a caller — invisible to this audit, see §4.5 |
+| `build_lethargy.py` (2026-10-14) | **+1** — `0x5584E1EB`, prints `ok` | `Random(map, 2)` for the 50% Haste/Lethargy strike roll, only in the two real `TMeleeRound.Calculate` callers (tactical `TCMeleeMoveTE.LastMove`, auto-resolve `TStrikeAbility.fcExecuteCombatCommand`); P1 with the raw seed saved and restored around the call (§4.4) |
 
 **Wrong generator — fixed by `build_scripts/build_rng_lockstep.py`, 🔨 APPLIED 2026-08-31, NOT YET
 TESTED IN GAME.** A 24-byte `rng_sync` stub at `0x55827000`, three `call` rel32s retargeted,
@@ -861,7 +882,7 @@ Correct as they stand — do **not** "fix" these:
 
 | site | owner | why it is right |
 |---|---|---|
-| `0x5582310E` | `build_shield.py` — auto-resolve arc, `RandInt(4)<3` | inside combat; rides the seed `TCombat.Execute` re-anchored. A synced draw here would trip the guard *and* perturb the sync value. |
+| `0x5582310E` | `build_shield.py` — auto-resolve arc, `RandInt(4)<3` | inside auto-resolve; rides the raw seed `TCombat.Execute` anchored, like `HitRole` beside it (§4.4). |
 | `0x558114E0` | `build_combatlog_dll.py` transparent logging cave | **replays** vanilla's own `ExecuteDamageRole` draw; adds no draw of its own |
 | `0x5580C50E`, `0x5580C52B` | orphan cave `0x5580C500` replacing `SummonSpells.TSummonSpell.SetupSummonSpellTE` | vanilla draws **raw** at the identical spot; the added multi-spawn roll inherits exactly vanilla's property — the TE is populated before submission, so it runs once on the initiating peer only |
 | `0x55814200`, `0x55814495` | `build_arena.py` | the sanctioned bridge — synced re-anchor before `GenerateItem` |
@@ -951,15 +972,16 @@ Q3  Which binary carries the hook site?
         into AoWEPACK.dpl.
       AoWEPACK.dpl / AoWTCPCK.dpl -> Q4.
 Q4  rng_audit.py <module> --functions ; find the hook site's HOST function:
-      host in RAW list, or anywhere inside tactical combat -> P2 COMBAT RAW
+      host in RAW list, auto-resolve, or tactical TE code straight after a
+        synced re-anchor (section 4.4)                       -> P2 COMBAT RAW
       host in SYNC list                                    -> P1 SYNCED DRAW
       host draws nothing -> the roll's SUBJECT decides: replicated state P1, pixels P3.
 ```
 
 | pattern | mechanism |
 |---|---|
-| **P1 SYNCED DRAW** | `AoWE.TAoWHSMap.Random @0x5577827C`, EAX=map EDX=n → 0..n−1. Clobbers EAX/EDX/**ECX**/flags; preserves EBX/ESI. In a DPL cave the `[0x558E9494]` map load needs the `call $+5; pop; sub` anchor. Full ABI: §4.1. |
-| **P2 COMBAT RAW** | `System.@RandInt` via AoWEPACK thunk `0x55701080` (EAX=n). `TCombat.Execute @0x557282C8` re-anchors `System.RandSeed` from one synced draw, then the fight is deterministic. **Draw count is the invariant** — hoist the draw out of any gate, gate only the store (§4.5). |
+| **P1 SYNCED DRAW** | `AoWE.TAoWHSMap.Random @0x5577827C`, EAX=map EDX=n → 0..n−1. Clobbers EAX/EDX/**ECX**/flags; preserves EBX/ESI. In a DPL cave the `[0x558E9494]` map load needs the `call $+5; pop; sub` anchor. Full ABI: §4.1. ⚠ It leaves `System.RandSeed` on the synced stream; inside combat, save and restore `[[0x558FB720]]` around it (§4.4). |
+| **P2 COMBAT RAW** | `System.@RandInt` via AoWEPACK thunk `0x55701080` (EAX=n). `TCombat.Execute @0x557282C8` re-anchors `System.RandSeed` from one synced draw, then auto-resolve is deterministic; tactical TEs re-anchor before each strike instead (§4.4). **Draw count is the invariant** — hoist the draw out of any gate, gate only the store (§4.5). |
 | **P3 COSMETIC RAW** | same thunk, no ceremony. |
 | **P5 RESEED-FROM-STATE** | **vanilla's own reproducibility idiom — prefer it over P4.** `System.RandSeed := f(persisted state)` then ordinary raw draws. Worked sites: `GenerateRazeDefenders @0x5575FD36`, `GenerateRebelUnits @0x557ABCD5` (both hex coords + `map[+0x22C]`), `TCombat.Execute @0x557282C8` (synced draw as the anchor). ⚠ It clobbers the process-global seed — acceptable for a one-shot event, think twice on a UI repaint path. ⚠ Only valid where the draw sequence is fixed in length and order. |
 | **P4 DERIVED HASH** | **this project's invention, not engine practice.** No draw. `build_scripts/rngstd.py` — FNV-1a(salt, keys…) → `fmix32` → multiply-shift. Salt `map[+0x22C]`. Use **only** when P5's order-dependence bites, i.e. the set being decided can shrink between evaluations. Invisible to `--owners`; `rng_audit.py --hash` is what finds it. |
@@ -1550,7 +1572,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x5582E000` | `build_burning_sailing.py` | **exclusive** `0x5582E000`–`0x5582E07F` | sailing units and machines take multiplied Burning damage. Also owns the immediate operand at `0x557BA475` (an existing engine address, not a cave — the tick-rate constant for the DAM/HP gap-fix pass). |
 | `0x5582F000` | `build_lightning_ignites.py` | **exclusive** `0x5582F000`–`0x5582F0FF` | lightning damage can set machines on fire |
 | `0x55831000` | `build_turnundead_resroll.py` | reservation incl. growth slack, `0x100` | Turn Undead's stun/seize roll becomes an opposed Resistance check |
-| `0x55832000` | `build_turnundead_evilcommand.py` | reservation incl. growth slack, `0x400` | an evil caster's Turn Undead seizes the target instead of damaging/stunning it |
+| `0x55832000` | `build_turnundead_evilcommand.py` | reservation incl. growth slack, `0x400` (921 B used since 2026-10-14; `cave_touch` `0x55832350`) | an evil caster's Turn Undead seizes the target instead of damaging/stunning it, never a Leader. Also VMT slot `0x5571FF18` (`TTurnUndeadAbility` `+0x11C` CanTouch, `.reloc` kept) |
 | `0x55834000` | `build_ai_sitesearch.py` | **exclusive**, 8 KB (`0x55834000`–`0x55835FFF`; `cave_execai` then `cave_msgproc`, each 1 KB) | AI players path to, and search, exploration sites |
 | `0x55838000` | `build_ai_itemloot.py` | `0x55838000`–`0x55838600` (6 sub-caves) | AI heroes pick up / equip / upgrade-swap / stash ground items; supersedes `build_ai_itempickup.py` and `build_ai_itemtarget.py` above |
 | `0x5583E000` | `build_raiseterrain_ug_earth.py` | `C_UGDIRT` `0x5583E000` (320 B), `C_SHOWGATE` `0x5583E140` (64 B slot, 22 B used) | Raise Terrain works underground, producing temporary earth. `C_SHOWGATE` is what `0x5582A4E0` jumps to: it tests the restore-terrain byte `[eax+0x0E]` and the Earth marker `[eax+0x0F] == 7`, then either `jmp 0x5582A4E6` (Grip of Winter's own untouched 14-byte tail → vanilla `Show`) or `jmp 0x5582A4F1` (`ret 4`, draw nothing). See the `0x5582A200` row for the undo ordering this creates. |
@@ -1577,7 +1599,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x5584D8C0` | `build_formation_guard.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x20` (`cave_formation` 19 B) | nil aura owner skips the unit in `TArmy.UpdateFormation`. Hook `0x5578D0DE` (6 B) |
 | `0x5584D900` | `build_group_move_map.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x200` (`cave_order` 143 B, `cave_call` `0x5584D990` 66 B, `cave_over` `0x5584D9E0` ~120 B) | world-map group move. Hooks `0x55792CE5` (8 B), `0x55792D07` (10 B), `0x55790E48` (6 B, `TArmyHS.CanMoveOver` entry). **BSS `G_SEL 0x558FAD10`, `G_IDX 0x558FAD14`** |
 | `0x5584DB00` | `build_weakness.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x400` (`weak_mask`, two strike caves, `cave_strat`, `cave_resist`, six `cave_eff_*`, `cave_reg` `0x5584DD40` 424 B with the seven name literals) | Weakness abilities `0xB3`–`0xB9`. Hooks `0x557BCDFB` (5 B, registration splice), `0x55726A43`/`0x55726AD8` (6 B), `0x55781B14`/`0x55781B84` (10 B), six effect sites (7 B) **⚠ COUPLED with `build_embrittle.py`**: `S1`/`S2` overwrite the trailing `nop` of Embrittle's 10-byte hooks at `0x55726A3A`/`0x55726ACF` (`0x55726A43`, `0x55726AD8`), so `build_embrittle.py` reads MIXED/FOREIGN while Weakness is installed and its `--undo` aborts. Undo `build_weakness.py` first. The lightning effect hook `0x55781C90` also covers bytes `build_lightning_ignites.py` guards read-only, so that script's dry run aborts "bytes this patch depends on have moved" while Weakness is installed; its installed bytes are unaffected. |
-| `0x5584DF00` | `build_lethargy.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x300` (`cave_moves` 30 B, `cave_str` `0x5584DF20` 125 B, `cave_stru` `0x5584DFA0` 125 B, `cave_cur` `0x5584E020` 55 B, `cave_fcval` `0x5584E060` 166 B, `cave_tcval` `0x5584E110` 166 B) | Slow → Lethargy, and Haste's extra strike (`04-spells-modded.md`). Hooks `0x55724FEE` (5 B jmp), call retargets `0x55767DE7`/`0x55767B15`/`0x557F8868`, `0x5577FF9E` (1 B), `TSlow` VMT slots `0x557F4E98` and `0x557F4E84` (`.reloc` kept). One call/pop anchor for `TFastCombatUnit`'s VMT |
+| `0x5584DF00` | `build_lethargy.py` (🔨 APPLIED, UNTESTED 2026-09-25; 50% roll 2026-10-14) | **exclusive**, `0x300` (`cave_moves` 30 B, `cave_str` `0x5584DF20` 124 B, `cave_stru` `0x5584DFA0` 125 B, `cave_cur` `0x5584E020` 55 B, `cave_fcval` `0x5584E060` 166 B, `cave_tcval` `0x5584E110` 166 B, `cave_roll` `0x5584E1C0` 55 B; addresses pinned, not packed) | Slow → Lethargy, and Haste's extra strike, each a 50% synced roll per side in a real round (`04-spells-modded.md`). Hooks `0x55724FEE` (5 B jmp), call retargets `0x55767DE7`/`0x55767B15`/`0x557F8868`, `0x5577FF9E` (1 B), `TSlow` VMT slots `0x557F4E98` and `0x557F4E84` (`.reloc` kept). Two call/pop anchors (`TFastCombatUnit`'s VMT; `AoWE.AoWHSMap` and the `System.RandSeed` IAT cell `0x558FB720`, saved/restored around the synced draw). ⚠ Keys on the `call Calculate` at AoWTCPCK `0x00409208` and `0x55766FF8`: retargeting either silently turns that round into an estimate |
 | `0x5584E200` | `build_liquidbody.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x200` (`cave_or` 28 B, `cave_burn` `0x5584E220` 37 B, `cave_reg` `0x5584E250` 64 B incl. the name) | Liquid Body `0xBA` (`03-abilities-added.md`). Hooks `0x557BCDC6` (registration splice), `0x5574F80B`/`0x5574F9A3` (6 B each), `0x55781F0D` (5 B). One call/pop anchor |
 | `0x5584E400` | `build_cityrel_scale.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0x100` (`cave_m` 39 B, `stub_neg_esi` `0x5584E430` 20 B, `stub_pos_edi` `0x5584E450` 18 B, `stub_pos_ebx` `0x5584E470` 18 B, `stub_raze` `0x5584E490` 30 B, `stub_razeadj` `0x5584E4B0` 13 B) | Migrate/Loot/Raze race-relation scaling (`10-ai-and-structures.md` §12.2). Call retargets + imm8 at `0x557A80EB`, `0x557A8243`, `0x557A882E`, `0x557A8918`, `0x557A8970`, `0x557A89D3`, `0x557A8A28`, `0x557AB445` (8 B each), `0x557AB41F` (5 B) |
 | `0x5584E500` | `build_command_bond.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **exclusive**, `0xD00` (19 helpers + 14 host caves + 5 literals, ends `0x5584F0C2`) | command bonds, Commanding, Dispel on thralls (`02-abilities-modded.md`). Hooks `0x557BCDAF` (registration), `0x5576FB4C`/`0x5576FB6C` (entry jmps), `0x55727591`, `0x5578F7BE`, `0x5578F3F8`, `0x5576CB4C`, `0x557E8AE3`, `0x5576D84E` (call retargets), `0x5577F454`, `0x5576CC18` (5 B jmps), `0x5576D824` (5 B call), `TMultiLevelAbility` VMT cells `0x5571E034`/`0x5571E0DC` (`.reloc` kept). **BSS `0x558FAD20`** (1 B, Desert-text flag) |
@@ -1593,6 +1615,7 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x55851E00` | `build_autocombat_roundcap.py` (🔨 APPLIED 2026-09-27) | **exclusive**, `0x40` (`cave_cap` 25 B) | auto-resolve ends after round 200 (`01-combat-maths.md` §13). Retargets the `call ExecuteCombatRound` rel32 at `0x55744A69`; nothing displaced |
 | `0x55852000` | `build_los_terrain.py` v6 (2026-10-04) | **exclusive**, `0x200` (`snapreset`, `scan`, `dds`, `tc_mark`, 265 B) | sight snapshot: fog reads `[field+0x1B]&0x80`, written only by the rebuild. Call retargets `0x557724FB` (TriggerTerrainChangedEvent → `tc_mark`) and `0x55778A6A` (DrawDynamicScene → `dds`). BSS `0x558FAD46` (G_CHK). ⚠ Field bit 31 of `[field+0x18]` is now claimed |
 | `0x5589A000` | `build_razorplate.py` (2026-10-09, v2 2026-10-10) | **exclusive**, `0x800` (12 caves to `0x5589A70F`: `cave_roll`, `cave_s0/s1/s2`, `cave_apply`, `cave_loop`, `cave_rnd`, `cave_show`, `cave_play`, `cave_line` 412 B, `cave_dv` 778 B, `cave_reg`) | Razor Plate `0xBD` (`03-abilities-added.md`). Hooks `0x557BCD98` (registration splice), `0x55767EDA`, `0x55767F3E`, `0x557666FB`, `0x55766806`, `0x557670B9`, `0x5576964E`, `0x55729E34` (35 B), `0x55768045`; VMT slot `0x5571E398` (`TStrikeCA` Play, `.reloc` kept). Owns bits `0xE0` of the strike CA's `+0x18` and the padding byte `+0x16`. AoWTCPCK half `0x0043AE40` |
+| `0x5589A800` | `build_combatlog_wallcrush.py` (2026-10-14) | **exclusive**, `0x400` (literals 196 B, `wc_log` `0x5589A8D0` 511 B) | the combat-log line for a manual-combat Wall Crushing hit (`07-ui.md` §1.10). No hook in AoWEPACK: reached from the AoWTCPCK cave by the rebase delta off the `ExecuteDamageRole` IAT cell. Absolutes are AoWz.exe's only |
 
 ⚠ **`build_spellcast_herotier.py --apply` would abort today.** Its `ZONE_END` is `0x55848000`
 (line 125) and it asserts `cave_end..ZONE_END` is zero, but `build_spellward_rescope.py`'s cave
@@ -1601,7 +1624,7 @@ touch that script. Found 2026-09-07 during the Power Leech scoping; the abort is
 corrupting, and `build_powerleech.py` does not make it worse — its cave starts at exactly
 `0x55848000`, which is where both neighbours' zero-asserts stop.
 
-`0x55852200..0x55899FFF` is reserved, still zero, by `build_sky_anim.py`'s exclusive `SLOT`. Free above `0x5589A800` (and `0x55851E40..0x55851FFF`, and `0x55851B00..0x55851BFF`) (`0x5584F440..0x5584F47F` and `0x5584F780..0x5584F7FF` are small free gaps), all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAA30..0x558FAAF8` (fly-levels popup class clone, `build_fly_levels.py`), `0x558FAB00..0x558FABFF` (shipyard-income header, `build_shipyard_income.py`; 0xA8 B used since its per-level arrays grew to 8 slots), `0x558FAC10..0x558FACFF` (True Seeing list, `build_los_terrain.py` v5), `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move), `0x558FAD20` (command bonds) and `0x558FAD40..0x558FAECF` (Mantle of Gloom, `build_los_terrain.py`) and `0x558FAEE0..0x558FAEF3` (New Map checkboxes, `build_levelset.py`) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
+`0x55852200..0x55899FFF` is reserved, still zero, by `build_sky_anim.py`'s exclusive `SLOT`. Free above `0x5589AC00` (and `0x55851E40..0x55851FFF`, and `0x55851B00..0x55851BFF`) (`0x5584F440..0x5584F47F` and `0x5584F780..0x5584F7FF` are small free gaps), all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAA30..0x558FAAF8` (fly-levels popup class clone, `build_fly_levels.py`), `0x558FAB00..0x558FABFF` (shipyard-income header, `build_shipyard_income.py`; 0xA8 B used since its per-level arrays grew to 8 slots), `0x558FAC10..0x558FACFF` (True Seeing list, `build_los_terrain.py` v5), `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move), `0x558FAD20` (command bonds) and `0x558FAD40..0x558FAECF` (Mantle of Gloom, `build_los_terrain.py`) and `0x558FAEE0..0x558FAEF3` (New Map checkboxes, `build_levelset.py`) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
 ⚠ `aowepack_patch.run` (and `exe_patch.run`) assert that a script's caves do not overlap each other, as well
 as that they fit the slot — added 2026-09-25 after `cave_walls` overran a fixed `cave_atk` address by 3 B.
 The three 2026-09-24 scripts above share the helper module `build_scripts/aowepack_patch.py`.
@@ -1630,6 +1653,7 @@ telling you to run it after an exe patch is stale.):
 | `0x00630000`–`0x00632FFF` | `build_itembanner_hpmv.py` | **exclusive**, its own new RWX section **`.ibnr`** (`0x3000`, appended after `.pyar`; SizeOfImage `0x230000` → `0x233000`). Layout: the grown `TITEMBANNER` DFM at `0x00630000` (9469 B), the relocated 17-entry field table at `0x00632500`, `cave_hpmv` at `0x00632700` (328 B) and `cave_clamp` at `0x00632848` (40 B) — top of blob `0x00632870`, leaving `0x00632870..0x00633000` = **1936 B** spare (measured all-zero, file-backed at file `0x22CA70..0x22D200`). ⚠ **`--apply` zeroes the whole `0x3000` before writing**, so a squatter in that tail is wiped by the next re-apply exactly as `.hcol`'s below-floor squatters would be — take one of the three `.hcol` runs listed below the table instead unless you also add a floor here. ⚠⚠ **This section consumed the LAST free section-header slot in the exe**: the table starts at file `0x1F8` and SizeOfHeaders is `0x400`, so 13 headers end at exactly `0x400`. No 14th section can be added — squat in a zero tail, or `--undo` this first (its `--undo` removes the section and gives the slot back). ⚠ Its relocated field table carries **one absolute with no `.reloc` entry** — the class-table VA `0x00406AA0` at `0x00632502`, whose original at `0x0040697A` did have a HIGHLOW entry. That is precedent, not a defect: `build_herodlg_columns.py` relocates `THeroUpgradeDlg`'s table with the byte-identical shape and is CONFIRMED WORKING, and AoWz.exe is `RELOCS_STRIPPED=0 / DYNAMIC_BASE=0` (DllCharacteristics `0x0000`), so the image always loads at `0x00400000`. **`build_relocfix.py` detects only STALE relocations, never a MISSING one**, so a clean audit says nothing either way. Full record in `07-ui.md` §9 |
 | `0x00633000`–`0x0063CFFF` | `build_taskbar_coords.py` (🔨 APPLIED, UNTESTED 2026-09-25) | **tenant above `.ibnr`'s owner**: grows `.ibnr` `0x3000 → 0xD000` (SizeOfImage `0x233000 → 0x23D000`, file +40 KB, both exes). Grown `TTBWINDOW` DFM `0x00633000` (35923 B), relocated `TTBWindow` field table `0x0063BC60`, data + code `0x0063BFF0..0x0063C1DC`. Hooks `0x450F77` (7 B), `DisplayMouseMove` method entry file `0x51BB0`, VMT field-table/instance-size, resource entry file `0x731A0`. ⚠ `build_itembanner_hpmv.py --undo` refuses while `.ibnr` > `0x3000`: undo this first. `07-ui.md` §16 |
 | `0x0062AA00`–`0x0062AAFF` | `build_unit_ai.py` (v3 2026-10-10) | **exclusive**, `0x100` (162 B used, `.hcol`) — Space / Q key cave reached by retargeting two default `jmp 0x45189C`s of `MapWindowKeyDown`, at `0x4513AB` and `0x451404` (rel32 only), plus the `AutoBtn2Click` / `TCMapSeatedPlayerChanged` published-method wrappers (code dwords at VA `0x457281` / `0x4580B9`). v1's grown `.ibnr` tenancy above `build_taskbar_coords.py` is gone. `07-ui.md` §18 |
+| `0x0062AB00`–`0x0062AB3F` | `build_combatlog_autoscroll.py` (2026-10-14) | **exclusive**, 36 B used, `.hcol` — `cave_chatscroll`, from the 6 B flag test at `0x0041306F` in `TChatWindow.ChatMemoUpdate`: the scroll waits until the memo's re-wrap. Via `exe_patch.py`; `07-ui.md` §1.9 |
 | `0x0062D100`–`0x0062D2FF` | `build_powerleech_ui.py` | **exclusive**, `0x200` (0xA8 B of data + 107 B of code at `0x0062D1A8`) — the Power Leech income row in `TMagicWin` tab 4, hooked from `0x0042CFD9` (7 B). Also `.hcol`, the next clear `0x100`-aligned slot above `build_savedate_format.py`'s cave (last non-zero `0x0062D07A`); the script asserts `0x0062D0A0..0x0062DFFF` is zero outside its own span. The data half is two Delphi literal AnsiStrings plus a **fake object + 24-slot fake VMT of `xor eax,eax ; ret`** — the name list's `AddObject` object may not be nil, because `PowerSourceListDoubleClick @0x0042D944` and `PowerValueListMouseDown @0x0042D988` deref it unchecked. DLL half is `build_powerleech.py`, cave `0x55848000` |
 | `0x0062A400`–`0x0062A43F` | `build_eventlog_hover.py` | **exclusive**, 22 B used — `cave_evhover`, reached by retargeting the `call SetListOff` operand at `0x0042336A` (4 B, nothing displaced). Skips the event list's scroll-to-newest while `build_wheel_aowint.py`'s hover latch holds it. Patched through `build_scripts/exe_patch.py`; `07-ui.md` §13 |
 | `0x00611EE0`–`0x00611FFF` | `build_tierresearch_btnfix.py` (v2 2026-10-03) | **exclusive**, `.tres` slack above `build_tierresearch_exe.py`'s blob (32 B slot table + 151 B code at `0x00611F00`), hooked from `0x0042F2DC` (6 B). ⚠ Coupled to `cave_layout`: it repairs the zero cast-button heights that cave stores, so its `--undo` re-breaks the cast book |
@@ -1650,7 +1674,7 @@ declares the whole `0x100` exclusive):
 
 | run | size | note |
 |---|---|---|
-| `0x0062AB00..0x0062B000` | 1280 B | above `build_unit_ai.py`'s `0x0062AA00..0x0062AAFF` (2026-10-03), itself above `build_magictab_tiername.py`'s `0x0062A520..0x0062A9FF` (2026-09-27), itself above `build_customize_name.py`'s, `build_magictab_refresh.py`'s and `build_eventlog_hover.py`'s slots, below the taskbar cave |
+| `0x0062AB40..0x0062B000` | 1216 B | above `build_combatlog_autoscroll.py`'s `0x0062AB00..0x0062AB3F` (2026-10-14), itself above `build_unit_ai.py`'s `0x0062AA00..0x0062AAFF` (2026-10-03), itself above `build_magictab_tiername.py`'s `0x0062A520..0x0062A9FF` (2026-09-27), itself above `build_customize_name.py`'s, `build_magictab_refresh.py`'s and `build_eventlog_hover.py`'s slots, below the taskbar cave |
 | `0x0062B300..0x0062C000` | 3328 B | above `build_error_detail.py`'s exclusive `0x0062B100..0x0062B2FF` (2026-10-10: `fc_create`, the fast-combat DrawSurface exception carries the original fault), itself above `build_taskbar_icon.py`'s `0x0062B000..0x0062B0FF` |
 | `0x0062C400..0x0062D000` | 3072 B | above `build_pbem_leadersetup.py`'s exclusive `0x0062C000..0x0062C3FF` (claimed 2026-09-23 out of the former 7936 B run) |
 | `0x0062D213..0x0062E000` | 3565 B | `.hcol`'s real tail, above `build_powerleech_ui.py`'s last byte `0x0062D212` — **not** everything from `0x0062D000`, which is that script's own cave |
@@ -1764,6 +1788,7 @@ as AoWEPACK applies):
 | `0x0043AC00` | `build_wallcrush_dam.py` (AoWTCPCK half) | manual-combat Wall Crushing damage = attacker DAM. Call retarget `0x40A27D` (`LastMove` → `ExecuteDamageRole` thunk), `th_lastmove` 34 B, PIC; zone **`0x43AC00`–`0x43AC3F`** reserved to this script |
 | `0x0043AC40` | `build_spell_unit_target.py` | single-unit spells refuse an empty hex, cursor included (`04-spells-modded.md`, "Lethargy"). Call retarget `0x41F59C` (`MouseDownEvent` → `ExecuteMoveSelection`), hook `0x41F8AF` (8 B, `UpdateMoveCursor`); `pred` 270 B, `cave_click` `0x43AD50` 84 B, `cave_cursor` `0x43ADB0` 48 B, PIC (one anchor for `0x46C064`); zone **`0x43AC40`–`0x43AE3F`** reserved to this script |
 | `0x0043AE40` | `build_razorplate.py` (AoWTCPCK half) | Razor Plate in manual combat (`03-abilities-added.md`): melee round ends when either combatant falls, flinch and blood on a cut striker, nil-safe `SetAction` and free-swing wait (a dead unit's HS is freed). Hooks `0x4096CD`, `0x409726` (15 B each), `0x4236E0` (6 B, `SetAction` prologue), `0x408BE5` (23 B), `0x408C39` (19 B), `0x40AF2C`, `0x40A5B1` (11 B each); 6 caves, register-only; zone **`0x43AE40`–`0x43B03F`** reserved to this script. Next free `0x43B040` |
+| `0x0043B040` | `build_combatlog_wallcrush.py` (AoWTCPCK half) | manual-combat Wall Crushing in the combat log. Hook `0x40A282` (6 B, `LastMove` after the damage call), `cave_wcl` 67 B, PIC; zone **`0x43B040`–`0x43B0BF`** reserved to this script |
 
 **AoWTCPCK.dpl BSS** (VA `0x46C000`, VirtualSize `0xA1`, no file bytes): the rest of the page,
 `0x46C0A1`–`0x46CFFF`, is loader-zeroed and writable — mutable state only, reached PIC.
@@ -5864,7 +5889,7 @@ for P in "$USERNAME" "$(git config --global user.name)" "$(git config --global u
 done
 ```
 
-The third loop exists because `$USERNAME` (`<user>`) and the old git identity (`<git-name>`, a gmail
+The third loop exists because `$USERNAME` (`<user>`) and the old git identity (`<git name>`, a gmail
 address) do not contain each other: on 2026-09-14 both username scans came back clean while the
 real name and e-mail sat in `gh-repo/.git/logs/` reflogs. Clearing a reflog needs
 `git reflog expire --expire=now --all && git gc --prune=now`; deleting a branch or force-pushing

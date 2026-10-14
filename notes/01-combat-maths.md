@@ -228,6 +228,11 @@ NOPping the doubling leaves ×5. No length change, no `.reloc` entry covers any 
 | 6 | `0x558110C7` | `build_combatlog_dll.py` | damage log line (`_gotdef`) | displays the odds | `90 90` |
 | 7 | `0x558118F0` | `build_combatlog_dll.py` | touch log line (`_tstats`) | displays the odds | `90 90` |
 
+⚠ Sites 6 and 7 sit inside `build_combatlog_dll.py`'s own cave, so that script's dry run reports
+"overwriting in place" and its `--apply` would put both back to ×10. Run `build_hitslope5.py --apply`
+after it. `build_combatlog_wallcrush.py` (`wc_log`, 2026-10-14) computes `50 + 5d` directly and has no
+`add` to NOP.
+
 `TEnchantment.DispelChance @0x5577C1A4` shares the same clamp *shape* (a byte-pattern census finds it)
 but is **not** a slope site and was removed from the set. Read directly it is
 `clamp(dispelMana − 10×[ench+0x14] + 50, 10, 90)` with `GetDispelMana = 10×abilityLevel + 20`, i.e.
@@ -1833,8 +1838,8 @@ is safe as of 2026-08-29 (its ranged tail is chain-aware and re-emits `jmp` to S
 2026-08-27). Tag 6 (level-up cost) = **8**, same as Parry — the cave's own `EXPAND_COST=6` is
 decorative from here on, since the data file wins on every load. Tag 9 initially arrived as `0x0111`
 (missing the `0x200` bit hero level-up needs alongside `0x100`) — `--apply` now writes `0x03FF` and
-repairs the CRC, a real functional fix, not bookkeeping. No tag 5 — Shield has no info-card
-description; adding one is a record-length change and needs the editor, never a byte-patching script.
+repairs the CRC, a real functional fix, not bookkeeping. Tag 5 (the card text) belongs to
+`build_pfs_typos.py`, which appended "75% proc chance in auto combat." on 2026-10-14 (owner's wording).
 `AoWz.exe` each carry one byte (file offset `0x21DE40`) placing Shield in the **Melee**
 level-up column — chosen while Shield was still melee-capable, now arguably the wrong column
 ("Resistances" holds the 17 mitigation abilities); no `--undo`, fix is to edit `ABILITY_CATS` in

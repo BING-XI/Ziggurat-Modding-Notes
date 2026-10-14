@@ -29,6 +29,20 @@ family (`CombatObjectDestroyed` → `ResetCommandedUnits` → `Uncommand`, which
 side byte stashed at `data[+0x18]`). Caster survives the battle ⇒ control becomes permanent,
 because `TCommandAbility.CombatDone` drops the commander's record at end of combat.
 
+NO LEADER IS EVER SEIZED (owner ruling 2026-10-14). Calling `Command` directly skipped the one
+Leader test in the command family, `CreateCommandCA`'s IsClass(target+0x4C, TLeader) at
+0x5577037D, and `TTurnUndeadAbility.CanTouch` has none (its `GetUnitType` test is the creature
+type; THero.GetUnitType returns 0), so an evil caster could target and keep an undead Leader.
+Two layers, both inside this patch set:
+  * cave_touch -- TTurnUndeadAbility VMT +0x11C (0x5571FF18): the vanilla CanTouch, then an evil
+    caster is refused a Leader. Every target pick goes through that slot: the manual-combat
+    click (AoWTCPCK TTacticalCombatUnitHS.CanMoveOn 0x420ABE), the manual-combat AI
+    (TCAI.CheckUnit 0x416E39) and the auto-resolve AI (TTouchAbility.fcPrefetchCombatCommands
+    0x5576845D, TTurnUndeadAbility.fcGetDamageValueEx 0x5576B44C).
+  * the auto-fail in cave_exec -- the same IsClass before the strip loops; reached only if a
+    target was picked some other way.  The roll and retaliation are left as they were.
+Good and neutral casters still target and stun Leaders, as in vanilla.
+
 ⭐ `TCommandAbility.Command @0x5576FE50` is called DIRECTLY rather than through
 `CreateCommandCA`. That is what keeps this build small: `CombatTouchRole`, `GetTouchAttack`
 and `GetLevel` are never consulted, so ability N needs no private VMT and can be a plain
@@ -430,6 +444,11 @@ LSTRASG = 0x55701150            # thunk -> VCL30.dpl!System.@LStrAsg  (EAX=@dest
 HSSET = 0x558FA044              # AoWE.AoWHSSet;  ability control = [[HSSET] + 0x80]
 CMDIDS = 0x558E84E4             # AoWE.CommandAbilityIDs = {0x1D Seduce, 0x1C Dominate, 0x94 Charm}
 CMDIDS_VANILLA = (0x1D, 0x1C, 0x94)     # left in the DLL untouched — see the strip-list section
+# --- no Leader is ever seized (owner ruling 2026-10-14) -----------------------------
+IS_CLASS = 0x557010C0           # thunk -> VCL30 System.@IsClass (EAX=obj, EDX=classref) -> AL; nil-safe
+TLEADER_CELL = 0x557121F8       # ptr -> AoWE..TLeader, reloc-covered (CreateCommandCA reads the same cell)
+TOUCH_SLOT = 0x5571FF18         # TTurnUndeadAbility VMT +0x11C CanTouch (.reloc kept: the new value is in-image)
+TOUCH_ORIG = 0x5576AE10         # AoWE.TTurnUndeadAbility.CanTouch
 
 # --- the strip list: the six loop sites, and the one indirect cell -----------------
 # (count-immediate VA, expected opcode VA, function) — all six are `BB imm32` = mov ebx,imm32,
@@ -526,8 +545,9 @@ PH_NCLS = 0x73111103
 PH_MCLS = 0x73111104
 PH_HSSET = 0x73111105
 PH_CMDIDS = 0x73111106
+PH_TLEADER = 0x73111108
 
-AOW_PROCS = ["AoW", "AoWCompat", "AoWDevEd", "AoWEd"]
+AOW_PROCS = ["AoW", "AoWz", "AoWCompat", "AoWDevEd", "AoWzEd", "AoWEd"]
 
 
 def kill_aow():
@@ -635,7 +655,7 @@ def build_reg(va, n_name_va, m_name_va, n_id=None, m_id=None):
 
 
 # --------------------------------------------------------------- cave_exec
-def build_exec(va, n_id=None, evil=True, cmdids_va=None, cmdids_n=None):
+def build_exec(va, n_id=None, evil=True, cmdids_va=None, cmdids_n=None, leader_guard=True):
     """Wholesale replacement of AoWE.TTurnUndeadCA.Execute.  EAX = the CA, EDX = the combat.
 
     Frame: [esp+0] = &AoWE.AoWHSSet   [esp+4] = &AoWE.CommandAbilityIDs   [esp+8] = scratch.
@@ -663,8 +683,24 @@ def build_exec(va, n_id=None, evil=True, cmdids_va=None, cmdids_n=None):
     GetSide guard and the two CommandAbilityIDs strip loops — ARE replicated below, because
     those are correctness, not balance. If you ever want the XP back, add it right after the
     `Command` call, reading the victim through EBP and the commander through EDI.
+
+    `leader_guard` (2026-10-14, owner ruling): a Leader is never seized. cave_touch already keeps
+    one off the target list; this is the auto-fail behind it, the same IsClass(TLeader) that
+    `CreateCommandCA @0x5577037D` applies to Seduce/Charm/Dominate. It sits after the side check
+    and before the strip loops, so a blocked seize changes nothing on the victim. The TLeader
+    cell is reached from the frame's &AoWHSSet plus a constant difference, so it needs no
+    second anchor. `leader_guard=False` exists only to recognise the builds before it.
     """
     n_id = N_ID if n_id is None else n_id
+    guard = """
+        mov  eax, dword ptr [ebp + 0x%X]
+        mov  edx, dword ptr [esp]
+        add  edx, %d
+        mov  edx, dword ptr [edx]
+        call 0x%X
+        test al, al
+        jne  L_done
+    """ % (CO_OWNER, TLEADER_CELL - HSSET, IS_CLASS) if leader_guard else ""
     # ⚠ OUR OWN strip loops read the SAME 4-entry array and count as the engine's. Leaving them
     # at the vanilla 3 would reproduce the exact defect this feature fixes, one attacker along:
     # two evil Turn Undead casters, the second seizing what the first holds, would leave the
@@ -689,6 +725,7 @@ def build_exec(va, n_id=None, evil=True, cmdids_va=None, cmdids_n=None):
         call 0x%X
         cmp  byte ptr [esp + 8], al
         je   L_done
+        %s
         mov  esi, dword ptr [esp + 4]
         mov  ebx, %d
     L_strip1:
@@ -735,7 +772,7 @@ def build_exec(va, n_id=None, evil=True, cmdids_va=None, cmdids_n=None):
         mov  eax, esi
         call 0x%X
         jmp  L_done
-    """ % (CA_SUCCESS, CA_VICTIM, FINDID, GETSIDE, GETSIDE,
+    """ % (CA_SUCCESS, CA_VICTIM, FINDID, GETSIDE, GETSIDE, guard,
            cmdids_n, GET_ABILITY, VMT_RESETCMD,
            cmdids_n, GET_ABILITY, VMT_UNCOMMAND,
            n_id, GET_ABILITY, n_id, CO_OWNER, SETAB, COMMAND)
@@ -973,9 +1010,66 @@ def build_ankh(va, m_id=None):
     return fix_pic(asm(src, va), va, 0x59, [(PH_HSSET, HSSET), (PH_HSMAP, HSMAP)])
 
 
+# --------------------------------------------------------------- cave_touch
+def build_touch(va):
+    """TTurnUndeadAbility VMT +0x11C CanTouch(EAX=ability, EDX=attacker CO, ECX=target CO) -> AL.
+
+    The vanilla test first; then, for an evil caster only (the same alignment test as
+    cave_exec), a target whose strategic unit IsClass TLeader is refused. Every route that
+    picks a Turn Undead target dispatches through this slot: the manual-combat click
+    (TTacticalCombatUnitHS.CanMoveOn, AoWTCPCK 0x420ABE), the manual-combat AI
+    (TCAI.CheckUnit 0x416E39), the auto-resolve AI (TTouchAbility.fcPrefetchCombatCommands
+    0x5576845D) and the AI's estimate (TTurnUndeadAbility.fcGetDamageValueEx 0x5576B44C).
+    A true from the vanilla test means both objects passed IsClass(TCombatUnit), so
+    [target+0x4C] is a strategic unit. Good and neutral casters are untouched.
+    """
+    src = """
+        push ebx
+        push esi
+        push edi
+        mov  esi, edx
+        mov  edi, ecx
+        call 0x%X
+        test al, al
+        jz   T_out
+        mov  eax, esi
+        mov  ecx, dword ptr [eax]
+        call dword ptr [ecx + 0x%X]
+        movzx eax, al
+        sub  eax, %d
+        cmp  eax, %d
+        ja   T_yes
+        call 0x%X
+        pop  ecx
+        add  ecx, 0x%X
+        mov  edx, dword ptr [ecx]
+        mov  eax, dword ptr [edi + 0x%X]
+        call 0x%X
+        test al, al
+        jnz  T_no
+    T_yes:
+        mov  al, 1
+        jmp  T_out
+    T_no:
+        xor  eax, eax
+    T_out:
+        pop  edi
+        pop  esi
+        pop  ebx
+        ret
+    """ % (TOUCH_ORIG, VMT_ALIGNMENT, ALIGN_LO, ALIGN_SPAN, va, PH_TLEADER, CO_OWNER, IS_CLASS)
+    code, anchor = fix_pic(asm(src, va), va, 0x59, [(PH_TLEADER, TLEADER_CELL)])
+    ins = list(cs.disasm(code, va))
+    pops = [i for i, x in enumerate(ins) if x.mnemonic == "pop" and x.op_str == "ecx"]
+    assert len(pops) == 1 and ins[pops[0] - 1].mnemonic == "call" \
+        and ins[pops[0]].address == anchor, "cave_touch anchor misplaced"
+    return code, anchor
+
+
 # ------------------------------------------------------------------ cave zone
 def build_zone(name_ptr_bias=8, n_id=None, m_id=None, n_name=None, m_name=None, evil=True,
-               with_array=True, with_retal=True, with_ankh=True, _array_va=0):
+               with_array=True, with_retal=True, with_ankh=True, leader_guard=True,
+               with_touch=True, _array_va=0):
     """Lay the literals, both caves and the 4-entry strip array out from CAVE
     -> (blob, [(label, va, code)...]).
 
@@ -1025,7 +1119,8 @@ def build_zone(name_ptr_bias=8, n_id=None, m_id=None, n_name=None, m_name=None, 
     place("cave_exec", lambda v: build_exec(
         v, n_id, evil,
         cmdids_va=(_array_va if with_array else None),
-        cmdids_n=(len(CMDIDS_VANILLA) + 1 if with_array else None)))
+        cmdids_n=(len(CMDIDS_VANILLA) + 1 if with_array else None),
+        leader_guard=leader_guard))
     if with_retal:
         place("cave_retal", lambda v: build_retal(v, n_id))
     if with_ankh:
@@ -1035,6 +1130,8 @@ def build_zone(name_ptr_bias=8, n_id=None, m_id=None, n_name=None, m_name=None, 
                         struct.pack("<4I", *(CMDIDS_VANILLA + (N_ID if n_id is None else n_id,))))
         assert va == _array_va or _array_va == 0, \
             "array landed at %08X, cave_exec was built for %08X" % (va, _array_va)
+    if with_touch:
+        place("cave_touch", build_touch)
 
     assert len(blob) <= CAVE_ZONE_LEN, "zone overflow: %d > %d" % (len(blob), CAVE_ZONE_LEN)
 
@@ -1084,6 +1181,7 @@ CAVE_REG = next(v for l, v, _ in PARTS if l == "cave_reg")
 CAVE_EXEC = next(v for l, v, _ in PARTS if l == "cave_exec")
 CAVE_RETAL = next(v for l, v, _ in PARTS if l == "cave_retal")
 CAVE_ANKH = next(v for l, v, _ in PARTS if l == "cave_ankh")
+CAVE_TOUCH = next(v for l, v, _ in PARTS if l == "cave_touch")
 
 
 def call_to(site, target):
@@ -1132,6 +1230,7 @@ def _prior_build(strip_on, **kw):
     arr = next((v for l, v, _c in parts if l.startswith("CommandAbilityIDs")), None)
     ret = next((v for l, v, _c in parts if l == "cave_retal"), None)
     ankh = next((v for l, v, _c in parts if l == "cave_ankh"), None)
+    touch = next((v for l, v, _c in parts if l == "cave_touch"), None)
     count = struct.pack("<I", len(CMDIDS_VANILLA) + (1 if strip_on else 0))
     ptr = struct.pack("<I", arr if strip_on else CMDIDS)
     strip = {iva: count for iva, _o, _f in STRIP_COUNTS}
@@ -1139,21 +1238,25 @@ def _prior_build(strip_on, **kw):
     strip[CMDIDS_CELL] = ptr
     strip[RETAL_INJ] = (call_to(RETAL_INJ, ret) + NOP2) if ret else RETAL_ORIG
     strip[ANKH_INJ] = call_to(ANKH_INJ, ankh) if ankh else ANKH_ORIG
+    strip[TOUCH_SLOT] = struct.pack("<I", touch if touch else TOUCH_ORIG)
     return {"zone": blob, "strip_on": strip_on, "strip": strip, "array": arr, "retal": ret,
-            "ankh": ankh,
+            "ankh": ankh, "touch": touch,
             "hooks": {REG_INJ: call_to(REG_INJ, reg), EXEC_INJ: jmp_to(EXEC_INJ, exe)}}
 
 
+_PRE_LEADER = dict(leader_guard=False, with_touch=False)
 PRIOR_BUILDS = [
     _prior_build(False, n_name=b"Command Undead", m_name=b"Turned", with_array=False,
-                 with_retal=False, with_ankh=False),
+                 with_retal=False, with_ankh=False, **_PRE_LEADER),
     _prior_build(False, n_name=b"Can Command Undead", m_name=b"Turned", with_array=False,
-                 with_retal=False, with_ankh=False),
+                 with_retal=False, with_ankh=False, **_PRE_LEADER),
     _prior_build(True, n_name=b"Can Command Undead", m_name=b"Turned", with_array=True,
-                 with_retal=False, with_ankh=False),
-    _prior_build(True, with_array=True, with_retal=False, with_ankh=False),
+                 with_retal=False, with_ankh=False, **_PRE_LEADER),
+    _prior_build(True, with_array=True, with_retal=False, with_ankh=False, **_PRE_LEADER),
     #   v5 (2026-09-01)  retaliation guard present, no Ankh overlay yet.
-    _prior_build(True, with_array=True, with_retal=True, with_ankh=False),
+    _prior_build(True, with_array=True, with_retal=True, with_ankh=False, **_PRE_LEADER),
+    #   v6 (2026-09-02)  Ankh overlay; an evil caster could still target and seize a Leader.
+    _prior_build(True, with_array=True, with_retal=True, with_ankh=True, **_PRE_LEADER),
 ]
 PRIOR_ZONES = [p["zone"] for p in PRIOR_BUILDS]
 
@@ -1185,6 +1288,9 @@ PATCHES = [
     (ANKH_INJ, call_to(ANKH_INJ, CAVE_ANKH), ANKH_ORIG,
      "ShowEx epilogue %08X: GetUnitGFXResource call -> cave_ankh (Ankh overlay over a seized "
      "undead, then jmp to the original callee)" % ANKH_INJ),
+    (TOUCH_SLOT, struct.pack("<I", CAVE_TOUCH), struct.pack("<I", TOUCH_ORIG),
+     "TTurnUndeadAbility VMT +0x11C CanTouch -> cave_touch (an evil caster cannot target a "
+     "Leader)"),
 ] + [
     (iva, struct.pack("<I", len(CMDIDS_VANILLA) + 1), struct.pack("<I", len(CMDIDS_VANILLA)),
      "strip count 3 -> 4: %s" % fn)
@@ -1209,7 +1315,7 @@ PATCHES = [
 #     ordinary play, with our feature nominally "removed".
 #   * registration applied, strip list reverted  -> the original defect, silently.
 _STRIP_VAS = {iva for iva, _o, _f in STRIP_COUNTS} | {iva for iva, _o, _c, _f in STRIP_PTRS} \
-    | {CMDIDS_CELL, RETAL_INJ, ANKH_INJ}
+    | {CMDIDS_CELL, RETAL_INJ, ANKH_INJ, TOUCH_SLOT}
 assert _STRIP_VAS <= {va for va, _n, _o, _d in PATCHES} and \
     REG_INJ in {va for va, _n, _o, _d in PATCHES}, \
     "the strip-list sites and the registration hook must live in the SAME patch set"
@@ -1620,7 +1726,7 @@ def show():
     print()
     print("  state: %s   cave zone %08X..%08X (%d B used of %d reserved)"
           % (st.upper(), CAVE, CAVE + CAVE_ZONE_LEN, len(ZONE), CAVE_ZONE_LEN))
-    exempt = {iva for iva, _o, _c, _f in STRIP_PTRS} | {CMDIDS_CELL}
+    exempt = {iva for iva, _o, _c, _f in STRIP_PTRS} | {CMDIDS_CELL, TOUCH_SLOT}
     bad = [hex(x) for va, new, _o, _d in PATCHES if va != CAVE and va not in exempt
            for x in relocs if va <= x < va + len(new)]
     print("  .reloc: %s displaced run(s) cover an entry; the %d retargeted pointer(s) all "
@@ -1650,6 +1756,8 @@ def show():
     ours_ankh = {call_to(ANKH_INJ, CAVE_ANKH)} | {p["strip"][ANKH_INJ] for p in PRIOR_BUILDS}
     ours_ankh.discard(ANKH_ORIG)
     coupled.append(bytes(d[va2off(d, ANKH_INJ):va2off(d, ANKH_INJ) + 5]) in ours_ankh)
+    ours_touch = {CAVE_TOUCH} | {p["touch"] for p in PRIOR_BUILDS if p["touch"]}
+    coupled.append(struct.unpack_from("<I", d, va2off(d, TOUCH_SLOT))[0] in ours_touch)
     on = sum(coupled)
     strip_on = on == len(coupled)
     print("  coupling: registration hook %s, %d/%d coupled sites ON  -> %s"
@@ -1715,6 +1823,8 @@ def disassemble():
         if va == CMDIDS_CELL or va in {iva for iva, _o, _c, _f in STRIP_PTRS}:
             note = "%08X -> %08X   (%s -> our 4-entry array)" % (
                 o, n, "AoWE.CommandAbilityIDs" if o == CMDIDS else "?")
+        elif va == TOUCH_SLOT:
+            note = "%08X -> %08X   (TTurnUndeadAbility.CanTouch -> cave_touch)" % (o, n)
         else:
             note = "%d -> %d          (loop trip count)" % (o, n)
         print("  %08X  %-18s dd     %s" % (va, new.hex(" "), note))
@@ -1759,7 +1869,9 @@ def apply(undo=False):
     # not displaced, their VALUE is retargeted within the same module, which is exactly what
     # keeps the existing entry correct. assert_strip_sites() checks the inverse for them: that
     # the entry is still there. Everything else must be reloc-free.
-    exempt = {iva for iva, _o, _c, _f in STRIP_PTRS} | {CMDIDS_CELL}
+    # The CanTouch VMT slot is the same case: a reloc-covered pointer whose new value is in-image.
+    exempt = {iva for iva, _o, _c, _f in STRIP_PTRS} | {CMDIDS_CELL, TOUCH_SLOT}
+    assert TOUCH_SLOT in relocs, "VMT slot %08X has no .reloc entry" % TOUCH_SLOT
     for va, new, _orig, _desc in PATCHES:
         if va == CAVE or va in exempt:
             continue
@@ -1816,8 +1928,11 @@ def apply(undo=False):
     # feature the user believes they removed, and it must go with the rest).
     strip_on.append(bytes(d[va2off(d, ANKH_INJ):va2off(d, ANKH_INJ) + 5])
                     == call_to(ANKH_INJ, CAVE_ANKH))
+    # and the Leader targeting gate: left installed with cave_exec gone it would stop an evil
+    # caster's ordinary Turn Undead from targeting a Leader.
+    strip_on.append(struct.unpack_from("<I", d, va2off(d, TOUCH_SLOT))[0] == CAVE_TOUCH)
     assert len(set(strip_on)) == 1, \
-        "the 13 coupled sites disagree with each other: %r" % strip_on
+        "the 14 coupled sites disagree with each other: %r" % strip_on
     assert reg_on == strip_on[0], (
         "REFUSING TO WRITE A HALF-APPLIED STATE: registration hook %s but the coupled "
         "sites %s. "

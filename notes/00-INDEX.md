@@ -44,7 +44,7 @@ safe, and the traps that have cost this project the most time.
 |---|---|---|
 | **Randomness: five patterns, one selection test.** P1 SYNCED DRAW / P2 COMBAT RAW / P3 COSMETIC RAW / **P5 RESEED-FROM-STATE** (vanilla's own reproducibility idiom — prefer it) / P4 DERIVED HASH (**this project's invention**, only when the decided set can shrink so draw order is unstable) — the set is **closed**; name the pattern in the build script's docstring rather than designing a roll from scratch. P4 makes no draw: `build_scripts/rngstd.py` emits FNV-1a → `fmix32` → multiply-shift as literal bytes, salted from the per-game constant `map[+0x22C]`. ⚠ P4 sites are invisible to `rng_audit.py --owners` by construction — check them with `--hash`. | `12-re-toolchain.md` §4.10 (test, salt evidence, 9 anti-patterns); repo-root `CLAUDE.md` | 2026-09-09 |
 | ⚠⚠ **A moved install keeps loading from the OLD folder.** The engine takes its data root from `HKCU\…\Age of Wonders Z\General\Startup Directory`, not from the exe's location, so copying an installed `Ziggurat\` elsewhere gives hundreds of `Error loading:` dialogs for files that are all present. ⭐ **The tell is that the path in the dialog is not the folder the exe was launched from** — same-folder means missing files, different-folder means stale registry. Caused by `createvalueifdoesntexist` on the installer's two `[Registry]` lines, which meant re-running it could never update the path; **removed 2026-09-15**, so re-running now fixes it. Installers before that need the key deleted by hand. ⭐ Open: an exe-relative data root would remove the class entirely — `TAoWRegistry` in `AoWEPACK.dpl` is the single choke point (`Get/SetStartupDirectory` `0x55705298`/`0x55705248`, rw helper `0x55703D08`). | `12-re-toolchain.md` §13.3 | 2026-09-15 |
-| **The public repo carries a HANDLE.** `BING-XI/Ziggurat-Engine-Mod` commits as **`Ziggurat Mason <156740625+BING-XI@users.noreply.github.com>`** (set globally), never the owner's real name. **Commit messages are player-facing: interesting gameplay changes only, or nothing — no bugfixes, no RE detail, no attribution trailers.** ⚠ GitHub's "Keep my email address private" does **not** stop `git push` exposing an address — the separate "Block command line pushes that expose my email" does, and it is off. ⚠⚠ Force-pushing does not remove a commit from GitHub; get it right before the first push. ⚠⚠ The `$USERNAME` leak scans **miss the git identity** (`<user>` ≠ `<git-name>` ≠ the lowercase gmail) — it hid in `gh-repo/.git/logs/`; clear with `git reflog expire --expire=now --all && git gc --prune=now`. | repo-root `CLAUDE.md`; `12-re-toolchain.md` §13.1a step 6 | 2026-09-14 |
+| **The public repo carries a HANDLE.** `BING-XI/Ziggurat-Engine-Mod` commits as **`Ziggurat Mason <156740625+BING-XI@users.noreply.github.com>`** (set globally), never the owner's real name. **Commit messages are player-facing: interesting gameplay changes only, or nothing — no bugfixes, no RE detail, no attribution trailers.** ⚠ GitHub's "Keep my email address private" does **not** stop `git push` exposing an address — the separate "Block command line pushes that expose my email" does, and it is off. ⚠⚠ Force-pushing does not remove a commit from GitHub; get it right before the first push. ⚠⚠ The `$USERNAME` leak scans **miss the git identity** (`<user>` ≠ `<git name>` ≠ the lowercase gmail) — it hid in `gh-repo/.git/logs/`; clear with `git reflog expire --expire=now --all && git gc --prune=now`. | repo-root `CLAUDE.md`; `12-re-toolchain.md` §13.1a step 6 | 2026-09-14 |
 | **One game exe: `AoWz.exe`.** `AoWzCompat.exe` is retired: deleted, `zigexe.EXES == [GAME_EXE]`, lockstep checks removed, and the installer's `[InstallDelete]` clears old copies. Its one differing byte (`0x3BB7C`) was the city Upgrade relation display (+5 against the engine's +15), not an MP build number. The root `AoWCompat.exe` is GOG's Windows-shim copy of `AoW.exe` (compatibility layers are keyed by path). | `12-re-toolchain.md` §11.2 | 2026-09-28 |
 
 ---
@@ -192,6 +192,9 @@ file carries the specific checklist for its own rows.
 - **Wall Crushing damage = the unit's DAM** — 🔨 APPLIED (2026-09-27): the flat 12 is gone from
   the info card, AI estimates, auto-resolve and manual combat; ATK stays 12. Rams are DAM 2.
   `build_wallcrush_dam.py`; `02-abilities-modded.md`, "Wall Crushing — damage is the unit's DAM".
+- **Evil Turn Undead never seizes a Leader** — applied 2026-10-14: an evil caster cannot pick a
+  Leader as its target (manual click, both AIs), and a seize that reaches one fails.
+  `build_turnundead_evilcommand.py` (`cave_touch`, VMT `0x5571FF18`); `02-abilities-modded.md` §B.
 - **Command abilities limited** — 🔨 APPLIED, UNTESTED (2026-09-25): seized units stay **Bound**
   (`0xBB`) to their commander and turn independent when it dies, is disbanded or changes sides
   (at once if in the same battle); the commander carries **Commanding N** (`0xBC`), −1 RES per thrall;
@@ -389,8 +392,10 @@ file carries the specific checklist for its own rows.
   (rounded up) for the rest of combat, remaining movement halved on landing, one melee strike fewer
   attacking and defending (never below one); the +2 hex cost is gone. The AI now casts Lethargy and
   Embrittle, in auto-combat and by hand. Haste is the mirror: one melee strike more attacking and
-  defending. Caves `0x5584DF00`–`0x5584E1B5`. Surgical `--undo`. Checklist:
-  `04-spells-modded.md`, "Lethargy".
+  defending. Since 2026-10-14 each strike change is a 50% synced roll per side per real round (raw
+  seed preserved); predictions take the full step and draw nothing. Caves (end-exclusive)
+  `0x5584DF00`–`0x5584DF9C`, `0x5584DFA0`–`0x5584E1B6`, `0x5584E1C0`–`0x5584E1F7`. Surgical
+  `--undo`. `04-spells-modded.md`, "Lethargy".
 - **Single-unit spells refuse an empty hex, cursor included** (`build_spell_unit_target.py`,
   `AoWTCPCK.dpl`) — 2026-10-04. Vanilla casts any of them at bare ground. 22 unit spells are refused
   there; Call Flames only where a wooden wall, Combat Structure or Combat Terrain object stands.
@@ -443,6 +448,12 @@ file carries the specific checklist for its own rows.
 - Scroll as a permanent per-hero spellbook grant — cave extended 2026-09-03
 
 ### UI — `07-ui.md`
+- **Combat log scrolls to its newest line** (`build_combatlog_autoscroll.py` on `AoWz.exe`, plus a
+  flag store in `build_replaylog.py`) — applied 2026-10-14. The scroll now waits for the text
+  re-wrap, so it no longer stops one batch short; the multiplayer chat gets the same fix. §1.9.
+- **Combat log: manual-combat Wall Crushing hits on a wall** (`build_combatlog_wallcrush.py`,
+  `AoWTCPCK.dpl` + `AoWEPACK.dpl`) — applied 2026-10-14. `<unit> crushes Wall for N damage (odds,
+  ATK vs DEF)`; the inline roll in `TCAbTouchMoveTE.LastMove` built no combat action. §1.10.
 - **"Unit AI": Space hands the selection to the combat AI; Q cycles the selected unit's
   abilities** (`build_unit_ai.py`, `AoWTCPCK.dpl` + `AoWz.exe`), v3 applied 2026-10-10: Q replaces
   v2's right-click (2026-10-03), which is vanilla again; migrates v1 or v2 in place. The AI's
@@ -800,6 +811,9 @@ file carries the specific checklist for its own rows.
 - Terrain rolls draw from the synced RNG (3 sites) — 2026-08-31
 
 ### AI & structures — `10-ai-and-structures.md`
+- **Shipyards: 1 gold per 12 hexes, and the idle bonus is back** (2026-10-14):
+  `build_shipyard_income.py` re-tune, `HEXES_PER_GOLD` 5 → 12; `entry` re-implements vanilla's
+  +25 % (rounded half-to-even) unless the shipyard is building a ship. §6, §6.7.
 - **Trampled crops cost 5 relation everywhere; city farmland charges the city's race** — 🔨 APPLIED,
   UNTESTED (2026-09-25): `build_crop_trample.py`, two instructions (`0x557A6157`, `0x557AA79F`).
   §12 also tabulates every city-action race-relation write site, vanilla vs live.

@@ -614,31 +614,48 @@ FIXES = [
      ("Halves the target's mobility for the duration of combat.\r\n",
       # 2026-09-25 text, 172 chars -- clipped by the spellbook after three lines
       "Saps the target's vigour for the rest of combat: its movement is halved, rounded up, and "
-      "it loses one melee strike when attacking and one when defending, never below one.\r\n"),
-     "Saps the target's vigour for the rest of combat, halving its movement speed and removing one "
-     "melee strike per exchange.\r\n",
-     "record 120 = Slow -> Lethargy (spell 110)"),
+      "it loses one melee strike when attacking and one when defending, never below one.\r\n",
+      "Saps the target's vigour for the rest of combat, halving its movement speed and removing one "
+      "melee strike per exchange.\r\n"),
+     # 2026-10-14: the strike change is a 50% roll per side per round (build_lethargy.py v2)
+     "Saps the target's vigour for the rest of combat, halving its movement speed, with a 50% "
+     "chance to remove one melee strike per exchange.\r\n",
+     "record 120 = Slow -> Lethargy (spell 110); 135 chars, under the ~146 spellbook ceiling"),
     ("Ability.pfs", 142,  5,
-     "Halves the target's mobility for the duration of combat.\r\n",
-     "Movement is halved, rounded up, and one melee strike is lost when attacking and when "
-     "defending, never below one.\r\n",
-     "record 142 = status 0x84 (Slow -> Lethargy). NB u8 directory: tag 9 must stay at offset "
-     "<= 255, so this field may grow by at most 56 B -- this text uses all of it"),
+     ("Halves the target's mobility for the duration of combat.\r\n",
+      "Movement is halved, rounded up, and one melee strike is lost when attacking and when "
+      "defending, never below one.\r\n"),
+     "Movement is halved, rounded up. 50% chance to lose one melee strike when attacking and "
+     "when defending, never below one.\r\n",
+     "record 142 = status 0x84 (Slow -> Lethargy). NB u8 directory: tag 9 sat at offset 246 "
+     "before the 2026-10-14 edit, so this field could grow by at most 9 B -- this text uses 7"),
 
     # Haste gains a melee strike each way, 2026-09-25 (build_lethargy.py's strike caves).
     # The owner reworded "and when defending" to "or defending" in the editor, 2026-09-25.
+    # 2026-10-14: a 50% roll per side per round (build_lethargy.py v2).
     ("Spells.pfs",  25,  10,
      ("Allows the target unit to move at great speed.\r\n",
       "Allows the target unit to move at great speed, and to strike once more in melee when "
-      "attacking and when defending.\r\n"),
-     "Allows the target unit to move at great speed, and to strike once more in melee when "
-     "attacking or defending.\r\n",
+      "attacking and when defending.\r\n",
+      "Allows the target unit to move at great speed, and to strike once more in melee when "
+      "attacking or defending.\r\n"),
+     "Allows the target unit to move at great speed, with a 50% chance to strike once more in "
+     "melee when attacking or defending.\r\n",
      "record 25 = Haste (spell 15)"),
     ("Ability.pfs", 162,  5,
-     "Reduces movement cost per hex by 1.\r\n",
-     "Reduces movement cost per hex by 1. One extra melee strike when attacking and when "
-     "defending.\r\n",
+     ("Reduces movement cost per hex by 1.\r\n",
+      "Reduces movement cost per hex by 1. One extra melee strike when attacking and when "
+      "defending.\r\n"),
+     "Reduces movement cost per hex by 1. 50% chance of one extra melee strike when attacking "
+     "and when defending.\r\n",
      "record 162 = status 0x98 (Haste)"),
+
+    # Shield's auto-resolve roll (build_shield.py: RandInt(4) < 3 per shot), owner 2026-10-14.
+    ("Ability.pfs", 186,  5,
+     "Grants +5 Def against missiles coming from the front or front-left directions.\r\n",
+     "Grants +5 Def against missiles coming from the front or front-left directions. 75% proc "
+     "chance in auto combat.\r\n",
+     "record 186 = Shield (ability 0xB0). u8 directory: tag 9 at offset 96, room for 159 B"),
 
     # Dispel Magic wrests a bound unit from an enemy master, 2026-09-25 (build_command_bond.py).
     ("Ability.pfs",  70,  5,

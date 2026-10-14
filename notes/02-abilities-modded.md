@@ -15,7 +15,7 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | Invisibility → attacker ATK penalty (True Vision negates) | 🔨 APPLIED, UNTESTED (2026-07-21; numbers retuned 2026-08-24) | `build_invis_penalty.py` (rewrites `build_trueseeing.py`'s caves in place) | AoWEPACK.dpl |
 | Turn Undead damage = 0.5×level×casterRES | ✅ CONFIRMED WORKING (2026-07-16) | `build_turnundead_res.py` | AoWEPACK.dpl |
 | Turn Undead roll 2 (stun/seize gate): attacker term swapped to casterRES×(4+level)/5 | ✅ CONFIRMED WORKING (2026-09-02, as part of the evil-command test) | `build_turnundead_resroll.py` | AoWEPACK.dpl |
-| Turn Undead — Evil/Pure Evil casters seize the undead instead of damaging it | ✅ CONFIRMED WORKING (2026-09-02) | `build_turnundead_evilcommand.py` | AoWEPACK.dpl |
+| Turn Undead — Evil/Pure Evil casters seize the undead instead of damaging it, never a Leader | ✅ CONFIRMED WORKING (2026-09-02); Leader exclusion applied 2026-10-14 | `build_turnundead_evilcommand.py` | AoWEPACK.dpl |
 | Turn Undead — commanded-undead ankh overlay icon | ✅ CONFIRMED WORKING (2026-09-02) | `build_commandedundead_pfs.py` + a `ShowEx` cave in `build_turnundead_evilcommand.py` | Release/Ability.pfs + AoWEPACK.dpl |
 | Vision — nine levels, +1 sight/level | ✅ CONFIRMED WORKING (2026-08-09) | `build_vision9.py` | AoWEPACK.dpl + Release/Ability.pfs |
 | Unit enchantment / status / combat-boost re-grade (odd-value grades) | ✅ CONFIRMED WORKING (2026-08-24) | `build_buff_regrade.py` (+ `build_assassin.py` cave copies) | AoWEPACK.dpl |
@@ -490,6 +490,13 @@ death, permanence on survival, strip list, retaliation guard (auto-resolve), dam
 Turn Undead is used by an Evil or Pure Evil unit/hero, it should seize control of the undead target
 like Charm/Seduce/Dominate instead of dealing holy damage + stun; if the caster dies in the same
 battle, the seized undead should revert.
+
+**No Leader is ever seized (owner ruling 2026-10-14).** Calling `Command` directly had skipped the
+command family's only Leader test (`CreateCommandCA @0x5577037D`), and `TTurnUndeadAbility.CanTouch`
+has none, so an evil caster could target and keep an undead Leader. Now `cave_touch` (VMT slot
+`0x5571FF18`) refuses an evil caster a Leader target on every pick — manual click, manual AI,
+auto-resolve AI — and `cave_exec` auto-fails a Leader before the strip loops. Good and neutral casters
+still turn Leaders. The script's docstring holds the call sites.
 
 **The second requirement is free.** Revert-on-controller-death-within-battle is already vanilla
 behaviour of the `TCommandAbility` family (below) — piggybacking on it, as the user proposed, costs

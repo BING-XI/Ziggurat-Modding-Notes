@@ -8,9 +8,13 @@ touches, divided between every shipyard on that body.
   pot(region)   = area(region) div HEXES_PER_GOLD   (per body, remainder discarded)
   share         = pot div N                    (N = qualifying shipyards on the body)
   income(yard)  = SUM over the distinct regions the yard touches of share
+  paid(yard)    = income + Round(income / 4)   when the yard is idle, else income
 
-HEXES_PER_GOLD is the single balance knob (currently 5 -- one gold per 5 hexes; it was
-10 until the 2026-08-26 re-tune that doubled the income). It is defined ONCE, next to
+The last line is vanilla's merchandise bonus, TProductionPlace.GetIncome 0x557BE51C..
+0x557BE54A, reproduced in `entry` (see THE IDLE BONUS below).
+
+HEXES_PER_GOLD is the single balance knob (currently 12 -- one gold per 12 hexes; 10 as
+shipped, 5 from 2026-08-26, 12 from 2026-10-14). It is defined ONCE, next to
 CODE_VA_BASE, and everything else derives from it: the `mov ecx, N` before the pot
 divide in `entry`, every --sim expectation, and verify_cave check 8, which reads the
 immediate back off the assembled bytes. Re-tuning the rate is that one line -- do not
@@ -43,14 +47,39 @@ THE HOOK -- one 4-byte data write
   TProductionPlace.GetCurrentActivityText 0x557BE8AD flips the Realm column to
   "Producing Merchandise", and TProductionPlace.ListIncomeInfo 0x557BE59C opens a
   latent nil-deref at 0x557BE643. Hooking GetIncome instead leaves every one of them
-  reading 0. It also replaces TProductionPlace.GetIncome's +25%-when-idle branch
-  (0x557BE523) outright, which is what makes the number stable.
+  reading 0. Replacing GetIncome also replaces its +25%-when-idle branch, so `entry`
+  re-implements that branch on the water income.
   The two display surfaces this costs -- the map structure-info panel's gold row and the
   Realm window's income list -- are fixed exe-side by build_shipyard_income_display.py.
   Nothing in this script needs to change for them.
 
 Contract of the replaced virtual: IN eax = Self, no args. OUT eax = gold (>= 0).
 Preserves ebx/esi/edi/ebp/esp/DF. Terminates with a bare `ret` (never `ret n`).
+
+================================================================================
+THE IDLE BONUS -- vanilla's, applied to the water income (2026-10-14)
+================================================================================
+Vanilla TProductionPlace.GetIncome (byte-identical live and pristine):
+
+  557BE516  call [edx+0x230]        GetMagicSphere -- TShipyard inherits 0x557BE228
+                                    `mov al,8`, so the test below always passes; the
+                                    cave does not repeat it
+  557BE520  mov  edi,[ebx+0x44]     the TProductionControl
+  557BE523  cmp  byte [edi+0x20],2  status: 0 pcsIdle, 1 pcsWaiting, 2 pcsProducing
+  557BE527  jne  bonus              (RTTI TProductionControlStatus 0x5570A42C)
+  557BE529  GetItem([edi+0x14], 0)  TProductionQueue.GetItem 0x5575C80C, nil out of range
+  557BE533  cmp  dword [eax+8],0xA  item 0 is Merchandise -> bonus, else none
+  557BE539  bonus: esi += Round(base * 0.25)   (float at 0x557BE554 = 0x3E800000)
+
+`entry` does the same on the water income, after the payout loop: bonus unless the
+status is pcsProducing with a non-Merchandise item at the head of the queue. Two
+guards vanilla lacks, both resolving to "no bonus": a nil production control, and a
+nil GetItem result while producing (vanilla would dereference it).
+Round is done in integers, not on the FPU: q = g shr 2, r = g and 3, +1 when r = 3 or
+(r = 2 and q odd). That is System.@ROUND's round-half-to-even at the default control
+word, without depending on the control word. Consequence at small incomes:
+g = 1..2 get +0, g = 3..5 get +1, g = 6 gets +2 (1.5 rounds to 2), g = 10 gets +2.
+A shipyard building a ship therefore shows less than an idle one, as in vanilla.
 
 ================================================================================
 THE CAVE
@@ -497,8 +526,9 @@ CODE_VA_BASE = 0x55700C00       # AoWEPACK CODE: file off = VA - this  (PER SECT
 # Re-tuning the rate is this one line. Do NOT restate the number anywhere else --
 # not in a check() `want`, not in a comment that says "-> pot 10". Derive it.
 #   2026-08-26: 10 -> 5 (income doubled, user-requested balance re-tune).
+#   2026-10-14: 5 -> 12 (user-requested, with the idle bonus restored).
 # Below 1 the cave would divide by zero; the assertion is right here.
-HEXES_PER_GOLD = 5
+HEXES_PER_GOLD = 12
 assert HEXES_PER_GOLD >= 1, "HEXES_PER_GOLD < 1 would make `div ecx` fault"
 
 # ---- the hook -------------------------------------------------------------
@@ -578,6 +608,16 @@ GETSTRUCT = 0x55762364          # TStructureControl.GetStructure eax=registry ed
                                 #   -> eax=obj (bounds-checked, nil out of range)
 REALLOC   = 0x55701018          # thunk -> System.@ReallocMem   eax=&ptr edx=bytes
 FILLCHAR  = 0x55701078          # thunk -> System.@FillChar     eax=ptr edx=n cl=value
+GETITEM   = 0x5575C80C          # TProductionQueue.GetItem      eax=queue edx=i
+                                #   -> eax=item (bounds-checked, nil out of range)
+
+# ---- the idle bonus (THE IDLE BONUS in the docstring) ---------------------
+S_PRODCTL       = 0x44          # TProductionPlace -> TProductionControl
+PC_QUEUE        = 0x14          # TProductionControl -> TProductionQueue
+PC_STATUS       = 0x20          # TProductionControlStatus byte
+PCS_PRODUCING   = 2
+ITEM_KIND       = 0x08          # TProductionItem kind dword
+KIND_MERCHANDISE = 0x0A
 
 CLASSID_SHIPYARD = 0x000204BE   # TShipyard.ClassID 0x557C75C8, unique, no subclasses
 
@@ -757,6 +797,42 @@ def build():
         jmp  e_loop
     e_done:
         mov  eax, [esp+0x18]
+        test eax, eax
+        je   e_ret
+        mov  ecx, [esp+0x14]
+        mov  ecx, [ecx+0x{S_PRODCTL:X}]
+        test ecx, ecx
+        je   e_ret
+        cmp  byte ptr [ecx+0x{PC_STATUS:X}], {PCS_PRODUCING}
+        jne  e_bonus
+        mov  eax, [ecx+0x{PC_QUEUE:X}]
+        test eax, eax
+        je   e_plain
+        xor  edx, edx
+        call 0x{GETITEM:X}
+        test eax, eax
+        je   e_plain
+        cmp  dword ptr [eax+0x{ITEM_KIND:X}], 0x{KIND_MERCHANDISE:X}
+        jne  e_plain
+    e_bonus:
+        mov  eax, [esp+0x18]
+        mov  ecx, eax
+        shr  ecx, 2
+        mov  edx, eax
+        and  edx, 3
+        cmp  edx, 2
+        jb   e_add
+        ja   e_up
+        test ecx, 1
+        je   e_add
+    e_up:
+        inc  ecx
+    e_add:
+        add  eax, ecx
+        jmp  e_ret
+    e_plain:
+        mov  eax, [esp+0x18]
+    e_ret:
         add  esp, 0x20
         pop  edi
         pop  esi
@@ -1701,6 +1777,27 @@ def verify_cave(cave):
         sys.exit("ABORT: an immediate is loaded into ecx between the two divides in "
                  "`entry`; the second must divide by the live shipyard count N.")
 
+    # 9. THE IDLE BONUS. GetItem is called once in the whole cave, from `entry`, after
+    #    both divides (the bonus applies to the summed income, never per region), and
+    #    the status test, the Merchandise test and the round-half-even ladder are all
+    #    present in the assembled bytes.
+    total_gi = sum(call_count(k, GETITEM) for k in cave["_order"] if k != "table")
+    if total_gi != 1 or call_count("entry", GETITEM) != 1:
+        sys.exit("ABORT: TProductionQueue.GetItem is called %d time(s) across the cave "
+                 "and %d in `entry`; expected exactly 1, in `entry`."
+                 % (total_gi, call_count("entry", GETITEM)))
+    txts = ["%s %s" % (ins.mnemonic, ins.op_str) for ins in ins_list]
+    gi_at = [i for i, ins in enumerate(ins_list) if ins.mnemonic == "call"
+             and ins.op_str.startswith("0x") and int(ins.op_str, 16) == GETITEM][0]
+    if gi_at < divs[1]:
+        sys.exit("ABORT: the idle-bonus GetItem call precedes the payout loop's divides.")
+    for want in ("mov ecx, dword ptr [ecx + 0x%x]" % S_PRODCTL,
+                 "cmp byte ptr [ecx + 0x%x], %d" % (PC_STATUS, PCS_PRODUCING),
+                 "cmp dword ptr [eax + %d], 0x%x" % (ITEM_KIND, KIND_MERCHANDISE),
+                 "shr ecx, 2", "and edx, 3", "cmp edx, 2"):
+        if want not in txts:
+            sys.exit("ABORT: `entry` is missing the idle-bonus instruction `%s`." % want)
+
 
 # ============================================================================
 # --sim: pure-Python reference of the whole rule
@@ -1886,6 +1983,19 @@ def sim_share(area, n):
 def sim_income(levels, yards, target):
     """One-shot evaluation on a fresh cache -- the stateless view of the rule."""
     return SimEngine(levels, yards).income(target)
+
+
+def sim_paid(g, status, head_kind):
+    """Mirrors `entry`'s idle-bonus tail on the water income g. head_kind is the kind
+    dword of queue item 0, or None for a nil control / empty queue."""
+    if g == 0 or status is None:
+        return g
+    if status == PCS_PRODUCING and head_kind != KIND_MERCHANDISE:
+        return g
+    q, r = g >> 2, g & 3
+    if r == 3 or (r == 2 and q & 1):
+        q += 1
+    return g + q
 
 
 def _sea_column(lv, x, y0, n, terr=0x00):
@@ -2176,6 +2286,21 @@ def run_sim():
     check("max distinct regions over all 2^7 centre+ring configs (<=4)", worst <= 4, True)
     print("     (measured maximum: %d)" % worst)
 
+    # ---- the idle bonus --------------------------------------------------
+    # Oracle: Python's round() is round-half-to-even, as System.@ROUND is at the
+    # default FPU control word, and g * 0.25 is exact in a double.
+    bad = [g for g in range(0, 5000) if sim_paid(g, 0, None) != g + round(g * 0.25)]
+    check("idle: integer ladder == g + Round(g * 0.25) for g in 0..4999", bad, [])
+    check("idle: g = 1, 2, 3, 6, 10 -> 1, 2, 4, 8, 12",
+          [sim_paid(g, 0, None) for g in (1, 2, 3, 6, 10)], [1, 2, 4, 8, 12])
+    check("waiting (pcsWaiting) also earns the bonus", sim_paid(8, 1, None), 10)
+    check("producing a ship earns no bonus", sim_paid(8, PCS_PRODUCING, 0x01), 8)
+    check("producing Merchandise earns the bonus",
+          sim_paid(8, PCS_PRODUCING, KIND_MERCHANDISE), 10)
+    check("producing with an empty queue earns no bonus",
+          sim_paid(8, PCS_PRODUCING, None), 8)
+    check("a nil production control earns no bonus", sim_paid(8, None, None), 8)
+
     # ---- the built-in delta table still matches the engine's -----------
     # dump_deltas() sys.exit()s on a mismatch, so this line is a real assertion; it is
     # deliberately OUTSIDE the check() tally because it has no got/want pair. That is
@@ -2254,7 +2379,7 @@ def kill_aow():
     if os.environ.get("AOW_GAME_DIR"):
         return
     ps = ("Get-Process | Where-Object { $_.ProcessName -match "
-          "'^(AoW|AoWCompat|AoWDevEd|AoWEd)$' } | Stop-Process -Force")
+          "'^(AoW|AoWz|AoWCompat|AoWDevEd|AoWzEd|AoWEd|AoWSetup)$' } | Stop-Process -Force")
     try:
         subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                        capture_output=True, timeout=30)

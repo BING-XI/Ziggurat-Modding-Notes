@@ -503,8 +503,8 @@ def main():
     n = 0
     for m in mods:
         n += audit(m, paths[m][0], paths[m][1], show_all, show_owners)
-    print("\n%d modded RNG site(s). A RAW site is correct ONLY inside tactical combat "
-          "-- see Zig notes/12-re-toolchain.md section 4. P4 derived-hash sites make no "
+    print("\n%d modded RNG site(s). A RAW site is correct only inside combat, on an anchored "
+          "raw stream -- see Zig notes/12-re-toolchain.md section 4.4. P4 derived-hash sites make no "
           "draw and are invisible here: run --hash as well." % n)
 
 

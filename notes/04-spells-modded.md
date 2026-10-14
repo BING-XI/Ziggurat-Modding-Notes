@@ -29,7 +29,7 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Astral Ward (ex Spell Ward) — rescoped to block Town Gate + Warp Party only, and renamed | ✅ **CONFIRMED WORKING (2026-09-07)** (rename applied same day, untested) | `build_spellward_rescope.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Power Leech (ex Power Leak) — steal 25% of rival node power | 🔨 APPLIED, UNTESTED (2026-09-07; income row 2026-09-09) | `build_powerleech.py`, `build_powerleech_ui.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `AoWz.exe`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Terror — spell ATK 16 → 12 (five immediates, all move together) | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_terror_atk12.py` | `AoWEPACK.dpl` |
-| Lethargy (ex Slow) — halved movement, one strike fewer, AI value in both combat modes (Embrittle too); Haste +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
+| Lethargy (ex Slow) — halved movement, 50% chance of one strike fewer, AI value in both combat modes (Embrittle too); Haste 50% chance of +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25; 50% roll 2026-10-14) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Warp Party ban — per-map "Disable Warp Party" switch (cast only; research untouched) | 🔨 APPLIED 2026-09-27; editor half driven live | `build_warpban.py` (+ `build_zigeditor.py`) | `AoWEPACK.dpl`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe` |
 | HP/MV casting cost (extra sacrifice on top of points) | SPECULATIVE (85% "in addition", 60% "instead of") | none | `AoWEPACK.dpl` |
@@ -2070,9 +2070,32 @@ drops a zero-value target. Embrittle, a `TSlow` instance, inherited both.
   prediction twin the AI and predictor use).
 - **The +2 hex cost is gone** (the `je` over the `0x84` block is now a `jmp`).
 - **Haste (`0x98`) is the mirror: one melee strike more attacking and defending** (a side with 0
-  keeps 0), in the same two caves, applied before Lethargy's so the two cancel. Haste keeps its
+  keeps 0), in the same two caves, applied before Lethargy's. Haste keeps its
   vanilla −1 hex cost. Texts: `Spells.pfs` record 25, `Ability.pfs` record 162 (`build_pfs_typos.py`).
   Added 2026-09-25 at the owner's request.
+- **50% roll (v2, owner 2026-10-14).** In a real melee round Haste's +1 and Lethargy's −1 each land
+  with a 50% chance: one roll per side per modifier per round, Haste first, Lethargy only while the
+  count is still above one. Hasted and lethargic together roll independently (2 → 3, 2, 2 or 1).
+  - *Real vs estimate.* `TMeleeRound.Calculate` has four callers: real rounds
+    `TCMeleeMoveTE.LastMove` (AoWTCPCK `0x00409208`) and `TStrikeAbility.fcExecuteCombatCommand`
+    (`0x55766FF8`); estimates `TCAI.CheckUnit` (AoWTCPCK `0x004154C6`) and
+    `TStrikeAbility.fcGetDamageValueEx` (`0x55766D7A`). `cave_str` reads Calculate's return address
+    and matches `E8` + the rel32 of the two real sites — rebase-invariant, so no AoWTCPCK base is
+    needed. The script asserts all four call sites before writing.
+  - *Prediction rule.* Estimates — those two callers and `CalculateUnit`'s `cave_stru` — draw
+    nothing and apply the full ±1 (the v1 behaviour). An integer count cannot hold the expected half
+    strike; the full step keeps the AI, the predictor at `0x5580C8E0` and auto-resolve's command
+    scoring pointing the right way, where dropping it would erase the signal.
+  - *RNG: P1 synced draw with raw-seed preservation*, `TAoWHSMap.Random(map, 2)` in `cave_roll`.
+    Neither real host draws; their siblings in the same context are in the SYNC lists (AoWTCPCK
+    `TCMeleeMoveTE.ExecuteStrike`, `TCAbTouchMoveTE.LastMove`; AoWEPACK `TBreathAbility`/
+    `TRoundAttackAbility`/`TCombatSpell.fcExecuteCombatCommand`). Raw is wrong in the tactical half:
+    the raw seed at `LastMove` has not been re-anchored since the per-frame cosmetic draws moved it on
+    each machine (`ExecuteStrike @0x00409B39` re-anchors only before each strike). `Random` leaves
+    `System.RandSeed` on the synced stream, which in auto-resolve would rewind the raw stream feeding
+    `HitRole` after every rolled melee; `cave_roll` saves `[[0x558FB720]]` (the IAT cell for VCL30
+    `System.RandSeed`) before the call and restores it after. `rng_audit.py --owners`:
+    `0x5584E1EB ok <- build_lethargy.py`.
 - **An AI value for Lethargy and Embrittle**, in auto-combat and in battles fought by hand:
   `TSlow`'s VMT slots `+0x98` (auto-resolve, `cave_fcval`) and `+0x84` (the manual-combat AI,
   reached through `TSpell.tcGetDamageValueEx @0x5577969C`, `cave_tcval`) both use Entangle's formula
@@ -2085,25 +2108,17 @@ Vanilla's `+0x84` was `TSlow.GetCombatDamageValueEx @0x557F8948`, which returns 
 never cast Slow by hand. `TEntangle` overrides the same slot, which is why it did cast Entangle.
 Added the same day at the owner's request.
 
-Caves `0x5584DF00`–`0x5584E1B5` (`cave_moves`, `cave_str`, `cave_stru`, `cave_cur`, `cave_fcval`,
-`cave_tcval`).
-Hooks `0x55724FEE` (5 B jmp), `0x55767DE7` / `0x55767B15` / `0x557F8868` (call retargets),
-`0x5577FF9E` (1 B), VMT slots `0x557F4E98` and `0x557F4E84` (their `.reloc` entries are kept: the
-new values are inside the image). No roll added or moved. Surgical `--undo`, round-tripped to the same hash.
+Caves `0x5584DF00`–`0x5584E1F7` exclusive (`cave_moves`, `cave_str` `0x5584DF20` 124 B, `cave_stru`,
+`cave_cur`, `cave_fcval`, `cave_tcval`, `cave_roll` `0x5584E1C0` 55 B); the 2026-10-14 version pins
+v1's addresses, so no hook moved. Hooks `0x55724FEE` (5 B jmp), `0x55767DE7` / `0x55767B15` /
+`0x557F8868` (call retargets), `0x5577FF9E` (1 B), VMT slots `0x557F4E98` and `0x557F4E84` (their
+`.reloc` entries are kept: the new values are inside the image). `--apply` rewrites in place after
+checking the slot holds zero or exactly one known version. Surgical `--undo`, round-tripped to the
+same hash (2026-09-25 and 2026-10-14).
 
-In-game checklist:
-1. The spell book, the unit card and the combat status icon all say Lethargy, with the new text.
-2. Cast it on an enemy with 32 movement in manual combat: on its next turn it moves 16 (open ground,
-   4 hexes, not 8). An odd allowance rounds up.
-3. A lethargic unit that attacks strikes once; with Extra Strike, twice. Attacked, it strikes back
-   once. The combat predictor agrees.
-3a. A hasted unit strikes three times attacking (four with Extra Strike) and three times striking
-   back. Hasted and lethargic together: normal counts.
-4. Auto-combat with a hero who knows Lethargy or Embrittle: the combat log shows it being cast.
-   Neither is cast twice on the same unit, and Embrittle is never cast at a physically immune unit.
-5. A manual battle against an AI hero who knows either spell: the AI casts it, on the same terms.
-6. After combat, the unit's world-map movement is normal.
-7. Multiplayer: no desync in a battle where it is cast.
+Unproven: that `GetSynchronised` is true at `TCMeleeMoveTE.LastMove` in every tactical battle — the
+sibling TE methods' synced draws say so; if wrong, each hasted or lethargic melee pops "Invalid
+AoWHSMap.Random use" and the strike change always lands.
 
 ### Empty hexes are refused — `build_spell_unit_target.py` (2026-10-04)
 
