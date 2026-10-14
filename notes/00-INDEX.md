@@ -448,6 +448,16 @@ file carries the specific checklist for its own rows.
 - Scroll as a permanent per-hero spellbook grant — cave extended 2026-09-03
 
 ### UI — `07-ui.md`
+- **Combat log shows everything the 2026-10-14 survey found missing** — applied 2026-10-14: deaths,
+  rounds, healing, life-steal, spell casts and outcomes, touch outcomes, Cause Fear / Entangle
+  Strike rolls, burning/decay ticks, statuses wearing off, siege and missiles, flee, surrender,
+  battle result, replays; the failed-touch counter-strike reads "back at". `build_combatlog_lib.py`
+  + six `build_combatlog_*.py` packages. §1.11.
+- **Combat log stays up ~10 s after a battle with its text** (`build_combatlog_linger.py`, AoWz.exe) -
+  applied 2026-10-14; cleared when the next battle starts. Lines state an outcome only once it
+  happened; replays use the live wording; cast lines read "spends N mana on". §1.11-1.12.
+- **Combat log effect lines print the real RES** (`build_effectroll_res10.py`, one byte) — applied
+  2026-10-14; they read 5 too low since the stat doubling. §1.4.
 - **Combat log scrolls to its newest line** (`build_combatlog_autoscroll.py` on `AoWz.exe`, plus a
   flag store in `build_replaylog.py`) — applied 2026-10-14. The scroll now waits for the text
   re-wrap, so it no longer stops one batch short; the multiplayer chat gets the same fix. §1.9.

@@ -60,6 +60,12 @@ Host guard (the DLL also loads in AoWDevEd.exe): exe SizeOfImage >= 0x20E000 AND
 
 Idempotent, verify-before-write, backup <game dir>\backups\AoWEPACK.dpl.pre-clogtypegate, dry-run
 / --apply.
+⚠⚠ NEVER --apply THIS SCRIPT AGAIN (2026-10-14). Its cave now carries bytes owned by others:
+two 5% slope sites (build_hitslope5.py, 0x558110C7 / 0x558118F0) and the three verb tests
+0x558111C4 / 0x558111DA / 0x558112DF (build_combatlog_strikes.py, the failed-touch "back at").
+A re-apply would silently revert all five. If the worker must change, undo build_combatlog_strikes.py
+first, re-apply, then re-run build_hitslope5.py and build_combatlog_strikes.py.
+
 REVERT: NOT by snapshot. Restoring a whole-file .pre-* wipes every feature applied after it, and
 there is no snapshot layer at all now (both stacks were purged, 2026-08-08 and 2026-09-09). This
 script has no --undo flag: back it out by hand, restoring the original bytes listed in `patches`.

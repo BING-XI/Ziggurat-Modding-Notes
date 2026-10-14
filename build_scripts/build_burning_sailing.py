@@ -35,6 +35,8 @@ HOOK -- 0x557BA479..0x557BA482 (10 bytes), resume 0x557BA483
   the \xBA opcode at 0x557BA474 and reads the imm32 at 0x557BA475 against a ladder. Hooking there
   would make that script abort. Our window starts one byte later, at 0x557BA479.
 
+(2026-10-14: build_combatlog_ticks.py now also hooks this function at 0x557BA42A, 0x557BA46B and the
+epilogue 0x557BA49A, where it reads EAX as the damage this script's cave applied. Keep that contract.)
 Only two bytes in the whole function differ from pristine -- 0x557BA464 (power 4->20, the 5%
 to-hit conversion) and 0x557BA475 (damage 1->4, build_damhp_gapfix.py). Both are asserted
 unchanged before and after every write. The 10-byte window itself is byte-identical to pristine.
