@@ -15,7 +15,7 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 
 | Feature | Status | Owning script | Binary |
 |---|---|---|---|
-| Tactical group move — plan front-first, queue behind the leader | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_group_move_tc.py` | AoWTCPCK.dpl |
+| Tactical group move — plan front-first, cluster around the clicked hex | applied 2026-09-24, v2 2026-10-15 | `build_group_move_tc.py` | AoWTCPCK.dpl |
 | World-map group move — plan front-first, pass over parties that are leaving | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_group_move_map.py` | AoWEPACK.dpl |
 | Chasm & Sky — movement rows + Coast water-filter | 🔨 APPLIED, UNTESTED (v1 2026-07-24) · ✅ **v2 rows CONFIRMED WORKING (2026-09-21)** — Fly row fully open, Bridge column opened in the 5 walking-family tables | `build_chasm_sky_movement.py` | AoWEPACK.dpl |
 | Roads on Dirt; bridges on Chasm and Sky (5 new resources) | ✅ CONFIRMED WORKING (2026-09-21) — 1131 children | `build_hss_addresource.py` | Release/Release.hss |
@@ -1200,10 +1200,10 @@ Cosmetic, not fixed: `TriggerFireDamage` still logs the (now negative) damage by
 event-log a structure's other messages use, so a map-fire heal can occasionally show a stray garbage
 number elsewhere in that log. Harmless.
 
-## Tactical group move — plan front-first, queue behind the leader
+## Tactical group move — plan front-first, cluster around the clicked hex
 
-**🔨 APPLIED, UNTESTED (2026-09-24).** Script `build_group_move_tc.py`, AoWTCPCK.dpl. Its docstring
-is the full record: sites, the vanilla mechanism, and the design.
+Applied 2026-09-24; v2 (clustering) 2026-10-15. Script `build_group_move_tc.py`, AoWTCPCK.dpl. Its
+docstring is the full record: sites, the vanilla mechanism, and the design.
 
 **Owner's complaint:** when several units are box-selected and sent to one hex, each is planned as
 if its group-mates stand still. So three units sent down a one-hex corridor detour, because "the
@@ -1222,9 +1222,21 @@ guy in front is blocking me".
 **Ours** (owner rulings 2026-09-24):
 - **Order and planning:** the front of the column goes first, and every unit is planned against the
   state the earlier movers leave behind.
-- **The queue:** the first unit that can reach the target takes it. Each later unit takes the first
-  workable hex walking back along the previous mover's route (at most 8 hexes, skipping taken or
-  still-occupied hexes). The fallback is vanilla's shape-copy slot, and failing that, the unit stays.
+- **The cluster (v2, 2026-10-15):** the first unit that can reach the target takes it. Each later
+  unit tries the hexes within 3 of the target, nearest to the target first and, within a ring,
+  nearest to itself; it skips hexes already taken, hexes of units yet to move, and hexes held by a
+  unit outside the selection (so no move turns into an attack). Off-map hexes are never tried
+  (`TMapLevel.GetField` has no bounds check). The fallback is vanilla's shape-copy slot, and failing
+  that, the unit stays. v1 walked back along the previous mover's route and lined the group up
+  behind the leader; the owner reported that as the bug it was. The target is the clicked hex;
+  a first unit that cannot take it joins the cluster search too.
+- **One stuck unit no longer cancels the order (v2, 2026-10-15):** vanilla executes a group click
+  only when every selected unit has a path (`0x41E32C`, the nested confirm test of
+  `ExecuteMoveSelection`), so one unit with no route turned every confirming click into another
+  preview and nobody moved. The preview now stores its target (`G_T`, AoWTCPCK BSS `0x46CA00`) and
+  the click at `0x41E43A` confirms when it lands on that hex and at least one unit has a path; the
+  others stay. With no stored preview the vanilla test still applies. Execution already skips an
+  empty path (`GetMoveLoc` and `TXYLList.Get` are bounds-checked).
 - **Reach:** a unit that can't reach its hex this round is re-planned to the farthest hex it can,
   using an inline copy of `MovePointsToPos`.
 - **Execution order:** the click reorders the selection to the plan order and skips vanilla's
@@ -1235,23 +1247,13 @@ guy in front is blocking me".
 - **Blocked at execution:** "stop where blocked" relies on vanilla's own step code. It was not
   traced; check it in-game.
 
-**Sites:** hooks `0x41E7F7` (preview) and `0x41E2B0` (click, call-retarget); sort byte `0x40F81C`;
+**Sites:** hooks `0x41E7F7` (preview), `0x41E2B0` (click) and `0x41E43A` (confirm), the last two call-retargets; sort byte `0x40F81C`;
 VMT slots `0x412DDC` and `0x431214` (`.reloc` kept); starting-hex cost `0x42083A`. Zone
-`0x439800`–`0x43A3FF` (core 1,231 B + five small caves). Surgical `--undo` restores all six sites and
-zeroes the zone. Multiplayer-safe: the paths travel inside the tokens. AI pathing is untouched.
+`0x439800`–`0x43A3FF` (core 1,742 B + six small caves); BSS dword `0x46CA00` (`G_T`). Surgical `--undo`
+restores all seven sites and zeroes the zone. Multiplayer-safe: the paths travel inside the tokens. AI pathing is untouched.
 
-In-game checklist:
-1. Three units in single file in a one-hex corridor, sent further down it: all advance in a column —
-   the leader on the clicked hex, the others behind it — with no detours. Repeat with a corridor
-   that bends.
-2. In open ground, the group gathers behind the leader, and no unit's move is refused.
-3. A leader who can't reach the hex this round stops as far as it can; the others queue behind it.
-4. A selected unit that can't move this round stays, and the others plan around it.
-5. The hover preview shows exactly what then executes.
-6. If an earlier mover stops short (e.g. at a hidden enemy), the later ones stop where they are
-   blocked: never two units on one hex, and no error dialog.
-7. No noticeable lag while hovering with 8 units selected.
-8. Multiplayer: the other machine sees the same moves.
+Unproven: hover lag with 8 units selected (each later unit computes up to 49 hex distances twice,
+plus one path per candidate it tries).
 
 ## Movement predictor fix (v1 → v4)
 

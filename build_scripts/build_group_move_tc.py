@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 r"""
 build_group_move_tc.py -- tactical group move: plan the units one after another, front first, and
-queue the rest behind the leader.  AoWTCPCK.dpl.
+cluster the rest around the clicked hex.  AoWTCPCK.dpl.
 
 THE PROBLEM (owner, 2026-09-24)
 -------------------------------
@@ -34,10 +34,16 @@ THIS SCRIPT (owner rulings 2026-09-24: plan sequentially front-first; queue behi
          first (Inioch's v3 rule, keyed on T);
       2. clear every path, then plan in that order, so the vanilla markers see exactly the units that
          will already have moved (origin free, destination taken) and the ones still standing;
-      3. destination: the first unit that can reach T takes it (the leader).  Every later unit takes
-         the first candidate that works, walking back along the most recent mover's route from the
-         hex behind its destination (at most 8 hexes), skipping hexes already taken or still occupied
-         by a unit yet to move; if none works, vanilla's shape-copy slot; else it stays put;
+      3. destination: T is the clicked (mouse) hex.  The first unit that can reach T takes it (the
+         leader).  Every other unit, and a first unit that cannot take T,
+         CLUSTERS around T (v2, 2026-10-15): the candidates are the hexes within QR (3) of T inside
+         the map ([level+0xC] x [level+0x10], level 0), tried nearest-to-T first and, within a
+         ring, nearest to the unit's own hex.  A candidate is skipped when it is already taken,
+         still occupied by a unit yet to move, or holds a unit that is not in the selection (so a
+         move never becomes an attack).  If none works, vanilla's shape-copy slot; else it stays.
+         v1 walked back along the previous mover's route instead, which lined the group up in a
+         column behind the leader (owner's report 2026-10-15: "destinations fall into a line
+         instead of clustering near the originally targeted destination");
       4. reach: a unit that cannot reach its hex this round is re-planned to the farthest hex it can
          reach (inline copy of `TMovepath.MovePointsToPos 0x557638D8`, using [ms+0x14]), so the ones
          behind queue behind where it really stops.  Never applied when [ms+0x14] <= 0;
@@ -63,13 +69,37 @@ SITES (all vanilla on 2026-09-24)
     0x412DDC  TTacticalCombatUnitHS VMT+0xD4: 0x402A94 -> cave_unit   (.reloc entry kept)
     0x431214  TMovementHS VMT+0xD4: 0x401B5C -> cave_marker            (.reloc entry kept)
     0x42083A  `mov eax,[ebp-0xC] / xor edx,edx / mov [eax],edx` -> jmp cave_origin (+2 NOP)
+    0x41E43A  confirm: `call 0x41E32C` rel32 retargeted -> c_confirm (v2, 2026-10-15)
     Zone 0x439800-0x43A3FF (reserved to this script).  Caves are PIC (call/pop delta).
+    BSS 0x46CA00 (dword G_T, v2): the target of the last group preview | 0x80000000; 0 = none.
+
+THE CONFIRM TEST (v2, 2026-10-15; owner: "if any of them had a movement path that was somehow
+invalid, it would prevent all of them from moving")
+    A click on a group runs ExecuteMoveSelection 0x41E408; with [ctl+0xC] = -1 it executes the group
+    (MoveUnits 0x41E280) only when the nested test 0x41E32C passes, and otherwise re-plans the
+    preview.  Vanilla's test passes only when unit 0's path ends on the mouse hex AND EVERY selected
+    unit has a non-empty path (0x41E3E6 `cmp [path+8],0 / setne`).  One unit with no route, so an
+    empty path, turned every confirming click into another preview: nobody moved.  This planner
+    empties the path of any unit that stays, and unit 0 (the preview's list order) need not be the
+    unit on the target, so v1 inherited and widened the hole.
+    c_confirm: when G_T is set it passes iff the mouse hex is G_T's hex and at least one unit has a
+    path; with G_T = 0 it tail-jumps to vanilla's test.  The core writes G_T at the end of a preview
+    (T | 0x80000000 when any unit got a path, else 0), clears it on a bail in preview mode, and
+    clears it after a click (the plan is consumed).  T is the mouse hex in both modes (unit 0's
+    path end only when GetXhx/GetYhx report none), so a unit 0 with no route to the target no
+    longer cancels the plan, and a first unit that cannot take T joins the cluster search instead
+    of vanilla's shape-copy slot.  A unit with an empty path is skipped downstream: the
+    bounds-checked GetMoveLoc 0x5576399C returns the 0xFFFFFF sentinel for it, MovePointsToPos
+    0x557638D8 returns 0, and SetupMultiTCUnitMove's `[ms+0x24] < count-1` test skips it.
+    Not changed: TMultiMoveTE.Execute 0x5574A950 validates every token but keeps only token 0's
+    answer (each result overwrites the last); TCombatMoveTE.Validate 0x4081EC fails only when no unit
+    stands on the move's start hex, which a fresh plan never produces.
 
 USAGE
     python build_group_move_tc.py            verify / dry run (writes nothing)
     python build_group_move_tc.py --dis      also disassemble the caves
     python build_group_move_tc.py --apply    install (or rewrite the caves in place)
-    python build_group_move_tc.py --undo     restore all six sites and zero the zone
+    python build_group_move_tc.py --undo     restore all seven sites and zero the zone
 """
 import os, sys, struct, argparse, subprocess
 
@@ -85,23 +115,34 @@ G_COMBATMAP = 0x46C064
 MARKER_VMT = 0x431140
 GETMS, LIST_EXCHANGE = 0x40275C, 0x401534
 XYL_GET, XYL_CLEAR, DHX = 0x401B1C, 0x401B0C, 0x4022A4
+GETMAPLEVEL, GETFIELD = 0x401E64, 0x401E54    # HSEngine TMapContainer.GetMapLevel / TMapLevel.GetField
+GETXHX, GETYHX = 0x402164, 0x40216C           # HSEngine THSMapMouse.GetXhx / GetYhx (-1 = none)
+CONFIRM_VAN = 0x41E32C      # ExecuteMoveSelection's nested confirm test (vanilla)
+G_T = 0x46CA00              # BSS: target of the last group preview | 0x80000000, 0 = none
 SETUP_MULTI, PREVIEW_EXIT, CLICK_RET = 0x40F788, 0x41EDD9, 0x41E2B5
 UNIT_THUNK, MARKER_THUNK = 0x402A94, 0x401B5C
 ORIGIN_RESUME = 0x420841
-THUNKS = (GETMS, LIST_EXCHANGE, XYL_GET, XYL_CLEAR, DHX)
+THUNKS = (GETMS, LIST_EXCHANGE, XYL_GET, XYL_CLEAR, DHX, GETMAPLEVEL, GETFIELD, GETXHX, GETYHX)
+UNIT_HS_ID = 0x220104       # field VMT+0x80 class id of a unit's HS (UpdateMoveCursor 0x41F7AD)
+L_W, L_H = 0x0C, 0x10       # TMapLevel width / height (CreateMapFieldList 0x556087EC)
+QR = 3                      # cluster radius: candidates within QR hexes of the target
 
 H_PREVIEW, H_CLICK, H_SORT = 0x41E7F7, 0x41E2B0, 0x40F81C
+H_CONFIRM = 0x41E43A        # `call 0x41E32C` (push ebp / call / pop ecx) -> c_confirm
 SLOT_UNIT, SLOT_MARKER, H_ORIGIN = 0x412DDC, 0x431214, 0x42083A
 ORIG_PREVIEW = bytes.fromhex("e9dd050000")
 ORIG_CLICK = bytes.fromhex("e8d314ffff")
+ORIG_CONFIRM = bytes.fromhex("e8edfeffff")
 ORIG_SORT, NEW_SORT = bytes.fromhex("7e6b"), bytes.fromhex("eb6b")
 ORIG_ORIGIN = bytes.fromhex("8b45f433d28910")
 
 AOW_PROCS = ("AoW", "AoWz", "AoWCompat", "AoWzCompat", "AoWDevEd", "AoWzEd", "AoWEd", "AoWSetup")
 
-# core frame (own ebp).  Locals -0x04..-0x60; six 64-dword arrays below them.
-FR = 0x660
-ORIG, DESTV, ORDER, CUR, TK, TKD = "-0x160", "-0x260", "-0x360", "-0x460", "-0x560", "-0x660"
+# core frame (own ebp).  Locals -0x04..-0x8C; eight 64-dword arrays below -0x160.
+FR = 0x960
+ORIG, DESTV, ORDER, CUR, TK, TKD = "-0x260", "-0x360", "-0x460", "-0x560", "-0x660", "-0x760"
+CK, CC = "-0x860", "-0x960"     # cluster candidates: sort key, packed hex
+assert (2 * QR + 1) ** 2 <= MAXN, "the candidate box must fit the 64-entry arrays"
 
 
 def core_src():
@@ -119,17 +160,29 @@ def core_src():
     k_anchor:
         pop ebx
         sub ebx, k_anchor
+        mov [ebp-0x90], ebx
         mov eax, [ebx+{G_COMBATMAP:#x}]
         mov eax, [eax+0x88]
         mov [ebp-0x20], eax
+        mov eax, [ebx+{G_COMBATMAP:#x}]
+        mov eax, [eax+0x10]
+        xor edx, edx
+        call {GETMAPLEVEL:#x}
+        mov [ebp-0x6C], eax
+        test eax, eax
+        je k_bail
+        mov ecx, [eax+{L_W:#x}]
+        mov [ebp-0x64], ecx
+        mov ecx, [eax+{L_H:#x}]
+        mov [ebp-0x68], ecx
         mov eax, edi
         mov edx, [eax]
         call dword ptr [edx+0x54]
         mov [ebp-4], eax
         cmp eax, 2
-        jl k_done
+        jl k_bail
         cmp eax, {MAXN}
-        jg k_done
+        jg k_bail
         mov dword ptr [ebp-0xC], 0
     k_fill:
         mov eax, [ebp-0xC]
@@ -156,9 +209,28 @@ def core_src():
         inc dword ptr [ebp-0xC]
         jmp k_fill
     k_fill_end:
+        mov eax, [ebp-0x90]
+        mov eax, [eax+{G_COMBATMAP:#x}]
+        mov eax, [eax+0xC]
+        call {GETXHX:#x}
+        cmp eax, -1
+        je k_t_prev
+        mov [ebp-0x98], eax
+        mov eax, [ebp-0x90]
+        mov eax, [eax+{G_COMBATMAP:#x}]
+        mov eax, [eax+0xC]
+        call {GETYHX:#x}
+        cmp eax, -1
+        je k_t_prev
+        shl eax, 8
+        or eax, [ebp-0x98]
+        and eax, 0xFFFF
+        jmp k_t_set
+    k_t_prev:
         mov eax, [ebp{DESTV}]
         cmp eax, -1
-        je k_done
+        je k_bail
+    k_t_set:
         mov [ebp-0x2C], eax
         mov dword ptr [ebp-8], 0
     k_ord:
@@ -246,11 +318,12 @@ def core_src():
         jmp k_clr
     k_clr_end:
         mov dword ptr [ebp-0x40], -1
+        mov dword ptr [ebp-0x94], 0
         mov dword ptr [ebp-8], 0
     k_plan:
         mov eax, [ebp-8]
         cmp eax, [ebp-4]
-        jge k_done
+        jge k_end
         mov ecx, [ebp+eax*4{ORDER}]
         mov [ebp-0x30], ecx
         cmp dword ptr [ebp-0x1C], 0
@@ -297,32 +370,90 @@ def core_src():
         je k_path
         cmp eax, 2
         je k_stay
-        jmp k_try_v
     k_queue:
-        mov eax, [ebp-0x40]
-        call c_ms
-        mov eax, [eax+8]
-        mov [ebp-0x50], eax
-        mov ecx, [eax+8]
-        mov [ebp-0x54], ecx
-        mov dword ptr [ebp-0x44], 1
-    k_q_loop:
-        mov eax, [ebp-0x44]
-        cmp eax, [ebp-0x54]
-        jge k_try_v
-        cmp eax, 9
-        jge k_try_v
-        mov edx, eax
-        mov eax, [ebp-0x50]
-        call {XYL_GET:#x}
-        and eax, 0xFFFF
+        mov eax, [ebp-8]
+        mov eax, [ebp+eax*4{ORDER}]
+        mov eax, [ebp+eax*4{ORIG}]
+        mov [ebp-0x74], eax
+        mov dword ptr [ebp-0x70], 0
+        mov dword ptr [ebp-0x78], -{QR}
+    q_dy:
+        cmp dword ptr [ebp-0x78], {QR}
+        jg q_pick
+        mov dword ptr [ebp-0x7C], -{QR}
+    q_dx:
+        cmp dword ptr [ebp-0x7C], {QR}
+        jg q_dy_next
+        movzx eax, byte ptr [ebp-0x2C]
+        add eax, [ebp-0x7C]
+        js q_dx_next
+        cmp eax, [ebp-0x64]
+        jge q_dx_next
+        movzx ecx, byte ptr [ebp-0x2B]
+        add ecx, [ebp-0x78]
+        js q_dx_next
+        cmp ecx, [ebp-0x68]
+        jge q_dx_next
+        shl ecx, 8
+        or eax, ecx
+        mov [ebp-0x80], eax
+        mov edx, [ebp-0x2C]
+        call c_dist
+        cmp eax, {QR}
+        ja q_dx_next
+        shl eax, 16
+        mov [ebp-0x84], eax
+        mov eax, [ebp-0x80]
+        mov edx, [ebp-0x74]
+        call c_dist
+        cmp eax, 0xFF
+        jbe q_du_ok
+        mov eax, 0xFF
+    q_du_ok:
+        shl eax, 8
+        or eax, [ebp-0x84]
+        mov ecx, [ebp-0x70]
+        or eax, ecx
+        mov [ebp+ecx*4{CK}], eax
+        mov edx, [ebp-0x80]
+        mov [ebp+ecx*4{CC}], edx
+        inc dword ptr [ebp-0x70]
+    q_dx_next:
+        inc dword ptr [ebp-0x7C]
+        jmp q_dx
+    q_dy_next:
+        inc dword ptr [ebp-0x78]
+        jmp q_dy
+    q_pick:
+        mov ecx, -1
+        mov edx, 0x7FFFFFFF
+        xor eax, eax
+    q_scan:
+        cmp eax, [ebp-0x70]
+        jge q_scan_end
+        cmp [ebp+eax*4{CK}], edx
+        jae q_scan_next
+        mov edx, [ebp+eax*4{CK}]
+        mov ecx, eax
+    q_scan_next:
+        inc eax
+        jmp q_scan
+    q_scan_end:
+        cmp ecx, -1
+        je k_try_v
+        mov dword ptr [ebp+ecx*4{CK}], 0x7FFFFFFF
+        mov eax, [ebp+ecx*4{CC}]
+        mov [ebp-0x80], eax
+        call c_foreign
+        test eax, eax
+        jne q_pick
+        mov eax, [ebp-0x80]
         call c_attempt
         cmp eax, 1
         je k_path
         cmp eax, 2
         je k_stay
-        inc dword ptr [ebp-0x44]
-        jmp k_q_loop
+        jmp q_pick
     k_try_v:
         mov eax, [ebp-8]
         mov eax, [ebp+eax*4{ORDER}]
@@ -343,6 +474,7 @@ def core_src():
         mov [ebp+eax*4{TKD}], ecx
         jmp k_plan_next
     k_path:
+        mov dword ptr [ebp-0x94], 1
         call c_reach
         mov eax, [ebp-0x30]
         mov [ebp-0x40], eax
@@ -356,6 +488,23 @@ def core_src():
     k_plan_next:
         inc dword ptr [ebp-8]
         jmp k_plan
+    k_end:
+        xor eax, eax
+        cmp dword ptr [ebp-0x1C], 0
+        jne k_end_w
+        cmp dword ptr [ebp-0x94], 0
+        je k_end_w
+        mov eax, [ebp-0x2C]
+        or eax, 0x80000000
+    k_end_w:
+        mov ecx, [ebp-0x90]
+        mov [ecx+{G_T:#x}], eax
+        jmp k_done
+    k_bail:
+        cmp dword ptr [ebp-0x1C], 0
+        jne k_done
+        mov ecx, [ebp-0x90]
+        mov dword ptr [ecx+{G_T:#x}], 0
     k_done:
         pop edi
         pop esi
@@ -470,6 +619,40 @@ def core_src():
         xor eax, eax
         ret
 
+    c_foreign:
+        mov edx, eax
+        and edx, 0xFF
+        mov ecx, eax
+        shr ecx, 8
+        and ecx, 0xFF
+        mov eax, [ebp-0x6C]
+        call {GETFIELD:#x}
+        test eax, eax
+        je f_no
+        mov edx, {UNIT_HS_ID:#x}
+        mov ecx, [eax]
+        call dword ptr [ecx+0x80]
+        test eax, eax
+        je f_no
+        mov [ebp-0x88], eax
+        mov dword ptr [ebp-0x8C], 0
+    f_loop:
+        mov eax, [ebp-0x8C]
+        cmp eax, [ebp-4]
+        jge f_yes
+        call c_ms
+        mov eax, [eax+0x10]
+        cmp eax, [ebp-0x88]
+        je f_no
+        inc dword ptr [ebp-0x8C]
+        jmp f_loop
+    f_yes:
+        mov eax, 1
+        ret
+    f_no:
+        xor eax, eax
+        ret
+
     c_reach:
         mov eax, [ebp-0x30]
         call c_ms
@@ -530,6 +713,70 @@ def stub_click_src(core):
         call {core:#x}
         pop eax
         jmp {SETUP_MULTI:#x}
+    """
+
+
+def c_confirm_src():
+    """Replaces ExecuteMoveSelection's confirm test 0x41E32C (called with the parent EBP pushed;
+    the caller pops it).  AL = 1 when the clicked hex is the one the last group preview was planned
+    for and at least one selected unit has a path; units with no path then stay.  With no stored
+    preview, vanilla's test (unit 0's path ends on the mouse hex and EVERY unit has a path)."""
+    return f"""
+        push ebx
+        push esi
+        push edi
+        call cf_anchor
+    cf_anchor:
+        pop ebx
+        sub ebx, cf_anchor
+        mov esi, [ebx+{G_T:#x}]
+        test esi, esi
+        je cf_vanilla
+        mov eax, [ebx+{G_COMBATMAP:#x}]
+        mov eax, [eax+0xC]
+        call {GETXHX:#x}
+        mov ecx, esi
+        and ecx, 0xFF
+        cmp eax, ecx
+        jne cf_no
+        mov eax, [ebx+{G_COMBATMAP:#x}]
+        mov eax, [eax+0xC]
+        call {GETYHX:#x}
+        mov ecx, esi
+        shr ecx, 8
+        and ecx, 0xFF
+        cmp eax, ecx
+        jne cf_no
+        mov eax, [esp+0x10]
+        mov eax, [eax-4]
+        mov edi, [eax+8]
+        mov eax, edi
+        mov edx, [eax]
+        call dword ptr [edx+0x54]
+        mov esi, eax
+    cf_loop:
+        dec esi
+        js cf_no
+        mov edx, esi
+        mov eax, edi
+        call {GETMS:#x}
+        mov eax, [eax+8]
+        cmp dword ptr [eax+8], 0
+        jle cf_loop
+        mov eax, 1
+        jmp cf_out
+    cf_no:
+        xor eax, eax
+    cf_out:
+        pop edi
+        pop esi
+        pop ebx
+        ret
+    cf_vanilla:
+        pop edi
+        pop esi
+        pop ebx
+        jmp {CONFIRM_VAN:#x}
     """
 
 
@@ -637,6 +884,7 @@ def build():
     core_va = cur
     cur = (cur + len(core) + 15) & ~15
     for name, fn in (("stub_preview", lambda v: stub_preview_src(core_va)),
+                     ("c_confirm", lambda v: c_confirm_src()),
                      ("stub_click", lambda v: stub_click_src(core_va)),
                      ("cave_unit", lambda v: cave_unit_src()),
                      ("cave_marker", lambda v: cave_marker_src()),
@@ -719,6 +967,7 @@ def wanted(caves):
     return {
         H_PREVIEW: (ORIG_PREVIEW, b"\xE9" + rel32(H_PREVIEW, va_of(caves, "stub_preview"))),
         H_CLICK: (ORIG_CLICK, b"\xE8" + rel32(H_CLICK, va_of(caves, "stub_click"))),
+        H_CONFIRM: (ORIG_CONFIRM, b"\xE8" + rel32(H_CONFIRM, va_of(caves, "c_confirm"))),
         H_SORT: (ORIG_SORT, NEW_SORT),
         SLOT_UNIT: (struct.pack("<I", UNIT_THUNK), struct.pack("<I", va_of(caves, "cave_unit"))),
         SLOT_MARKER: (struct.pack("<I", MARKER_THUNK), struct.pack("<I", va_of(caves, "cave_marker"))),
@@ -777,6 +1026,7 @@ def main():
     zone = bytes(d[zo:zh])
     installed_caves = all(bytes(d[va2off(d, va):va2off(d, va) + len(b)]) == b for _n, va, b in caves)
     rl = relocs_in(d, H_PREVIEW, H_PREVIEW + 5) + relocs_in(d, H_CLICK, H_CLICK + 5) + \
+        relocs_in(d, H_CONFIRM, H_CONFIRM + 5) + \
         relocs_in(d, H_SORT, H_SORT + 2) + relocs_in(d, H_ORIGIN, H_ORIGIN + 7) + \
         relocs_in(d, ZONE_LO, ZONE_HI)
     slot_rl = [relocs_in(d, s, s + 4) for s in (SLOT_UNIT, SLOT_MARKER)]
@@ -791,7 +1041,9 @@ def main():
         show(caves)
 
     all_van = all(s == "vanilla" for s in states.values())
-    all_ours = all(s in ("installed", "ours-moved") for s in states.values())
+    # H_CONFIRM joined in v2: a v1/v2-early install has it vanilla and the other six ours.
+    all_ours = all(s in ("installed", "ours-moved") or (site == H_CONFIRM and s == "vanilla")
+                   for site, s in states.items())
     state = "VANILLA" if all_van else "INSTALLED" if all_ours and installed_caves else \
         "OURS, CAVES DIFFER" if all_ours else "MIXED"
     print("state: %s" % state)
@@ -828,7 +1080,7 @@ def main():
     for site, (van, new) in want.items():
         o = va2off(back, site)
         assert back[o:o + len(van)] == (new if a.apply else van), "%08X did not stick" % site
-    print("\n%s" % ("APPLIED" if a.apply else "UNDONE -- six sites vanilla, zone zeroed"))
+    print("\n%s" % ("APPLIED" if a.apply else "UNDONE -- seven sites vanilla, zone zeroed"))
 
 
 if __name__ == "__main__":

@@ -772,13 +772,16 @@ file carries the specific checklist for its own rows.
   order, and a later party may route through an earlier one that leaves its hex this turn. Merging
   on arrival and partial moves were already vanilla. Inioch's 1-byte "dropped-party" patch is the
   road-building check and was not applied. Checklist: `09-terrain-movement.md`.
-- **Tactical group move: plan front-first, queue behind the leader** (`build_group_move_tc.py`) —
-  🔨 APPLIED, UNTESTED (2026-09-24). Box-selected units are planned one after another in the order
-  they will move, so a column goes down a one-hex corridor instead of detouring. Later units take the
-  first free hex behind the previous mover, and a unit short of movement stops at its reach. Includes
-  Inioch's walk-through-vacated-hexes and starting-hex-cost fixes. AoWTCPCK zone
-  `0x439800`–`0x43A3FF`, six sites, surgical `--undo`. Checklist: `09-terrain-movement.md`, "Tactical
-  group move".
+- **Tactical group move: plan front-first, cluster around the clicked hex** (`build_group_move_tc.py`)
+  — applied 2026-09-24, v2 2026-10-15. Box-selected units are planned one after another in the order
+  they will move, so a column goes down a one-hex corridor instead of detouring. The first unit takes
+  the clicked hex; later units take the free hex nearest it (within 3), nearest to themselves within a
+  ring. v1 queued them back along the leader's route, which lined them up (owner's report
+  2026-10-15). One unit with no route no longer cancels the whole order: vanilla's confirm test
+  needed a path for every unit, now the click confirms when it lands on the previewed hex and the
+  stuck units stay. A unit short of movement stops at its reach. Includes Inioch's
+  walk-through-vacated-hexes and starting-hex-cost fixes. AoWTCPCK zone `0x439800`–`0x43A3FF`, six
+  sites, surgical `--undo`. `09-terrain-movement.md`, "Tactical group move".
 - **Path of Frost leaves lava alone** (`build_pathoffrost_nolava.py`) — 🔨 APPLIED, UNTESTED
   (2026-09-24). An unowned hand-edit (`call 0x5580BFA0` at `0x55780231`) made the ability turn lava
   into wasteland on every level. The owner ruled that only spells and altars do that, so the script
