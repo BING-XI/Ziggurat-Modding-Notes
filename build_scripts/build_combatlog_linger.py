@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 r"""
-build_combatlog_linger.py -- the combat log keeps its text after a battle and stays up ~10 s.
-AoWz.exe (exe_patch.py).  Owner request 2026-10-14.
+build_combatlog_linger.py -- the combat log keeps its text after a MANUAL battle and stays up ~10 s.
+AoWz.exe (exe_patch.py).  Owner request 2026-10-14; v2 2026-10-15: no linger after auto-combat or a
+replay (owner: "the combat log staying open after autocombat was a mistake").
 
 BEFORE
     cave_drain (build_combatlog_exe.py, .clog @0x00610360, pumped every frame from
@@ -14,8 +15,10 @@ BEFORE
 
 AFTER
     change to 0     no clear, no discard: the tick falls through to `_drain`, which appends the
-                    unread ring lines as on any tick.  The linger starts: G_LING := 1,
-                    G_LSTART := now (ms of the day).
+                    unread ring lines as on any tick.  From mode 1 (manual combat) the linger
+                    starts: G_LING := 1, G_LSTART := now (ms of the day).  From mode 2 (the
+                    fast-combat window: auto-combat and replays) it does not, so `_nowant` hides
+                    the window in the same tick, as before 2026-10-14.
     mode-0 ticks    (`_nowant`) G_SEAL := the memo's line count.  While lingering and fewer than
                     LINGER_MS have passed, `want` := the window's CURRENT visibility, so the linger
                     keeps a shown window up and never shows a hidden one.  After that, or when the
@@ -107,11 +110,13 @@ SRC = {
         pop eax
         ret
     """,
-    # replaces `_m_none`
+    # replaces `_m_none`.  The `mov` between the second cmp and the jne leaves the flags alone.
     "cave_none": """
         cmp dword ptr [{LM:#x}], 0
         je {DRAIN:#x}
+        cmp dword ptr [{LM:#x}], 1
         mov dword ptr [{LM:#x}], 0
+        jne {DRAIN:#x}
         call {now_ms:#x}
         mov dword ptr [{G_LSTART:#x}], eax
         mov dword ptr [{G_LING:#x}], 1

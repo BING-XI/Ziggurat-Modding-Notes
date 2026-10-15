@@ -1596,6 +1596,75 @@ resource's `ResourceUserClassID`; anything else goes down the create path, whose
 `TAbstractHexagon.PlaceHX` destroys the old hexagon first, as Grass over water always did. Water/Ice
 painted over Earth/Rock now replaces as well instead of re-skinning the wall.
 
+## Firmament Sky over the Surface — parallax, applied 2026-10-15
+
+`build_sky_parallax.py` (AoWEPACK.dpl only). Owner request: Sky on the Firmament is semi-transparent
+and shows a shrunken image of the Surface below, with parallax. Owner choices: show everything (no
+fog), terrain plus cities (no armies), no map-edge border. Now: 0.6 size (3/4 until the owner asked for 0.6), hazed 55 % toward the
+vanilla Ice mean, sky 3/4 + Surface 1/4, wrapping in x and y, scrolling at 1/4 of the sky's speed.
+Driven live in AoWzEd; AoWz.exe not run.
+- The image is the game's own rendering. Each time the Firmament is entered, the cave renders level 0
+  in 16×16-hex chunks through the engine's scene path into an off-screen record it builds itself.
+  Flat terrain is in the static list (`[map+0x1C]`); mountains, forests, structures and the water's
+  shore pass are in the dynamic list (`[map+0x20]`) — an image built from the static list alone has
+  no mountains or cities. Armies (`TArmyHS`, VMT `0x557133A0`) and border hexes
+  (`TAoWBorderHexagon`, VMT `0x5579A458`) are skipped.
+- ⚠ The sprite clipper drops a few rows of any sprite that starts above the clip top: rendering a
+  chunk edge-to-edge left notches along every chunk's top. A 64 px rendered-and-discarded border
+  fixes it — use one for any off-screen render.
+- A surface is described by the 0x3C-byte record `GFXE.TDIB16Surface.Lock` fills (`+0` w, `+4` h,
+  `+8` bpp, `+0C` pitch, `+10..+1C` clip, `+20` row 0, `+28` format, `+2C..+34` masks); a hand-built
+  one over any buffer works with `DrawStaticHS` and every `Show`.
+- After the render the view fields are restored and the real `UpdateStaticScene`/`UpdateDynamicScene`
+  (map VMT `+0xD8`/`+0xDC`) rebuild both lists — the hook runs in front of `DrawDynamicScene`, which
+  draws from the dynamic list straight after.
+- Wraparound (owner: "make the image of the surface have wraparound, both X-axis and Y-axis", so it
+  can move far slower than the view). The 0.6 image is measured and folded into a tile: per column
+  and row, the count of drawn pixels; the first and last above a quarter of the other dimension
+  bound the interior; n hexes span n·p + p/2 px (p = 19.2 at 0.6), so n = floor((extent + 8) / p),
+  rounded down so the tile is whole px and even across (multiples of 10 across, 5 down at 0.6; the
+  rest overlaps). Chunks are 15 hexes so each is a whole 288 image px. A short count overlaps a column; a
+  long one leaves a gap. ⚠ The border is not one hex (about five on the test map), and the engine
+  draws each hex a few px left of hx·p: periods from rounded hex indices left a one-column gap.
+  The 2×2 downsample averages only the drawn pixels, so the outline has no dark rim to show at the
+  seam. Sprites crossing the seam are cut. Tile on the 127×127 test map: 110 × 115 hexes, 9.3 MB — narrower than a 2195 px view, so a
+  seam is always on screen across.
+- Blend: a Sky pixel still equal to one of the 8 starry tiles at that position becomes one exact
+  weighted sum per channel with rounding, weights /256 sky 192, Surface 29, haze colour 35. Curtains,
+  fades and pads drawn over Sky are untouched.
+- ⚠ The first haze build chained its mixes as masked halvings over a haze stored in 5 bits: on the
+  RGB555 screen the Surface kept 3–4 levels per channel and the truncations tinted it teal (owner:
+  "as if reduced to 16-bit"). On a 5-bit-per-channel screen, mix every layer in one step.
+- Withdrawn the same day: 1/2 size; corners pinned to the screen with a straight crop (cut the
+  hexagonal edge); edges meeting the Firmament border at the view limits — the image must then
+  span the map at its own size, which fixes its speed by the window size, and the edges part
+  between the limits (owner); a faint cloud wash from the 8×8 mosaic (removed by the owner; opaque
+  patchy clouds wait for cloud art from AoW2 — procedural patches cut from the mosaic gave blobs
+  or glossy worms in offline previews).
+Unproven: AoWz.exe; structures unseen by the player may not draw into the image; Surface changes
+made while on the Firmament show on the next visit.
+
+## Cloud mosaic Sky — trial, reverted 2026-10-15
+
+`build_sky_mosaic.py` (AoWEPACK.dpl + Release.hss). Reverted the same day: the owner did not like it as terrain and may reuse it later as an overlay; `--undo` restored both files to their earlier hashes, so the starry Sky is live. The owner's 64 tiles in
+`Graphic_resources/mosaic_8x8` (`sky_c<C>_r<R>.png`) form one seamless picture when hex (hx, hy)
+shows tile C = hx mod 8, R = hy mod 8; it repeats every 8 hexes. `GetRndResource` cannot place by
+position, so the script reuses the animated trial's dynamic-pass overlay below with the frame
+choice replaced by `(hy&7)*8 + (hx&7)`; the 8 Sky tiles in `Release.hss` become `c0_r0`, the
+pixel the overlay keys on. Graded to the game's palette (owner, same day): the terrain art is
+16-bit, so the target is the vanilla hex tiles' colours — cloud luminance (contrast ×1.3) looked
+up in a ramp of vanilla Water/Ice/cave ice/Coast/Snow colours, giving Ice-blue shadows and Snow's
+lavender-white highlights. Snapping pixels to colours that occur in vanilla terrain posterises:
+only ~25–40 exist in this range. Live, the owner found it too blurry: fine detail (luminance sd
+after removing a σ1 blur) was 0.5 against vanilla Water 3.4, Ice 5, Snow 8.4, Grass 16. Now an
+unsharp mask ×2.5 runs over the whole picture as one wrapping 256×256 canvas (per tile it drew
+faint hex outlines), plus the high-pass of a vanilla Snow tile at sd 6. Grain alone read as noise
+over blur. Then made to drift left to right like the old trial (owner, same day): the graded picture is stored once as the periodic 256×256 canvas, and hex pixel (x, y) shows `canvas[(wy+y)&255][(wx+x−s)&255]` with s = (tick ms / 100) mod 256 — 1 px per 100 ms, a 25.6 s loop; overlapping hexes sample the same world pixel, so no seams at any drift. Not yet driven live. Temporary by the owner's choice: the starry Sky is kept, and `--undo`
+restores both files byte for byte (round-trip checked). Mutually exclusive with
+`build_sky_anim.py` (same hook, slot, tiles). The water dissolves and cliff curtains
+(`build_skychasm_edges.py`) still blend toward the starry tile.
+Unproven: whether AoWz.exe redraws the dynamic layer each frame (if not, Sky shows one still tile everywhere).
+
 ## Animated cloud Sky — trial, reverted 2026-10-05
 
 `build_sky_anim.py` (AoWEPACK.dpl + Release.hss). Worked live in AoWzEd; the owner reverted it
