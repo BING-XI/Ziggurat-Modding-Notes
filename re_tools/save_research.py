@@ -7,12 +7,11 @@ and that list is only observable in a save. Two separate 2026 bug reports about 
 is gated behind an unrelated sphere" were argued from first principles and got nowhere. This
 prints the ground truth instead.
 
-⚠ Both of those reports turned out to be the VANILLA one-research-at-a-time UI lock in
-`TSpellBook.FillSlot` (`AoW.exe` 0x0042EB97-0x0042EC0D): while `magic+0x34` is non-zero the
-Research Book greys every entry and calls `SetVisible(FALSE)` on its button. The entry SET was
-always correct -- so before reaching for this tool, ask whether the entry was **absent** (list
-path: `ListResearchSpells` -> `ValidResearchSpell` -> `cave_group`) or **present but greyed**
-(enable path: `FillSlot`). Full write-up in `Zig notes/Spell_Research_System_2026-07-18.md`.
+⚠ Both of those reports were greyed, unclickable entries inherited from the last spell-book view
+(fixed 2026-10-18 by build_research_slotstate.py). The entry SET was always correct -- so before
+reaching for this tool, ask whether the entry was **absent** (list path: `ListResearchSpells` ->
+`ValidResearchSpell` -> `cave_group`) or **present but greyed** (slot state, not the save).
+Full write-up in `Zig notes/04-spells-modded.md`, "Greyed, unclickable research entries".
 This tool is still the right instrument for the absent case, and for confirming that a group
 grant actually fired (a COMPLETE group) versus a Tome (a PARTIAL one).
 

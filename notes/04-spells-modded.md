@@ -21,6 +21,7 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Magic tab + Power Distribution name the tier group, not the representative spell | applied 2026-09-27; numeral outline 2026-10-18 | `build_magictab_tiername.py` | `AoWz.exe` |
 | Magic tab hides "No spell is being researched" while a research is set | applied 2026-10-18 | `build_magictab_nonepnl.py` | `AoWz.exe` |
 | Research Book: "Currently Researching" row repaints cleanly when the research changes | applied 2026-10-18; owner confirmed in game | `build_research_redraw.py` | `AoWz.exe` |
+| Research Book: entries always drawn normal and clickable — no longer inherit grey text and a hidden button from the last spell-book view | applied 2026-10-18 | `build_research_slotstate.py` | `AoWz.exe` |
 | Spellbook hover-glow 2× boost (double-composite redraw) | 🛑 **WITHDRAWN (2026-07-18) — do not apply** | `build_glowboost.py` (script still on disk, never run) | `aowInt.dpl` |
 | Sphere Mastery casting-cost rework (opposed ×1.50 / own ×0.75) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_mastery_cost.py` | `AoWEPACK.dpl` |
 | Vanilla instant-cast raw-cost bug (coupled to Mastery, see below) | ✅ CONFIRMED WORKING (2026-08-27), per its own doc — owned elsewhere | `build_caster_cost.py` — **not one of this file's scripts**; full spec in `03-abilities-added.md` | `AoWEPACK.dpl` |
@@ -126,7 +127,7 @@ Roman-numeral literals @`0x611020`+, ICONTAB @`0x61105C` (`0,27,30,33,36,42,39,0
 | `cave_memo` | `0x611190` | call @`0x42EAAC` (memo `SetFStrings`) | modes 2/3: Clear the memo's `TStringList` (`+0x118`, vmt`+0x40`), then `Add` (vmt`+0x34`) member names from the side buffer, greedy ", "-joined, flush ≥30 chars |
 | `cave_turns` | `0x611290` | 5 B @`0x42ED93` → call | `ecx = 100<<(tier-1)` (edx=perTurn preserved) so the displayed turn count matches the DLL flat cost |
 | `cave_icon` (v2) | `0x6112C0` (~236 B) | 5 B @`0x4304C8` → jmp | modes 2/3: no left icon; draws **tier-count sphere icons side by side** under the entry text at full opacity (v5 dropped the earlier 40%-blend watermark idea — see version history); Cosmos draws nothing |
-| `cave_costskip` | `0x6113B0` | 7 B @`0x42EAB1` → jmp+2nop | modes 2/3: skip the "Cost:"/"Upkeep:" mana sections |
+| `cave_costskip` | `0x611AD0` (live) | 7 B @`0x42EAB1` → jmp+2nop | modes 2/3: jump to `0x42ECB1`, past the "Cost:"/"Upkeep:" mana sections **and past `FillSlot`'s colour/enable block between them** — `build_research_slotstate.py` puts that state back (see "Greyed, unclickable research entries" below) |
 | nil-pushes | — | 4 byte patches @`0x42EDA7`/`AD`/`0x42EE0D`/`13` | research turns label reads just "Turns: N" |
 
 ### Magic tab + Power Distribution name the group (`build_magictab_tiername.py`, 2026-09-27)
@@ -296,50 +297,67 @@ needed again.
     (`HILITE_H`), captured against a one-time BSS snapshot of the vanilla cast-mode values so cast
     mode is unaffected.
 
-### Resolved 2026-09-03 — "can't research sphere X tier N" is a vanilla UI lock, not a bug
+### Greyed, unclickable research entries — inherited spell-book state (fixed 2026-10-18)
 
-Reported twice (2026-07-18 and 2026-09-03): a tier appeared to be un-clickable until a
-*different* tier finished researching. **Root cause, `TSpellBook.FillSlot`, `AoW.exe`
-`0x0042EB97`–`0x0042EC0D`:** while any research is in progress (`magic+0x34 ≠ 0`), the book
-greys **every** research entry's text (`SetTextColor(0x4C4C4C)` ×4) **and hides its slot button**
-(`SetVisible(FALSE)` on `[ebx+0x114]`-family via vtable `+0x6C`) — leaving text that looks present
-with nothing clickable behind it. Tier research didn't introduce this; it made it far more
-visible, because one entry now stands for a whole tier's worth of spells.
+Reported 2026-07-18, 2026-09-03 and 2026-10-18 (a player: "X out of the research pick, open it
+later: every entry grey, none clickable; reloading fixed it"). The first two were put down to
+vanilla's research lock, which never runs in the mod (below).
 
-Byte-verified **vanilla**: `0x42EB40`–`0x42EC10` is identical to `Ziggurat upload/AoW.exe` and
-between `AoWz.exe`. Why vanilla does it: `TPlayerMagicControl` has exactly **one**
-progress counter (`+0x38`) — no per-spell progress map exists anywhere in the serialization
-(`ReadWrite @0x5577C748` only emits ids `0x14` mana / `0x16` researched list / `0x17` current /
-`0x18` points) — so `ExecuteResearchSpell` overwrites `+0x38` unconditionally on a switch,
-**forfeiting every point accumulated on the abandoned research.** Greying the book makes that
-deliberate. A workaround already ships: `CancelResearchBtnClick @0x004311FC` →
-`ResearchSpell(0)` clears `+0x34` and un-greys the book instantly — cancel, then pick; the
-forfeiture is identical either way, so it's a discoverability problem, not a mechanical one.
+**Cause.** `cave_costskip` sends modes 2/3 from `0x42EAB1` straight to `0x42ECB1`. The range it
+jumps over also holds `FillSlot`'s colour/enable block `0x42EB42`–`0x42EC4F`, the only code that
+sets a slot's four label colours (vcall `+0x70`) and shows or hides its click button (vcall
+`+0x6C`). The cast book and the research book are one `TSpellBook`, created once per process
+(`Application.CreateForm` at `0x459D81`), sharing the eight slots, so a research entry kept
+whatever the last cast-mode population left in that slot. Cast mode greys a slot (text
+`0x4C4C4C`, button hidden, icon `Tag |= 0x10`) when:
 
-**✅ User ruling 2026-09-03: leave it as vanilla. No patch. Do not re-propose this.** If ever
-revisited (the user's call): *fully clickable* = **one byte**, `0x0042EB9E` `75`→`EB` (it is a
-**short** `jne`, `75 6f` — not the 6-byte near form `dasm.py`'s mnemonic printout might suggest;
-byte-check before quoting a size), silently forfeiting progress on every switch. *Greyed but
-still clickable* = NOP **10 bytes** `0x0042EBFC`–`0x05`, `33 d2 8b 45 1c 8b 08 ff 51 6c`→`90`×10.
-Both exe-only; neither preserves progress
-(that needs a new per-spell field + a ReadWrite tag, a materially bigger feature).
+| where | the slot is greyed if |
+|---|---|
+| map (mode 0) | the spell has no global flag (`[spell+0xC]` bit 0) — every entry under the Combat ribbon; or the leader is casting (`THero.Casting`, `[hero+0x84] ≠ 0`) — every entry |
+| combat (mode 1) | the spell has no combat flag (bit 1); the leader is casting; or `CanCastSpellInstantly` fails (no mana, already cast this round) |
+
+The state survived turns and reloads; a restart, or a cast view that put a castable spell in that
+slot, cleared it. The X was incidental: what mattered was a spell-book view between the two
+research openings. In the player's screenshot the titles and turns lines were grey while the
+member names (cave-drawn in a fixed brown) stayed brown, and the hovered entry did not glow — the
+button was hidden, not clipped as in the case below.
+
+**Fix — `build_research_slotstate.py`** (`AoWz.exe`, applied 2026-10-18). Hook `0x42ED55`, 6 B
+`8A 86 20 02 00 00` (`mov al,[esi+0x220]`): the head of `FillSlot`'s mode ≥ 2 tail, reached only
+from `0x42ECB9`, no `.reloc` entry. `cave_slotstate` (`.hcol` `0x0062AF80`, 97 B) runs vanilla's
+own normal-state block (`0x42EC0F`–`0x42EC4F`, byte-identical but for one `mov eax,edi` encoding)
+in modes 2/3: name and memo `0x13243C`, class (the research turns line) and cost `0x5A2734`,
+button visible, icon `Tag &= 0xF`. It then replays the displaced `mov` and jumps to `0x42ED5B`.
+Modes ≥ 4 never skip vanilla's block and pass straight through. Surgical `--undo`; the SHA-1
+round trip was verified. Unproven: not run in the game. The bug's repro, on an exe without the
+fix: map spell book → Combat ribbon → close → open the research book.
+
+**Vanilla's research lock is not in the mod.** In vanilla, mode 2 greys every entry and hides
+every button while `magic+0x34 ≠ 0` (`0x42EB97`–`0x42EC0D`), because `TPlayerMagicControl` keeps
+one progress counter (`+0x38`; `ReadWrite @0x5577C748` emits only ids `0x14` mana / `0x16`
+researched list / `0x17` current / `0x18` points) and `ExecuteResearchSpell` overwrites it on a
+switch. That code sits in the skipped block, so the mod has always let a research be switched
+mid-way, forfeiting its points — `build_research_redraw.py` relies on that. **✅ Owner ruling
+2026-10-18: entries stay clickable while a research runs; do not restore the lock.** It replaces
+the 2026-09-03 ruling ("leave the lock as vanilla"), which assumed the lock was active.
 
 ⭐⭐ **Ask this first on any future research complaint — there are THREE cases, not two:**
 
 | symptom | path to audit |
 |---|---|
 | entry **ABSENT** | the list path — `ListResearchSpells` → `ValidResearchSpell` (picks gate `tier ≤ GetSpherePicks`, the per-sphere ladder, already-researched) → `cave_group`. ⚠ Also check pagination: >6 open tier entries spill to the next spread. |
-| entry **PRESENT but GREYED** | the enable path — `FillSlot` `0x42EB97`–`0x42EC0D`. **All-or-nothing**: it greys *every* research entry and hides *every* slot button iff `magic+0x34 ≠ 0`. It can never grey some entries and not others. |
+| entry **PRESENT but GREYED** | the slot state — in modes 2/3 only `cave_slotstate` sets it; check `build_research_slotstate.py` reads `INSTALLED`. Greying is per slot and has nothing to do with research progress. |
 | entry **PRESENT, normal-looking, but the CLICK DOES NOTHING** | the **click path** — see below. This is a *silent* failure with no sound, no dialog and no state change. |
 
-Reading a live save is cheap for the first two: `re_tools/save_research.py` decodes every
-player's researched list, current research and points from a `.asg`/`.acg`.
+For the first case, `re_tools/save_research.py` decodes every player's researched list, current
+research and points from a `.asg`/`.acg`.
 
 ### ⭐ ROOT CAUSE — the slot BUTTONS were never moved with their panels (fixed 2026-09-06)
 
 **Reported as "some sphere researches were selectable and others were not."** A *simultaneous
-mix* is the diagnostic fingerprint: it rules out both the greying lock (all-or-nothing) and
-`GetBusy` (per-player, kills every click at once). Only per-slot **geometry** can do it.
+mix* rules out `GetBusy` (per-player, kills every click at once). Inherited greying (above) is per
+slot too, but it greys the text and kills the hover glow; a dead entry that still glows is
+per-slot **geometry**.
 
 ⚠⚠ **The DFM lies about the hierarchy — measure this, never infer it.** The DFM lists `SxPnl` and
 `SxBtn` as *flat siblings of the form* with identical Tops. **At runtime each `SxBtn` is
@@ -422,8 +440,8 @@ or hook difference). If it is ever rebuilt, re-run `build_tierresearch_btnfix.py
 
 Both were found while chasing the above and are genuine silent-failure modes worth knowing.
 `ExecuteSpellResearched @0x5577CBF8` zeroes **both** `+0x38` (points) and `+0x34` (current) on
-completion, and `cave_grant` calls it first before granting the rest of the tier — so the book is
-*not* greyed after a completion, and neither of these explains a per-entry mix.
+completion, and `cave_grant` calls it first before granting the rest of the tier. Neither of these
+explains a per-entry mix.
 
 1. **`TPlayerMagicControl.ResearchSpell @0x5577D588` bails on `TPlayer.GetBusy @0x557516D0`.**
    Busy = the player does not hold the turn-event **token** (`TokenManager` vmt `+0x14`), or

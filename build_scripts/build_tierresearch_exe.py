@@ -39,6 +39,9 @@ Adds a new `.tres` section (9th) @ VA 0x611000 with 6 caves + literals:
   cave_costskip <- jmp-hook @0x42EAB1 (cost-label build head): research mode -> skip the mana
       "Cost:" and "Upkeep:" sections entirely (jmp 0x42ECB1); other modes re-execute the caster
       cmp and resume at the original jne @0x42EAB8 (flags survive the jmp).
+      ⚠ The jump also skips FillSlot's colour/enable block 0x42EB42-0x42EC4F, so research slots
+      inherited the last cast view's grey text and hidden button; build_research_slotstate.py
+      (2026-10-18) sets the normal state in modes 2/3.
   + 4 byte patches @0x42EDA7/0x42EDAD/0x42EE0D/0x42EE13: nil the LStrCatN concat bases in the
       research turns append (push [edi+0x90] / push ' ' -> push 0), so the label reads just
       "Turns: N" (research-only code path, mode 2/3 guarded upstream @0x42ED55).

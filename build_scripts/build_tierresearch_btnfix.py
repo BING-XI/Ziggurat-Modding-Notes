@@ -26,8 +26,8 @@ THE BUG  (measured live with re_tools/spellbook_geom.py -- NOT inferred from the
   unresponsive entry visibly "bakes" whiter on repeated mouse-over: the book never repaints the
   parchment between paints, so the translucent lit strip accumulates.
 
-  ⚠ This is NOT the vanilla `FillSlot` greying lock (`0x42EB97`-`0x42EC0D`), which is
-  all-or-nothing and only fires while `magic+0x34 != 0`. See `Zig notes/04-spells-modded.md`.
+  ⚠ This is NOT inherited greying (grey text, hidden button, no glow), which
+  build_research_slotstate.py fixed on 2026-10-18. See `Zig notes/04-spells-modded.md`.
 
   ⚠⚠ FAILED FIX, DO NOT RETRY: copying the panel's Y onto the button (`btn.Top = pnl.Top`).
   It looks right if you believe the DFM's sibling hierarchy, and it is exactly wrong -- writing a
