@@ -57,9 +57,11 @@ def relocs_in(d, lo, hi):
     return hits
 
 
-def run(title, hooks, caves, slot, argv=None, targets=None):
+def run(title, hooks, caves, slot, argv=None, targets=None, reloc_ok=()):
     """hooks: [(va, vanilla, installed)]; caves: [(name, va, blob)]; slot: (lo, hi) owned zone.
     targets: exe names in GAME; default zigexe.EXES.
+    reloc_ok: hook VAs that are absolute code-pointer dwords (a published-method entry): their own
+    HIGHLOW fixup is expected and harmless, since the exe never rebases.
     Returns "apply" / "undo" when it wrote, else None."""
     targets = targets or zigexe.EXES
     import argparse
@@ -87,7 +89,8 @@ def run(title, hooks, caves, slot, argv=None, targets=None):
                           else "FOREIGN " + cur.hex(" "))
         zone = bytes(d[va2off(d, lo):va2off(d, lo) + (hi - lo)])
         ours = all(bytes(d[va2off(d, va):va2off(d, va) + len(b)]) == b for _n, va, b in caves)
-        rl = [v for va, van, _ in hooks for v in relocs_in(d, va, va + len(van))] + relocs_in(d, lo, hi)
+        rl = [v for va, van, _ in hooks for v in relocs_in(d, va, va + len(van))
+              if not (va in reloc_ok and v == va and len(van) == 4)] + relocs_in(d, lo, hi)
         state = ("VANILLA" if all(s == "vanilla" for s in states) and not any(zone) else
                  "INSTALLED" if all(s == "installed" for s in states) and ours else "MIXED")
         print("  %-15s %s   hooks: %s   slot %08X-%08X: %s   .reloc: %s"

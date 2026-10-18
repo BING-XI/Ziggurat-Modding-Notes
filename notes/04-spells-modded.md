@@ -18,7 +18,9 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Feature | Status | Owning script(s) | Binary/file |
 |---|---|---|---|
 | Sphere-tier spell research (grant-whole-tier, flat cost, grouped picker UI) | ✅ **CONFIRMED WORKING (2026-07-18)** | `build_tierresearch_dll.py`, `build_tierresearch_exe.py`, `build_glowilb.py` | `AoWEPACK.dpl`, `AoWz.exe`, `Int\Scenes\BookWin.ILB` |
-| Magic tab + Power Distribution name the tier group, not the representative spell | applied 2026-09-27 | `build_magictab_tiername.py` | `AoWz.exe` |
+| Magic tab + Power Distribution name the tier group, not the representative spell | applied 2026-09-27; numeral outline 2026-10-18 | `build_magictab_tiername.py` | `AoWz.exe` |
+| Magic tab hides "No spell is being researched" while a research is set | applied 2026-10-18 | `build_magictab_nonepnl.py` | `AoWz.exe` |
+| Research Book: "Currently Researching" row repaints cleanly when the research changes | applied 2026-10-18; owner confirmed in game | `build_research_redraw.py` | `AoWz.exe` |
 | Spellbook hover-glow 2× boost (double-composite redraw) | 🛑 **WITHDRAWN (2026-07-18) — do not apply** | `build_glowboost.py` (script still on disk, never run) | `aowInt.dpl` |
 | Sphere Mastery casting-cost rework (opposed ×1.50 / own ×0.75) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_mastery_cost.py` | `AoWEPACK.dpl` |
 | Vanilla instant-cast raw-cost bug (coupled to Mastery, see below) | ✅ CONFIRMED WORKING (2026-08-27), per its own doc — owned elsewhere | `build_caster_cost.py` — **not one of this file's scripts**; full spec in `03-abilities-added.md` | `AoWEPACK.dpl` |
@@ -138,7 +140,7 @@ Four `call TAOWLabel.SetGText` operands retargeted (nothing displaced) plus one 
 | `0x42D119` | SpellClass `[win+0xD0]` (was "Cosmos, Level 2") | member names, line 1 |
 | `0x42D185` | SpellCost `[win+0xD8]` (was "Casting Cost: N Mana") | member names, the rest |
 | `0x42BDFC` | `TPowerDlg` `[dlg+0x70]` | "Cosmos II" |
-| `0x42D8F5` | SpellIcn (40×35), `mov edx,0xA` → `jmp cave_mw_icon` | the sphere's spell-icon background disc + Roman tier numeral (AoW15WhiteGrey, white on a black 1-px shadow) |
+| `0x42D8F5` | SpellIcn (40×35), `mov edx,0xA` → `jmp cave_mw_icon` | the sphere's spell-icon background disc + Roman tier numeral (AoW15WhiteGrey, white inside a 1-px black outline drawn in AoW15BlackBrown at the eight 1-px offsets; v2 2026-10-18 — v1's single `SetColor`-black shadow in AoW15WhiteGrey showed as plain white) |
 
 Members are the registry spells with the representative's `+0x20/+0x21` word, category ≤ 2,
 `vmt+0x64` true, passing the `id≥100` SpellTypes filter and **absent from `[magic+0x30]`** — what
@@ -155,6 +157,25 @@ box. A nil anywhere resumes the vanilla spell icon.
 
 Unproven: the numeral's position `NUM_CX, NUM_Y = 20, 10` assumes AoW15WhiteGrey is ~15 px tall. 6 px per Age8 character is estimated from the book memos' 30- and 44-character flushes
 at 260 px; if names clip or wrap early, re-tune `CHAR_PX`.
+
+**"No spell is being researched" under the research** (`build_magictab_nonepnl.py`, 2026-10-18).
+`TMagicWin` has `SpellPnl [win+0xD4]` and `NonePnl [win+0xF8]` (label `NoneMsg [win+0xFC]`, the
+message is DFM text). The overview `0x42CDE8` toggles only `SpellPnl.Visible` (vcall `+0x6C`) and
+never touches `NonePnl`, which relied on being painted over. The `call 0x42CA38` at `0x42D240`, where
+both branches join, is retargeted to `cave_nonepnl 0x0062AD40` (35 B): `NonePnl.SetVisible(not
+SpellPnl[+0x75])`, then the vanilla call. Surgical `--undo`.
+
+**Stale "Currently Researching" row** (`build_research_redraw.py`, 2026-10-18, confirmed in game).
+With a research running, the second blue ribbon opens the grid in mode 2 and a click switches the
+research (`ResearchSpell` has no in-progress test; measured `[magic+0x34]` 73 → 39). `cave_ricon`
+then drew the new group's row over the old one: it paints a transparent 262 px strip that nothing
+restores. A full window repaint clears it — `DrawSurface` redraws everything while `[window+0xA4]`
+is 0 and sets it to 1 at the end of its own draw (`0x59807ED2`), so the request has to come from
+outside the draw. `TSpellBook.DlgUpdate`'s published-method dword (VA `0x42E666`) points at
+`cave_resredraw 0x0062AD90`: in modes 2/3, when `[magic+0x34]` or `[book+0x234]` differs from the
+last tick, it clears `Dlg[+0xA4]`, then runs `0x431270` (where `cave_dlgupd` hooks). The dword has
+its own `.reloc` entry, harmless in the never-rebased exe (`exe_patch.run(reloc_ok=...)`). Takes
+effect from the next launch: the form copies method pointers at creation.
 
 **Revert:** each script's own `--undo` (surgical, zeroes its cave and restores the displaced
 bytes, touches no backup). The exe presentation layer only makes sense with the DLL mechanics

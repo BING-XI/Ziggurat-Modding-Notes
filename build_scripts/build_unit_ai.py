@@ -57,7 +57,13 @@ THIS SCRIPT
         key         (from the exe, eax = VK) 0x20 -> space; else cycle.
         space       active -> cancel; else start.
         start       the seated side is the side to move and its player is not on Auto -> snapshot
-                    every TCombatObject of the selection, active := 1, SetAuto(player, 1).
+                    every TCombatObject of the selection; more than one -> Unselect 0x41FF94
+                    (v3.1 2026-10-18); active := 1, SetAuto(player, 1).
+                    Why Unselect: with a multi-selection up, the group preview stays live and
+                    the AI's moves and melee attacks never happened -- its spells did -- so
+                    EvalBattle ran dry and `done` ended the run within 1-3 s (watched live:
+                    active 1 -> 0 from 0x43A9BE, snapshot n = 4).  With nothing selected the AI
+                    runs as under vanilla Auto.  A single unit stays selected, as before.
         cycle       not active, the seated side is the side to move, its player is not on Auto, a
                     selected unit (GetTCUnitHS) with an ability list [tcu+0x40]: start at entry 0,
                     or one past the LAST entry carrying the armed id (SelectAbility's own index
@@ -124,6 +130,7 @@ MAPVAR = G_COMBATMAP - BSS
 GETPLAYERS, SETAUTO, CAI_RESET, ENDTURN = 0x430BF0, 0x430B68, 0x413574, 0x41C064
 GETOBJECTS, GETMS, TRIGGER = 0x402634, 0x40275C, 0x401374
 GETTCUNITHS, SELECTABILITY = 0x41D2E8, 0x422F0C
+UNSELECT = 0x41FF94         # TCombatUnitSelectionControl.Unselect (eax = ctl), as right-click
 H_FILTER, VAN_FILTER, OWN, ALLY = 0x418421, bytes.fromhex("3a42310f8585000000"), 0x41842A, 0x4184AF
 H_DONE, VAN_DONE, DONE_SKIP, DONE_RET = 0x41C629, bytes.fromhex("b2018b45fce831faffff"), 0x41C67F, 0x41C633
 H_SEAT, VAN_SEAT, SEAT_RET = 0x41BAB8, bytes.fromhex("558bec83c4f8"), 0x41BABE
@@ -250,6 +257,11 @@ def build_dll():
         pop eax
         cmp dword ptr [edi + 0xC], 0
         je t_out
+        cmp dword ptr [edi + 0xC], 1
+        jle t_go
+        mov eax, dword ptr [esi + 0x100]
+        call {UNSELECT:#x}
+    t_go:
         mov dword ptr [edi + 8], esi
         mov byte ptr [edi], 1
         mov eax, dword ptr [edi + 4]

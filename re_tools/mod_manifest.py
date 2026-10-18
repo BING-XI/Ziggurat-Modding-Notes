@@ -104,6 +104,12 @@ SHIP_ONLY = {
 # by accident here.
 NEVER_SHIP = {
     "AoWEd.exe",           # superseded by AoWDevEd.exe (owner ruling 2026-09-07)
+    # Replaced by AoWzSetup.exe (build_aowzsetup.py), owner ruling 2026-10-18. The installer's
+    # [InstallDelete] removes the copy earlier releases installed.
+    "AoWSetup.exe",
+    # cnc-ddraw test files parked in the dev tree (07-ui.md §20). Not shipped: no owner ruling to
+    # ship a third-party DLL; an active ddraw.dll would replace every player's renderer.
+    "ddraw.dll", "ddraw.dll.off", "ddraw.ini",
     # The editor scripts' patch source; build_zigeditor.py derives AoWzEd.exe from it (same
     # code, purple icons), and players run AoWzEd.exe. It shipped only because it was never
     # withheld, and it is the copy a player's Defender flagged (Bearfoos.B!ml) in the 10.10b

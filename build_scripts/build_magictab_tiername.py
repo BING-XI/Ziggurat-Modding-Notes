@@ -30,7 +30,10 @@ Frame temps are the host's own managed LStrs, cleared by its LStrArrayClr: TMagi
 ICON  TMagicWin.SpellIcnDraw 0x42D89C: the 5-byte `mov edx,0xA` at 0x42D8F5 (just after vanilla's
 nil-checked GetSpell; ebx = spell, esi = the 40x35 SpellIcn control, [esp] = the draw-context
 copy) -> jmp cave_mw_icon.  It draws the sphere's spell-icon background disc, then the Roman tier
-numeral centred on it in FontModule.AoW15WhiteGrey, white over a black 1-px shadow.
+numeral centred on it in FontModule.AoW15WhiteGrey, white inside a 1-px black outline: the
+numeral in AoW15BlackBrown (+0x60) at the eight 1-px offsets (OUTTAB), then the white one on top
+(v2 2026-10-18, owner).  v1 drew one black SetColor shadow in AoW15WhiteGrey, which showed as plain
+white in game.
   The disc: Images\SpellIcn.ILB entries are composites (TImageNode, ClassID 0x100, layers at
   [img+0x40]): layer 0 the 40x35 sphere-coloured disc, layer 1 the monochrome spell stamp.  The
   library is taken from the representative spell's own icon sequence (TImageSequenceList [spell+
@@ -81,6 +84,10 @@ ICON_HOOK   = 0x0042D8F5  # TMagicWin.SpellIcnDraw: `mov edx,0xA` after the nil-
 ICON_RESUME = 0x0042D8F5  # vanilla spell-icon path (hook bytes replayed in the cave)
 ICON_EXIT   = 0x0042D93D  # SpellIcnDraw epilogue
 NUM_CX, NUM_Y = 20, 10   # numeral centre x / top y inside the 40x35 SpellIcn box (15 px font)
+OUTLINE_FIELD = 0x60     # [[g]]+0x60 = FontModule.AoW15BlackBrown, the same face in black
+OUTLINE = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+OUTTAB = 0x0062A9C0      # x table, then y table: 8 dwords each, the slot's last 0x40 bytes
+OUT_DX, OUT_DY = OUTTAB, OUTTAB + 0x20
 
 # ---------------- data: literals + Roman table ----------------
 data = bytearray()
@@ -393,10 +400,34 @@ Lplain:
     call {T_SHOWCLIP:#x}
     mov eax, dword ptr [{G_FONTMOD:#x}]
     mov eax, dword ptr [eax]
+    mov edi, dword ptr [eax+{OUTLINE_FIELD:#x}]
+    test edi, edi
+    je Lwhite
+    mov eax, edi
+    xor edx, edx
+    call {T_FONTCOLOR:#x}
+    push 7
+Lout:
+    lea eax, [esp+4]
+    movzx edx, byte ptr [ebx+0x21]
+    and edx, 7
+    push dword ptr [{ROMTAB:#x}+edx*4]
+    push eax
+{BOX_XY}
+    mov eax, dword ptr [esp+8]
+    add edx, dword ptr [{OUT_DX:#x}+eax*4]
+    add ecx, dword ptr [{OUT_DY:#x}+eax*4]
+    mov eax, edi
+    call {T_TEXTC:#x}
+    dec dword ptr [esp]
+    jns Lout
+    pop eax
+Lwhite:
+    mov eax, dword ptr [{G_FONTMOD:#x}]
+    mov eax, dword ptr [eax]
     mov edi, dword ptr [eax+{FONT_FIELD:#x}]
     test edi, edi
     je Lexit
-{numeral(1, 0x000000)}
 {numeral(0, 0xFFFFFF)}
 Lexit:
     jmp {ICON_EXIT:#x}
@@ -406,6 +437,8 @@ Lvan:
 """)
 
 caves.insert(0, ("data", SLOT[0], bytes(data)))
+caves.append(("outline", OUTTAB, b"".join(struct.pack("<i", NUM_CX + dx) for dx, _ in OUTLINE)
+              + b"".join(struct.pack("<i", NUM_Y + dy) for _, dy in OUTLINE)))
 
 
 def call_to(site, dst):
