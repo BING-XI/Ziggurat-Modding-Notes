@@ -253,3 +253,16 @@ Not ported: `diag_veh_attach.py` (= `veh_capture.py --attach`).
   HEXTRANS/Waterhex/IceHex), `ilb_append`/`ilb_strip` (tail splice, refuses anything else), and
   `rle_encode`, a **multi-run** RLESprite16 encoder (`ilb_rle16.encode` allows one span per row,
   which cannot express a dithered edge).
+
+## Added 2026-10-19 (new ranged ability)
+
+- **idladder.py** `<module> [--id 0x39] [--new 0xBE] [--all] [--ceilings]` — lists every compiled
+  `case` ladder in a module's CODE section where the probe ability id leaves by a different exit
+  from ids nothing registers. Delphi compiles `case AbilityID of` into relative `sub`/`cmp` rungs,
+  so the id itself is often not an immediate anywhere (`AoWTC.MakeAbilPath` never contains `0x39`);
+  this simulates the rungs instead, and follows `jmp [reg*4+table]` and the byte-indexed two-level
+  form. Each hit prints the other ids that share the probe's exit, which separates an ability
+  switch from a digit or range test. `--ceilings` also prints `id < N` tests with N between the
+  probe and the new id. Blind to memory-operand tests (`cmp [ebp-x], id`), id lists walked in a
+  loop and bit tests: pair it with `abquery.py` and an immediate scan. First use: Shoot Bane
+  Javelin (`../Zig notes/03-abilities-added.md`, "What a new ranged ability costs").

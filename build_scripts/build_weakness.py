@@ -22,9 +22,9 @@ WHAT A WEAKNESS DOES (damage bit b, ability id 0xB3 + b)
 REGISTRATION
     Seven TEnhancementAbility passives through CreateEnhancementAbility 0x5576601C +
     RegisterAbility 0x55750238, spliced at the free `call RegisterAbility` 0x557BCDFB inside
-    PassiveAb.RegisterPassiveAbilities (EBX = the control).  Ids measured free on every run
-    (check_ids): the DLL's `mov eax,<id> / call CreateEnhancementAbility` idioms and Release/
-    Ability.pfs keys; highest in use before this was 0xB2 (Embrittled).
+    PassiveAb.RegisterPassiveAbilities (EBX = the control).  Ids checked for collisions on every
+    run (check_ids): another `mov eax,<id> / call CreateEnhancementAbility` idiom, or another name
+    in ability_names; highest in use before this was 0xB2 (Embrittled).
     Selection mask 0x027F = astUnit | the five item slots | astEditor: assignable to units, heroes
     and items in the editor, never offered at hero level-up (that needs 0x100) or at leader
     customisation (0x80).  Records (description, mask, no level-up cost): build_weakness_pfs.py.
@@ -254,8 +254,9 @@ def layout():
 
 
 def check_ids():
-    """Every id we register must be free: no other CreateEnhancementAbility idiom in the DLL, and
-    no record in Release/Ability.pfs unless it is ours (a DevEd save writes our own records)."""
+    """Every id we register must be ours alone: no CreateEnhancementAbility idiom outside our slot
+    registers it, and ability_names gives it no other name.  Higher ids are other abilities, not a
+    clash.  Ability.pfs is reported only (a DevEd save writes our own records)."""
     d = open(P.TARGET, "rb").read()
     _e, secs = P.sections(d)
     vs, sva, rs, ra = secs[0]
@@ -274,14 +275,17 @@ def check_ids():
     if foreign:
         sys.exit("ABORT: ids %s are already registered elsewhere" % [hex(i) for i in foreign])
     top = max(i for i, _s in used if i < 0x100 and not ours_lo <= _s < ours_hi)
-    if top >= FIRST_ID:
-        sys.exit("ABORT: something registers %#x -- re-derive FIRST_ID" % top)
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "re_tools"))
-    import pfs
+    import pfs, ability_names
     keys = {rid - 10 for rid, _b in pfs.load("ability.pfs")[0]}
+    named = ability_names.names()
+    renamed = [(FIRST_ID + k, named[FIRST_ID + k]) for k, n in enumerate(NAMES)
+               if named.get(FIRST_ID + k, n) != n]
+    if renamed:
+        sys.exit("ABORT: ability_names gives %#x to %r -- re-derive FIRST_ID" % renamed[0])
     have = [hex(i) for i in range(FIRST_ID, FIRST_ID + len(NAMES)) if i in keys]
-    print("  ids %#x..%#x free (highest other CreateEnhancementAbility id %#x); Ability.pfs records "
-          "present for %s" % (FIRST_ID, FIRST_ID + len(NAMES) - 1, top, have or "none"))
+    print("  ids %#x..%#x ours alone (highest other CreateEnhancementAbility id %#x); Ability.pfs "
+          "records present for %s" % (FIRST_ID, FIRST_ID + len(NAMES) - 1, top, have or "none"))
 
 
 caves, effs = layout()

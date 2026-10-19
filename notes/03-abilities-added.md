@@ -35,6 +35,9 @@ canonical cross-project cave-ownership map is `12-re-toolchain.md`.
 | Liquid Body — Swimming + Physical Protection + no Burning (`0xBA`) | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_liquidbody.py` + `build_liquidbody_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Bound (`0xBB`) and Commanding (`0xBC`) — the command-ability bond and its RES cost; design and checklist in `02-abilities-modded.md` "Command abilities — bound thralls" | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_command_bond.py` + `build_command_bond_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Razor Plate — melee strikes that land cut the striker for d5 (`0xBD`) | applied 2026-10-09, v2 2026-10-10 | `build_razorplate.py` + `build_razorplate_pfs.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` |
+| Shoot Bane Javelin — Shoot Bolt with physical and death damage (`0xBE`) | applied 2026-10-19 | `build_banejavelin.py` + `build_banejavelin_pfs.py` + `build_shredderbolt_banejavelin.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` + `Release/Unitres.pfs` |
+| Hurl Flaming Skull — Hurl Boulder with physical, fire, death and wall damage (`0xBF`) | applied 2026-10-19 | `build_flamingskull.py` + `build_flamingskull_pfs.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` |
+| Wheeled — a road hex costs 2, not 3 (`0xC0`) | applied 2026-10-19 | `build_wheeled.py` + `build_wheeled_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Copper Medal — rank ladder, stat bonus, icon | ✅ CONFIRMED WORKING (2026-07-30) | `build_copper_medal.py` | AoWEPACK.dpl + `Images/*Combat.ILB` |
 | Copper Medal — 4th ability-owner slot (copper bonus abilities) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_copper_medal.py` (`COPPER_GRANTS_ABILITIES=True`) | AoWEPACK.dpl + `AoWDevEd.exe` |
 | Ability-id ceiling — 4× `TCAI.EvalBattle` scans + item/hover banner popups | 🔨 APPLIED, UNTESTED (ladder at `0xB3`, 2026-09-01) | `build_abilityid_ceilings.py` | AoWTCPCK.dpl + AoWz.exe |
@@ -99,10 +102,12 @@ and contains roughly 90–149 vanilla `call RegisterAbility` sites (the exact co
 feature that claims one), every one immediately preceded by `mov eax,ebx` — so `EBX` liveness is
 total across the window `0x557BC000`–`0x557BD200`, and any free site works. **Sites already consumed
 and never to be reused:** `0x557675C4` (Assassin — outside the window, a *different* registration
-function, see below), and, measured 2026-10-09, 12 repointed sites inside it: `0x557BC9E9` (Path of
-Sand), `0x557BCD98` (Razor Plate), `0x557BCDAF`, `0x557BCDC6` (Liquid Body), `0x557BCDFB`,
+function, see below), and 13 repointed sites inside it (measured 2026-10-09, plus Wheeled): `0x557BC9E9` (Path of
+Sand), `0x557BCD81` (Wheeled, 2026-10-19), `0x557BCD98` (Razor Plate), `0x557BCDAF`, `0x557BCDC6` (Liquid Body), `0x557BCDFB`,
 `0x557BCE30`, `0x557BCE65`, `0x557BCE9A`, `0x557BCECF` (Shield), `0x557BCF04` (Caster Cost, all four),
-`0x557BCF39` (Drillmaster), `0x557BCF6E` (Magebane). Each build script's `check_id_free()`-style scan prints which sites are already repointed;
+`0x557BCF39` (Drillmaster), `0x557BCF6E` (Magebane). Ranged attacks register in a different routine,
+`0x5576F2EC` (EBX = the control there too); its `call RegisterAbility` sites `0x5576F7E2` and
+`0x5576F6A7` are Shoot Bane Javelin's and Hurl Flaming Skull's. Each build script's `check_id_free()`-style scan prints which sites are already repointed;
 clone that check into any new script rather than trusting a stale address list, this one included.
 
 **⚠ Two ability-construction factories exist, and only one is usable for a combat-facing passive.**
@@ -152,6 +157,11 @@ included:
    ids as of the last count) — this is the one the other two scans cannot see, so skipping it has
    previously undercounted usage.
 
+**The abort tests collision, never order:** abort only when an idiom outside the script's own slot
+registers exactly its id, or `ability_names` gives the id another name. "Nothing at or above my id"
+stopped `build_razorplate.py`, `build_liquidbody.py` and `build_weakness.py` (dry run, re-tune and
+`--undo`) once `0xBE`/`0xBF` shipped; all three were changed to collision checks on 2026-10-19.
+
 **Why a "static sweep of apparent gaps" is fiction, not a shortcut.** A sweep of constructor
 immediates plus `CreateEnhancementAbility` call-site arguments recovers ids `0x01`–`0xA9` and *looks*
 like it proves ~116 free slots below the hard ceiling. It is a **lower bound only**: it provably
@@ -161,12 +171,12 @@ byte pattern but is unrelated city-AI code, not an ability). **The only trustwor
 apparent gap is dynamic** — register it and watch for the `"Ability already registered"` assert.
 `0x38` (Assassin) and `0x9F` (Path of Sand) were claimed exactly this way.
 
-**Measured 2026-10-09, for orientation only — re-derive before trusting it:** highest id in use
-`0xBD` (Razor Plate). Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
+**Measured 2026-10-19, for orientation only — re-derive before trusting it:** highest id in use
+`0xC0` (Wheeled). Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
 0x66`–`0x69, 0x6E, 0x85`–`0x87, 0x97` (19 gaps; a nil registry slot is necessary but not sufficient —
 per-id verification means scanning both binaries for `mov edx,<id>` / `push <id>` feeding an ability
 call, since cut content can still reference an id that nothing currently registers). Free above the
-current max, under the hard ceiling described next: `0xBE`–`0xCD` (16 ids). Roughly **35 stateful
+current max, under the hard ceiling described next: `0xC1`–`0xCD` (13 ids). Roughly **32 stateful
 slots** and, if the untested bit-only band below turns out to be sound, another **50 passive** slots
 — that is the shape of the budget, not a number to bank on unchanged.
 
@@ -199,7 +209,7 @@ ability *bitset* (`SetAbSet @0x5574E0BC` auto-grows on `id >= count`, asserting 
 `0xCD` regardless; a full save/load round trip (and an MP sync test if relevant) is the thing that
 would settle it, and as of this writing nobody has run one.
 
-**Recommended range for a new stateful ability today: `0xBE`–`0xCD` (16 contiguous ids)**, above
+**Recommended range for a new stateful ability today: `0xC1`–`0xCD` (13 contiguous ids)**, above
 everything registered and under the hard ceiling. This shrinks by one every time any feature —
 inside or outside this file — claims an id; re-measure, do not quote it even from this paragraph.
 Freeze the chosen id before shipping: ids are serialised into saves as bitset indices and every MP
@@ -1419,13 +1429,150 @@ dies partway may stop there.
   back", in both the combat and the prediction mode, so every melee estimate the AI reads includes
   it. Round Attack and touch estimates do not.
 - **Hero level-up (2026-10-10):** mask `0x03FF` (units, items, leader customisation, level-up),
-  cost 12, Melee column, 0 % for every race in Hero Offers.
+  cost 8 (12 at first), Melee column; per-race Hero Offers in `heroskill_races.json`.
 - **Registration:** splice `0x557BCD98` (High Prayer Blessing), mask `0x03FF`. Proved by launching
   `AoWz.exe` to its main window, 2026-10-09 and again for v2 2026-10-10. LADDER `0xBE`;
   `ability_names.py` `MODDED`.
 
 Unproven: the flinch's timing against the next strike's wind-up, and the replay number's placement
 over the striker.
+
+## Shoot Bane Javelin — Shoot Bolt with physical and death damage (`0xBE`)
+
+Scripts `build_banejavelin.py` (AoWEPACK.dpl + AoWTCPCK.dpl) and `build_banejavelin_pfs.py`
+(`Release/Ability.pfs` key 200), applied 2026-10-19; the docstrings hold the addresses, caves and
+`--undo`. Owner's design: Shoot Bolt with physical and death damage, DAM 11 (ruling the same day).
+The Orc Shredder Bolt carries it in place of Shoot Bolt (`build_shredderbolt_banejavelin.py`,
+Unitres 256's base owner, "for now"), as vanilla gave that unit Shoot Black Javelin.
+
+- **Numbers:** ATK 14, DAM 11, 1 shot, long range (12 hexes), damage-type word `0x00A0`
+  (Physical | Death). Attack, shots and range are Shoot Bolt's, copied, not shared:
+  `build_ranged_damage.py` retunes Shoot Bolt alone, and this script's dry run flags drift in them.
+- **Vanilla's Shoot Black Javelin (`0x3A`)**, byte-diffed against the root install: Shoot Javelin's
+  numbers (5/5, 2 shots, long) with the type word at `0x5576F814` = `0x00A0`, the black-javelin
+  sprites (`ARROW.ILB` 300–323) and auto-resolve icon 123. One unit carried it, the Orc Shredder
+  Bolt (Unitres 256). Ziggurat's Throw Javelin keeps the id and the sprites with type word `0x0080`
+  (an unscripted hand edit); until 2026-10-19 the Shredder Bolt carried Shoot Bolt.
+- **Damage resolution** (`TCombatObject.ExecuteDamageRole @0x557269F0`): immunity strips types first,
+  and the hit is halved only when every remaining type is protected. A Bane Javelin hit is halved by
+  Physical Protection only together with Death Protection; Physical Immunity leaves the death part,
+  Death Immunity the physical part.
+- **Carrier record:** the base owner's set grows from 77 to 191 bits (10 → 24 bytes) to hold bit
+  `0xBE`; byte-exact `--undo` from the embedded original record. Shredder Bolts already on a map keep
+  Shoot Bolt.
+- **Record:** tag 5 "Fires a 14/11 javelin tainted with death magic at long range.", tag 6 = 4
+  (Shoot Bolt's), tag 7 Shoot Bolt's sounds (record 67), tag 8 the black-javelin frames and icon 123
+  (record 68), tag 9 `0x03FF`.
+- **Hero level-up:** Ranged column (`herodlg_cats.py` 190), 0 % for every race in
+  `heroskill_races.json`. **Ceilings:** LADDER `0xBF`; `ability_names.py` `MODDED`.
+- **Registration:** `0x5576F7E2`, proved by launching `AoWz.exe` to the main menu, 2026-10-19.
+
+### What a new ranged ability costs — the id census
+
+Inioch's "Hurl Skull" (share8 `hurl-skull-SHELVED.md`, 2026-07-24) concluded that a new ranged id
+cannot fire because hurling is hardcoded per id at ~29 sites. Two of its findings were misread. The
+symptom — selectable, deselected on click — is the AbilTypes category byte, 0 for every id the
+table never knew. The "group lists" `0x557505B8`/`0x55779E44` are `TAbilityControl.UnregisterAbilityID`
+and its spell twin, called at package finalisation, which is why calling them from a registration
+cave removed the ability from the editor.
+
+`re_tools/idladder.py` runs every compiled `case` ladder in a module with the probe id and with
+unregistered ids and lists the ladders where the probe takes its own exit. With `abquery.py` and an
+immediate scan, Shoot Bolt's id is special in three places across AoWEPACK, AoWTCPCK and AoWz.exe,
+none of them in auto-resolve:
+
+| site | what it decides | an unknown id gets |
+|---|---|---|
+| `AoWTC.MakeAbilPath @0x004271EC` | arc 20 for `0x2C`/`0x2D`/`0x39`/`0x3A`/`0x7B` | arc 50 |
+| `TCAI.CheckUnit @0x004175B0` | ranged ids → `EvalPath`, wall-breakers with the wall flag, breaths → `EvalBreath` | no score: the AI never shoots |
+| `GetUnitIndexAIPriority @0x5575BB26` | +100 recruit priority for `0x39`/`0x3A` | nothing |
+
+Add the category byte `[0x00469440 + id]` (Shoot Bolt's is 1), the two ceiling LADDERs, and the
+`Ability.pfs` record, which supplies sprites, sounds and the auto-combat picture. A wall breaker
+costs more; Hurl Flaming Skull below lists its sites.
+
+Unproven, static checks cannot reach it: that the tactical AI takes the shot, and the arc on screen.
+
+### The image list — `Ability.pfs` tag 8
+
+An `ImageLib.TImageSequenceList` (ILPACK `LoadFromStream @0x552190D8`): u32 slot count, then per
+slot u8 0 + a sequence or a non-zero byte for an empty slot. A sequence: u32-length library name,
+u8 layer, u8 speed, u8 mode, u32 image, i32 dx, i32 dy, a frame table when mode is 4 or 5 (u32
+flags, u32 n, n frames), u8 child-follows. Ranged records carry 41 slots: 0–23 the flight sprite
+per direction (javelins, arrows; slot 0 alone for a round missile), 40 the picture
+`TRangedAttackCA.ShowObject @0x5576E550` draws in the auto-combat replay — the `Combat.ILB`
+`HitIcon.BMP` entries 110–126. Those entries fly in manual combat too: Fire Cannon's list is one
+slot, `Combat.ILB` 112.
+
+## Hurl Flaming Skull — Hurl Boulder with physical, fire, death and wall damage (`0xBF`)
+
+Scripts `build_flamingskull.py` (AoWEPACK.dpl + AoWTCPCK.dpl) and `build_flamingskull_pfs.py`
+(`Release/Ability.pfs` key 201), applied 2026-10-19; the docstrings hold the addresses, caves and
+`--undo`. Owner's design: the four damage types, the cut ability's own art; the owner assigns the
+units (the Undead Skull Thrower, Unitres 248, carries Hurl Boulder today).
+
+- **Numbers:** ATK 8, DAM 11, 1 shot, long range, type word `0x01A1` (Fire | Death | Physical |
+  Wall). Attack, shots and range are Hurl Boulder's; damage is its 13 less two (owner, 2026-10-19).
+  The dry run flags drift in the copied three.
+- **Art:** `Combat.ILB` 116, a flaming skull, in slot 0 (flight, centred on the path as the boulder
+  frames are) and slot 40 (auto-combat). Sounds: Hurl Boulder's (record 34). Cost 20, Ranged column,
+  0 % in Hero Offers.
+- **Name:** a literal. The cut ability's `AoWE.HurlFireSkullRStr` (`0x55709954`, "Hurl Fire Skull",
+  also a row in `Dict/ResStr.mld`) is loaded by no code. The ranged ctor's fifth argument, read by
+  nothing, is the icon number (Hurl Boulder `0x6E` = 110 … Shoot Black Javelin `0x7B` = 123); 116 =
+  `0x74` sits between Poison Darts and the javelins, and the string sits between Doom Gaze and Shoot
+  Javelin, so the skull was probably `0x38` (Ziggurat's Assassin). No vanilla sprite library holds a
+  skull, no sound is named for it, and vanilla `Ability.pfs` has no record for it.
+- **Fire** does not ignite the impact hex (Flame Throwing's and the breaths' `0x31012` message); it
+  sets Burning through the damage types like any fire hit.
+- **Registration:** `0x5576F6A7` (Hurl Boulder's), launch-proved 2026-10-19. LADDER `0xC0`.
+
+### ⭐ Wall damage — the bit alone does nothing
+
+`dtWall` (`0x100`) makes a hit able to damage a wall object (`TCombatWall.GetImmunityTypes
+@0x55725C40` is everything but `dtWall`) and makes `TRangedAttackAbility.GetWallCombatFeatures
+@0x5576E6D4` report `wcWallBreaching`, but nothing asks the ability:
+
+- **Breacher status is per unit, by id.** `TAbstractUnit.GetWallCombatFeatures @0x5577ECCC` (VMT
+  `+0x120`; enum `wcWallBreaching`/`wcWallPassing`/`wcParticipate`) grants breaching for Wall
+  Crushing `0x75`, Hurl Boulder `0x18`, Self Destruct `0x41` and Fire Cannon `0x2C` only; combat
+  units cache it at `[+0x55]`. Its readers: `TTacticalCombat.ValidateWallCombat @0x00429540` (a side
+  behind walls with no breacher or passer has no fight), `TFastCombat.AttackerCanCrushWall
+  @0x557446F4`, and the strategic `TCombatPredictor`.
+- **Manual combat damages a wall by message, not by the shot.** `TCAbRangedTE.Execute` sends
+  `0x31001` (Hurl Boulder) or `0x31002` (Fire Cannon) to the impact hex; the `TCityWall`,
+  `TCombatTerrain` and `TCombatStructure` `MapFieldMsgProc` handlers price the hit off
+  `GetAbility(0x18)` / `GetAbility(0x2C)` `.GetCombatInfo` with one synced draw each.
+- **The AI** asks by id: `TCAI.CheckUnit`'s ladder (`EvalPath` with the wall flag) and its second
+  `EvalPath` at `0x004178DE`; `GetUnitIndexAIPriority`'s +100 for breakers.
+
+The skull is added to each: the breacher list, Hurl Boulder's `0x31001` case (the TE stores the
+ability id in the message's unused `+0xC`, and the three handlers read it in place of `0x18`), the
+two AI tests, the recruit bonus, plus `MakeAbilPath` (lob) and AbilTypes category 2.
+
+Unproven, static checks cannot reach it: that the AI sieges with it, wall damage on screen, and the
+skull's placement on its flight path.
+
+## Wheeled — a road hex costs 2, not 3 (`0xC0`)
+
+Scripts `build_wheeled.py` (AoWEPACK.dpl) and `build_wheeled_pfs.py` (`Release/Ability.pfs` key
+202), applied 2026-10-19; the docstrings hold the addresses, caves and `--undo`. Owner's design: a
+passive for machines that roll on wheels. The owner assigns the carriers in the editor.
+
+- **Effect:** in `CreateMovePointTable`, right after the table copy and before the owner test,
+  every Road cell (column 5) of exactly 3 becomes 2 while the unit holds `0xC0` (hook `0x5577FE13`,
+  cave `0x558A0100`). Every cost reader goes through that builder, so the deduction, the path
+  preview and both AIs agree (`09-terrain-movement.md`, movement-cost matrix). Independents get it
+  too; they skip every other modifier. Bridges stay 3.
+- **Enchanted Roads:** no stacking (owner, 2026-10-19). Its own block tests for exactly 3, so a road
+  Wheeled has already made 2 is left alone. `STACK = True` in the script would make it 1 instead.
+- **Record:** cloned from Forestry's (key 13): description, cost 4 (Forestry's and Cave Crawling's),
+  SFX and empty image list kept, mask `0x03FF`. Wayfaring column, 0 % for every race in Hero Offers.
+- **Registration:** `0x557BCD81` (Decay's `call RegisterAbility`), launch-proved 2026-10-19 (main
+  window, no error dialog). LADDER `0xC1` in both ceiling scripts.
+- ⚠ The AI plans a transport's leg (`TAIMoveControl.Initialize`, `[group+0x130]`) on the raw combined
+  table, which has never seen Enchanted Roads either; a Supply Caravan carrying an AI group is
+  costed at 3 a road hex there.
 
 ## Open items
 

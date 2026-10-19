@@ -148,8 +148,9 @@ def layout():
 
 
 def check_id():
-    """0xBA must be free: no other CreateEnhancementAbility idiom registers it or anything above
-    it, and Ability.pfs has no record for it unless it is ours (a DevEd save keeps it)."""
+    """0xBA must be ours alone: no CreateEnhancementAbility idiom outside our slot registers it,
+    and ability_names gives it no other name.  Higher ids are other abilities, not a clash.
+    Ability.pfs is reported only: its record for 0xBA is ours (build_liquidbody_pfs.py)."""
     d = open(P.TARGET, "rb").read()
     _e, secs = P.sections(d)
     vs, sva, rs, ra = secs[0]
@@ -163,14 +164,19 @@ def check_id():
                         used.append((struct.unpack_from("<I", d, i - k + 1)[0], src))
                         break
     lo, hi = SLOT
-    other = [i for i, src in used if i < 0x100 and not lo <= src < hi]
-    if max(other) >= ABIL_ID:
-        sys.exit("ABORT: something else registers %#x -- re-derive ABIL_ID" % max(other))
+    other = [(i, src) for i, src in used if i < 0x100 and not lo <= src < hi]
+    clash = [u for u in other if u[0] == ABIL_ID]
+    if clash:
+        sys.exit("ABORT: CreateEnhancementAbility at %08X also registers %#x -- re-derive ABIL_ID"
+                 % (clash[0][1], ABIL_ID))
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "re_tools"))
-    import pfs
+    import pfs, ability_names
     keys = {rid - 10 for rid, _b in pfs.load("ability.pfs")[0]}
-    print("  id %#x free (highest other CreateEnhancementAbility id %#x); Ability.pfs record %s"
-          % (ABIL_ID, max(other), "present" if ABIL_ID in keys else "absent"))
+    named = ability_names.names()
+    if named.get(ABIL_ID, NAME) != NAME:
+        sys.exit("ABORT: ability_names gives %#x to %r -- re-derive ABIL_ID" % (ABIL_ID, named[ABIL_ID]))
+    print("  id %#x ours alone (highest other CreateEnhancementAbility id %#x); Ability.pfs record %s"
+          % (ABIL_ID, max(i for i, _s in other), "present" if ABIL_ID in keys else "absent"))
 
 
 at, caves = layout()

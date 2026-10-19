@@ -45,6 +45,8 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | Earth/Rock block sight; v6 snapshot keeps fog counts balanced across terrain edits | v6 applied 2026-10-04 | `build_los_terrain.py` | AoWEPACK.dpl |
 | Earth/Rock brush on surface Water/Ice replaces the water hexagon (was a crash) | applied 2026-10-04 | `build_isohex_replace.py` | HSEPack.dpl |
 | Move-cost: Snow/Desert +1 for walkers; Frostlings on Snow, Azracs on Desert at the Grass cost | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_race_terrain_move.py` | AoWEPACK.dpl |
+| Haste: +8 maximum movement points; its 1-off-each-hex block is skipped | applied 2026-10-19 | `build_haste_moves.py` (record: `04-spells-modded.md`, "Haste") | AoWEPACK.dpl |
+| Wheeled (`0xC0`): a road hex costs 2, not 3; no stacking with Enchanted Roads | applied 2026-10-19 | `build_wheeled.py` (record: `03-abilities-added.md`, "Wheeled") | AoWEPACK.dpl |
 
 ## Reference: terrain, overlay and hex geometry
 
@@ -109,14 +111,25 @@ tables in the file changes movement for every unit, the AI, and the path preview
 code cave needed for a pure cost edit; the startup generator propagates it.
 
 `TAbstractUnit.CreateMovePointTable @0x5577FDC4` is the single authoritative **per-unit** builder:
-it copies `MovePointTables[moveTypes*0x100]` into a stack buffer, then applies enchantment/ability
-modifiers (player road-upgrade flag; Enchanted/Cursed Roads abilities `0x17`/`0x01`/`0xA5`;
-Haste-like ability `0x98`, cost−1 clamped ≥2; ability `0x84`, +2 to positive costs — skipped since
-`build_lethargy.py` turned its `je` at `0x5577FF9E` into a `jmp`). Both real MP
-deduction (`TAbstractUnit.MovedTo` → `MovePointCost @0x55780848`, `buf[1+terrain*0x10+road]`) and
-the move-predictor cave (below) call exactly this function — **anything hooked here is consistent
-between executed movement and the on-screen prediction for free**. Its entry is hooked by
-`build_race_terrain_move.py` (below).
+it copies `MovePointTables[moveTypes*0x100]` into a stack buffer, then applies, in order:
+
+- Wheeled `0xC0`: Road cells (column 5) of exactly 3 → 2, every owner (`build_wheeled.py`).
+- Owner ≤ 0 (independents) skips everything below. The player flags are
+  `[GetPlayers(owner)+0x54]+0x44`, set by the global enchantments' `Activate`.
+- Enchanted Roads (`+0x44` bit 2): Road cells of exactly 3 → 2, so flyers' 4s are untouched.
+- Flying `0x01`, Sailing `0x17`, Wind Walking `0xA5`: every cost above 2 −1 under Air Mastery
+  (`+0x44` bit 4), every positive cost +2 under `+0x45` bit 4.
+- Haste `0x98`: −1, floor 2 — skipped since `build_haste_moves.py` (`je`→`jmp` at `0x5577FF54`).
+- Slow `0x84`: +2 to positive costs — skipped since `build_lethargy.py` (`0x5577FF9E`).
+
+Every cost reader calls it: the real MP deduction (`TAbstractUnit.MovedTo` → `MovePointCost
+@0x55780848`, `buf[1+terrain*0x10+road]`), the move-predictor cave (below), `TArmy`'s tables, the
+strategic AI (`TAIGroupControl.UpdateGroupChanges`, `TAIMoveTargetSelector.ProcessStates`) and
+AoWTCPCK by import (`TCAI.EvalBattle`, `TCombatUnitSelectionControl.CalculateMovePath`/`.Update`)
+— **anything hooked here is consistent between executed movement, the on-screen prediction and
+both AIs for free**. One exception: the AI costs a transport's leg (`TAIMoveControl.Initialize`,
+`[group+0x130]`) on the raw combined table. Its entry is hooked by `build_race_terrain_move.py`
+(below), which copies the Grass row over Snow/Desert after the whole body.
 
 ⚠ **Terrain, road/overlay and cost bytes in these tables are all `MOVSX`'d — signed chars, not
 unsigned.** Road/overlay `−1` = no road; that is why every lookup adds `+1` (column 0 = the

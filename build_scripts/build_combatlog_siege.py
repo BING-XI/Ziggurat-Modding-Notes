@@ -5,12 +5,12 @@ gates and structures, and the breach.  AoWTCPCK.dpl + AoWEPACK.dpl.  Combat-log 
 
     Archer's shot at Orc is intercepted by Swordsman  (30% chance)
     Wizard's Fire Bolt at Orc hits the Wall  (40% chance)
-    Catapult hits Wall for 9 damage  (90%, 12 ATK vs -4 DEF)
-    Catapult CRITS Gate for 14 damage  (90%, 12 ATK vs -4 DEF)
-    Catapult misses Wall - fumble  (90%, 12 ATK vs -4 DEF)
+    Catapult hits Wall for 9 damage  (90%, 12 ATK vs 0 DEF)
+    Catapult CRITS Gate for 14 damage  (90%, 12 ATK vs 0 DEF)
+    Catapult misses Wall - fumble  (90%, 12 ATK vs 0 DEF)
     Wizard casts Tremors on Structure for 6 damage  (65%, 10 ATK vs 7 DEF)
-    Wizard casts Great Hail but misses Wall  (90%, 14 ATK vs -4 DEF)
-    Fire burns Wall for 2 damage  (90%, 20 ATK vs -4 DEF)
+    Wizard casts Great Hail but misses Wall  (90%, 14 ATK vs 0 DEF)
+    Fire burns Wall for 2 damage  (90%, 20 ATK vs 0 DEF)
     The Wall is breached          The Gate is breached          The Structure is destroyed
 
 Live manual battles only (cl_emit's gate); none of these events exists in auto-resolve as such
@@ -57,7 +57,7 @@ included, with a skipdata disassembly of the whole function)
                 kind 3 fire tick (0x31007)  ATK [[0x4693C4]+4] = TCAttack[1], DAM [[0x4693FC]+4]
               Source = [msg+8] (vanilla itself dereferences its +0x4C, so it is a TCombatUnit);
               the fire tick's source is a TCombatFire and is not read ("Fire").
-              DEF: TCityWall.GetDefense 0x405ACC (constant -4) / TCombatILTerrain.GetDefense
+              DEF: TCityWall.GetDefense 0x405ACC (constant 0, build_walldef0.py) / TCombatILTerrain.GetDefense
               0x404914 (signed byte [[obj+8]+0x45]) -- the same pure getters vanilla just called.
               Return addresses NOT in the table are left alone: Wall Crushing 0x40A29F (logged by
               build_combatlog_wallcrush.py, which also resets the roll), TCityWall.Activate

@@ -112,6 +112,8 @@ file carries the specific checklist for its own rows.
   leader gets the turn-1 leader window instead (`07-ui.md` §10.6); `C_TURN1` 46 → 129 B, span grown to
   `0x5584B000..0x5584B0FF`, re-tuned in place. **v4 (2026-10-04)**: day 1 only (guard 0 tests
   `[map+0x174] == 1`); v3 re-offered every turn while points were unspent. 140 B.
+- **Walls have DEF 0 in manual combat, as in auto-resolve** (`build_walldef0.py`, AoWTCPCK
+  immediate `0x405AD8`, −4 → 0) — 2026-10-18. Gates share the getter; the combat log follows. §4.
 - HP ceiling 120 → 100 (four places that must move together) — 2026-08-31
 - Morale re-scale (ATK ±4, RES ±6) — 2026-08-26
 - Flyers lose morale underground (−5 Caverns / −10 Depths / −15 Abyss, units only, Cave Crawling exempt) — 2026-09-27
@@ -169,6 +171,23 @@ file carries the specific checklist for its own rows.
   Checklist: `01-combat-maths.md` §5.
 
 ### Abilities — `02-abilities-modded.md`, `03-abilities-added.md`
+- **Shoot Bane Javelin** (`0xBE`): a 14/11 javelin, 1 shot, long range, physical and death damage,
+  the black-javelin sprite and Shoot Bolt's sounds; Ranged column at level-up, 0 % for every race.
+  The Orc Shredder Bolt carries it in place of Shoot Bolt. `build_banejavelin.py` (`AoWEPACK.dpl` +
+  `AoWTCPCK.dpl`) + `build_banejavelin_pfs.py` + `build_shredderbolt_banejavelin.py` (Unitres),
+  applied 2026-10-19. The section also holds the id census for any new
+  ranged ability (`re_tools/idladder.py`) and the `Ability.pfs` tag-8 image-list format.
+- **Hurl Flaming Skull** (`0xBF`): Hurl Boulder's lob at 8/11, long range, with physical, fire, death and
+  wall damage, flying the cut ability's own sprite (`Combat.ILB` 116); Ranged column, 0 % for every
+  race; no unit carries it yet. ⭐ Wall damage needed four id-keyed hooks besides the type bit —
+  breacher status is per unit by id, and manual combat damages walls through a map-field message
+  priced off Hurl Boulder's id. `build_flamingskull.py` + `build_flamingskull_pfs.py`, applied
+  2026-10-19. `03-abilities-added.md`, "Hurl Flaming Skull".
+- **Wheeled** (`0xC0`): a road hex costs 2 movement points instead of 3, in the one table builder
+  the game, the path preview and both AIs read; no stacking with Enchanted Roads (owner). Wayfaring
+  column, 0 % for every race; the owner assigns the units in the editor. `build_wheeled.py` (hook
+  `0x5577FE13`, registration `0x557BCD81`) + `build_wheeled_pfs.py`, applied 2026-10-19;
+  LADDERs `0xC1`. `03-abilities-added.md`, "Wheeled".
 - **Razor Plate** (`0xBD`): every melee strike that lands on the unit costs the striker d5 physical
   damage — attack, retaliation, Round Attack, free swing, touch swing (Physical Protection halves,
   Immunity cancels, Embrittled doubles). Flinch and blood, a combat-log line, the replay number and
@@ -387,6 +406,10 @@ file carries the specific checklist for its own rows.
 - Item-granted HP / MV bonuses — 2026-08-31
 
 ### Spells — `04-spells-modded.md`, `05-spells-added.md`
+- **Haste gives +8 maximum movement points** and no longer takes 1 off each hex cost
+  (`build_haste_moves.py`, applied 2026-10-19). Cost block `je`→`jmp` at `0x5577FF54`; GetMoves VMT
+  slots of `TUnit`/`THero`/`TLeader` → wrappers at `0x558A0000`. Texts in `build_pfs_typos.py`.
+  Surgical `--undo`. `04-spells-modded.md`, "Haste".
 - **Warp Party ban** (`build_warpban.py`) — 🔨 APPLIED 2026-09-27. Map Settings > Game "Disable Warp Party" stores id `0x61` (`map+0x193`) in the map/save; Warp Party then cannot be cast. ⚠ An editor re-save of a game `.asg` differs from the game's own save — unverified for live matches. `04-spells-modded.md`, "Warp Party ban".
 - **Lethargy (ex Slow)** (`build_lethargy.py`) — 🔨 APPLIED, UNTESTED (2026-09-25). Movement halved
   (rounded up) for the rest of combat, remaining movement halved on landing, one melee strike fewer
@@ -443,6 +466,7 @@ file carries the specific checklist for its own rows.
 - AoWz.exe loads `ddraw.dll` by name at startup, so cnc-ddraw beside it takes over the display; fullscreen confirmed on a machine whose DirectDraw reports no 16-bit modes (`build_ddraw_preload.py`, `.hcol` `0x0062AE80`) — 2026-10-18. ⚠ `Ziggurat\ddraw.dll`/`ddraw.ini` would ship if staged. `07-ui.md` §20
 - Window mode zoom factor: the window stays resizable and the game is drawn at Z× (`Video\Window Zoom`, default Auto ≈ 1920×1080 game area, 0 = off), DPI-aware (`build_window_zoom.py`, `Dcpack.dpl` CODE tail + `.hcol` `0x0062B300`) — 2026-10-18, confirmed. `07-ui.md` §21
 - **AoWzSetup.exe replaces AoWSetup.exe**: every AoWSetup setting plus window zoom; Play/Editor start AoWz.exe/AoWzEd.exe (`build_aowzsetup.py`, C# source in `Modding Resources/AoWzSetup/`; AoWSetup.exe withheld + `[InstallDelete]`) — 2026-10-18, confirmed. `07-ui.md` §22
+- AoWzSetup: purple, mirrored dragon icon (as AoWz.exe's); **Updates** tab — Ask before installing / Install automatically / Off = `update.ps1`'s `Updater\Mode`; a change runs `update.ps1 -Register`, so Off removes the update task at once (`build_aowzsetup.py`) — 2026-10-19. ⚠ Not run where `Modding Resources` sits beside the exe: a task in the working tree would install a release over it. `07-ui.md` §22
 - Research Book slot **buttons** now move with their panels (`build_tierresearch_btnfix.py`, hook `0x42F2DC`, cave `0x611F00` in the `.tres` slack, both exes) — 🔨 APPLIED, UNTESTED 2026-09-06 — fixes "some sphere-tiers selectable, others not": `cave_layout` re-pitched the panels for research mode but never moved the sibling `SxBtn` click targets. ⚠ Do **not** retarget the `call` at `0x42F2D7` instead — that is one of `build_tierresearch_exe.py`'s verified hooks and breaks its self-check
 - Cast spell book dead on reopen (no glow, no click) — zero-height slot buttons from `cave_layout`'s pre-`Show` height capture; `build_tierresearch_btnfix.py` v2 re-sizes every validated slot button via its own `SetSize` in non-research modes — 2026-10-03. ⚠ its `--undo` re-breaks the cast book (`04-spells-modded.md`)
 - ⭐⭐ **The Death Altar crash — a STALE `.reloc` ENTRY, not the combat log** (`build_relocfix.py`) — ✅ **CONFIRMED WORKING 2026-09-13** (applied 2026-09-11). The Death/Divine dispatch rewrite in `ExecuteStormDamage` overwrote `mov dx,[0x55780840]` but left its base-relocation at RVA `0x807FB`, so **the loader added the rebase delta to live code on every launch**, smashing `0x557807FD/FE` — the `mov dx,0x20` that is the **Death** arm, and only that arm. Reported as `EExternalException … at 000807FE / External exception 80000003`; `000807FE` is the second corrupted byte and the code varies with the load address. Fixed by flipping the entry type `3 → 0`, plus **ten more** found by the same sweep. ⚠⚠ **Invisible to every static check** — the file, `dasm.py`, the byte-diff and the owning script are all correct. ⚠ The `--audit` needs **all three** of its rules: "dword is not an in-image VA" alone has a systematic false-negative class (an operand at the *end* of the displaced range leaves a residual that still reads as a valid VA — it missed 4 of the 11), and the twin-diff rule that catches those is blind on the editor, which has no vanilla twin. Full decode + the rules in `12-re-toolchain.md` §5.2c; the register of all eleven, the reverse-coupling table and the release-staging caveat in §6.5a

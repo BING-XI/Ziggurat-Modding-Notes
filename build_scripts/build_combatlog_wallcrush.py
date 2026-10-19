@@ -3,15 +3,15 @@ r"""
 build_combatlog_wallcrush.py -- manual-combat Wall Crushing hits on a wall appear in the combat log.
 AoWTCPCK.dpl + AoWEPACK.dpl.  Owner request 2026-10-14.
 
-    Basilisk crushes Wall for 7 damage  (90%, 12 ATK vs -4 DEF)
-    Basilisk CRUSHES Wall for 12 damage  (90%, 12 ATK vs -4 DEF)
-    Basilisk fails to crush Wall - fumble  (90%, 12 ATK vs -4 DEF)
+    Basilisk crushes Wall for 7 damage  (90%, 12 ATK vs 0 DEF)
+    Basilisk CRUSHES Wall for 12 damage  (90%, 12 ATK vs 0 DEF)
+    Basilisk fails to crush Wall - fumble  (90%, 12 ATK vs 0 DEF)
 
 WHY IT WAS MISSING
     The live log (build_combatlog_dll.py) captures damage at the TDamageCA.Generate/GenerateEx
     tails.  In manual combat a wall-crush builds no combat action at all: AoWTCPCK
     CombatTE.TCAbTouchMoveTE.LastMove @0x409C80 does it inline (ability 0x75, 0x40A232..0x40A2AF):
-    reseed from TAoWHSMap.Random, diff = TCAttack[0] (12) - TCityWall.GetDefense (a constant -4),
+    reseed from TAoWHSMap.Random, diff = TCAttack[0] (12) - TCityWall.GetDefense (a constant 0),
     ExecuteDamageRole(TCDamage[0], diff) through build_wallcrush_dam.py's thunk 0x43AC00 (damage =
     the attacker's DAM), then TCityWall.SetHitPoints(HP - dealt).  Auto-resolve is unaffected: its
     wall-crush is a damage CA and replays log it (build_replaylog.py).
@@ -20,7 +20,7 @@ THE HOOK -- AoWTCPCK
     6 B at 0x40A282 (`mov edx,[ebp-4] ; mov edx,[edx+0x68]`, register-only, no .reloc), right after
     the damage call returns: EAX = damage dealt (0 = miss), [ebp-4] = the TE, [TE+0x1C] = the
     attacker (TTacticalCombatUnit, a TCombatUnit), [TE+0x68] = the wall.  cave_wcl re-reads the
-    defence (TCityWall.GetDefense @0x405ACC is `return -4`, no side effects) and TCAttack[0]
+    defence (TCityWall.GetDefense @0x405ACC is `return 0` (build_walldef0.py), no side effects) and TCAttack[0]
     (0x4671A4), calls wc_log, then replays the two moves and resumes at 0x40A288.  wc_log is
     reached by the rebase delta: [IAT cell 0x46E7F4 = AoWE.ExecuteDamageRole 0x55725EAC] +
     (wc_log - 0x55725EAC).
@@ -277,7 +277,7 @@ WC_LOG = E_CAVES[1][1]
 T_HOOK = 0x0040A282
 T_VAN = bytes.fromhex("8b55fc8b5268")             # mov edx,[ebp-4] ; mov edx,[edx+0x68]
 T_RESUME = 0x0040A288
-GETDEF = 0x00405ACC                               # CityWall.TCityWall.GetDefense -> -4
+GETDEF = 0x00405ACC                               # CityWall.TCityWall.GetDefense -> 0 (build_walldef0.py)
 TCATTACK = 0x004671A4                             # AoWTC.TCAttack (TCAttack[0] = Wall Crushing ATK)
 IAT_EDR = 0x0046E7F4                              # IAT cell of AoWE.ExecuteDamageRole (thunk 0x4024F4)
 

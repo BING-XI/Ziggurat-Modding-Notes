@@ -26,7 +26,10 @@ so give it one in AoWDevEd. Mod-added so far:
     176 Shield           -> 2 Melee        (build_shield.py, tag 6 = 8 since 2026-08-27)
     177 Reforming Flesh  -> 1 Resistances  (build_reformingflesh.py; no Ability.pfs record yet,
                                             cost 50 comes from its cave's [+0x14] store)
-    189 Razor Plate      -> 2 Melee        (build_razorplate.py, tag 6 = 12 since 2026-10-10)
+    189 Razor Plate      -> 2 Melee        (build_razorplate.py, tag 6 = 8, as shipped)
+    190 Shoot Bane Javelin -> 3 Ranged     (build_banejavelin.py, tag 6 = 4 since 2026-10-19)
+    191 Hurl Flaming Skull -> 3 Ranged     (build_flamingskull.py, tag 6 = 20 since 2026-10-19)
+    192 Wheeled          -> 0 Wayfaring    (build_wheeled.py, tag 6 = 4 since 2026-10-19)
 Still MISSING from this table (they fall into Magic today, which may or may not be wanted):
 170 Magebane, 171 Drillmaster, 172-175 the caster-cost abilities. Left alone deliberately --
 placing them is the owning feature's call, not this file's.
@@ -38,7 +41,7 @@ DEFAULT_CAT = 4          # unknown / mod-added ability ids land in Magic
 
 # id: (category index, label) -- label is documentation only, the build uses the index.
 ABILITY_CATS = {
-    # ---- 0 Wayfaring: movement, terrain, concealment, vision (27) ----------------------
+    # ---- 0 Wayfaring: movement, terrain, concealment, vision (28: 27 vanilla + Wheeled) -
     0:   (0, "Walking"),              1:   (0, "Flying"),
     2:   (0, "Swimming"),             3:   (0, "Forestry"),
     4:   (0, "Cave Crawling"),        5:   (0, "Mountaineering"),
@@ -53,6 +56,8 @@ ABILITY_CATS = {
     140: (0, "Grass Concealment"),    141: (0, "Snow Concealment"),
     142: (0, "Desert Concealment"),   143: (0, "Wasteland Concealment"),
     144: (0, "Water Concealment"),    145: (0, "Concealment"),
+    # mod-added (build_wheeled.py, id 0xC0): a road hex costs 2 movement points, not 3.
+    192: (0, "Wheeled"),
 
     # ---- 1 Resistances: immunities, protections (18: 17 vanilla + Reforming Flesh) -----
     6:   (1, "Magic Immunity"),       7:   (1, "Fire Immunity"),
@@ -88,7 +93,7 @@ ABILITY_CATS = {
     # striker for d5.
     189: (2, "Razor Plate"),
 
-    # ---- 3 Ranged: shots, bolts, breaths (20) -------------------------------------------
+    # ---- 3 Ranged: shots, bolts, breaths (22: 20 vanilla + Bane Javelin, Flaming Skull) -
     22:  (3, "Archery"),              24:  (3, "Hurl Boulder"),
     25:  (3, "Hurl Stones"),          32:  (3, "Marksmanship"),
     44:  (3, "Fire Cannon"),          45:  (3, "Fire Musket"),
@@ -100,6 +105,10 @@ ABILITY_CATS = {
     120: (3, "Black Bolts"),          121: (3, "Magic Bolts"),
     122: (3, "Frost Bolts"),          123: (3, "Lightning Bolts"),
     124: (3, "Holy Bolts"),
+    # mod-added (build_banejavelin.py, id 0xBE): Shoot Bolt with physical and death damage.
+    190: (3, "Shoot Bane Javelin"),
+    # mod-added (build_flamingskull.py, id 0xBF): Hurl Boulder with fire, death and wall damage.
+    191: (3, "Hurl Flaming Skull"),
 
     # ---- 4 Magic: spells, mind control, party buffs (16) --------------------------------
     27:  (4, "Web"),                  28:  (4, "Dominate"),

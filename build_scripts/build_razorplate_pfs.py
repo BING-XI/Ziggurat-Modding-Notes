@@ -7,7 +7,7 @@ Built from Physical Protection's record (0x4D, key 87, the donor), as build_liqu
     tag 5  description   new text (u32-prefixed, CRLF-terminated like every vanilla one)
     tag 7  SFX node      the donor's
     tag 8  images        the donor's (the empty list: no overhead icon)
-    tag 6  cost          12 skill points at hero level-up (owner's ruling 2026-10-10)
+    tag 6  cost          8 skill points at hero level-up (the shipped value; was 12 on 2026-10-10)
     tag 9  mask          ff 03 = 0x03FF, every TAbilitySelectionType bit, as Physical Protection
                          and most vanilla level-up abilities: units, every item slot, leader
                          customisation, hero level-up, editor.  build_razorplate.py passes the same
@@ -37,8 +37,8 @@ ABILS = C.ABILS
 ABIL_ID, DONOR = 0xBD, 0x4D
 KEY = ABIL_ID + 10
 MASK = struct.pack("<H", 0x03FF)
-COST = struct.pack("<I", 12)
-DESC = "Each melee strike that hits the unit inflicts 1-5 physical damage on the striker."
+COST = struct.pack("<I", 8)
+DESC = "Melee attackers suffer 1-5 physical damage."
 
 
 def build(d):

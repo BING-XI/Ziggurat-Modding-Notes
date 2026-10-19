@@ -633,20 +633,25 @@ FIXES = [
     # Haste gains a melee strike each way, 2026-09-25 (build_lethargy.py's strike caves).
     # The owner reworded "and when defending" to "or defending" in the editor, 2026-09-25.
     # 2026-10-14: a 50% roll per side per round (build_lethargy.py v2).
+    # 2026-10-19: +8 maximum movement points instead of 1 off each hex (build_haste_moves.py).
     ("Spells.pfs",  25,  10,
      ("Allows the target unit to move at great speed.\r\n",
       "Allows the target unit to move at great speed, and to strike once more in melee when "
       "attacking and when defending.\r\n",
       "Allows the target unit to move at great speed, and to strike once more in melee when "
-      "attacking or defending.\r\n"),
-     "Allows the target unit to move at great speed, with a 50% chance to strike once more in "
-     "melee when attacking or defending.\r\n",
+      "attacking or defending.\r\n",
+      "Allows the target unit to move at great speed, with a 50% chance to strike once more in "
+      "melee when attacking or defending.\r\n"),
+     "Grants the target unit +8 maximum movement points, with a 50% chance to strike once more "
+     "in melee when attacking or defending.\r\n",
      "record 25 = Haste (spell 15)"),
     ("Ability.pfs", 162,  5,
      ("Reduces movement cost per hex by 1.\r\n",
       "Reduces movement cost per hex by 1. One extra melee strike when attacking and when "
-      "defending.\r\n"),
-     "Reduces movement cost per hex by 1. 50% chance of one extra melee strike when attacking "
+      "defending.\r\n",
+      "Reduces movement cost per hex by 1. 50% chance of one extra melee strike when attacking "
+      "and when defending.\r\n"),
+     "Grants +8 maximum movement points. 50% chance of one extra melee strike when attacking "
      "and when defending.\r\n",
      "record 162 = status 0x98 (Haste)"),
 

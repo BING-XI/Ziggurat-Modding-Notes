@@ -453,6 +453,16 @@ general"). v2 shows ONE dialog — the stock line, then the exception detail —
 (`Modding Resources/Inioch/share5/patch scripts/`), re-verified address by address against this
 install.
 
+⚠ **"in module VCL30.dpl at X" is a default, not a location, when the address is in no module** —
+`ExceptionErrorMessage` then prints address − `0x1000` against VCL30. ⭐ **An address whose low bytes
+are `25FF` is an import thunk executed as data:** `FF 25 lo hi` = `jmp [IAT]`, so the code read a
+thunk's bytes as a code pointer. Search every module for the four bytes. Worked case (2026-10-19,
+`TTerminateCombatTE`, address `C6FC25FF`): the only match is AoWEPACK `0x557030C4`, the
+`TEObject.Assign` thunk, which is `0x50` past `0x55703074`, the `ClassVersion` thunk every AoWE VMT
+holds in slot 0 — so a virtual call through slot `+0x50` was made on a pointer to a VMT (a class
+reference or a dangling object pointer), not on an object. Cause not yet found; no mod cave makes a
+`+0x50` call.
+
 ### Companion: the other catch-all boxes (`build_error_detail.py`, 2026-10-10)
 
 aowInt's control `Draw` handlers ("Error - <name>": "Blt Error", "Draw Error", ...) and AoWz.exe's
@@ -1624,6 +1634,10 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 | `0x5589D000` | `build_combatlog_siege.py` (2026-10-14) | **exclusive**, `0x800` (to ~`0x5589D654`) | siege/missile formatters, stubs `sg_log 0x5589D000`, `ms_log 0x5589D008`; no AoWEPACK hook |
 | `0x5589D800` | `build_combatlog_ticks.py` (2026-10-14) | **exclusive**, `0x800` (to `0x5589DB30`) | burning/decay ticks and expiry. Hooks `0x55764DDC`, `0x55765AFC`, `0x557BA42A`, `0x557BA46B`, `0x557BA49A`, `0x557BA77A`; DATA `0x558E9AE0..0x558E9AF3` |
 | `0x5589E000` | `build_combatlog_replays.py` (2026-10-14, v2 same day) | **exclusive**, `0x1800` = `0x5589E000..0x5589F7FF` (used to `0x5589F068`) | replay lines. Hook `0x55729672` -> stub `0x5589E000`; DATA `0x558E9B60..0x558E9B80`; reads/writes RESBYTE `0x558E9A60` (owned by actions). Re-tunes in place |
+| `0x5589F800` | `build_banejavelin.py` (2026-10-19) | **exclusive**, `0x400` (`cave_reg` 83 B incl. the name, `cave_aipri` `0x5589F860` 47 B) | Shoot Bane Javelin (`03-abilities-added.md`): registration spliced at `0x5576F7E2`, recruit priority at `0x5575BB37`. ⚠ `build_abiltypes_relocate.py --undo` zeroes its AoWTCPCK category byte: undo this first |
+| `0x5589FC00` | `build_flamingskull.py` (2026-10-19) | **exclusive**, `0x400` (`cave_reg` 83 B incl. the name, `cave_wcf` `0x5589FC60` 51 B, `cave_aip` `0x5589FCA0` 47 B) | Hurl Flaming Skull (`03-abilities-added.md`): registration at `0x5576F6A7`, wall breaching `0x5577ED64`, recruit priority `0x5575BC26`. ⚠ `build_abiltypes_relocate.py --undo` zeroes its category byte: undo this first |
+| `0x558A0000` | `build_haste_moves.py` (2026-10-19) | **exclusive**, `0x100` (`cave_umoves` 10 B, `cave_hmoves` `0x558A0010` 10 B, `cave_common` `0x558A0020` 39 B) | Haste +8 maximum MP (`04-spells-modded.md`). `je`→`jmp` at `0x5577FF54` (Haste's cost block); GetMoves VMT slots `0x55710D80` (`TUnit`), `0x557120C0` (`THero`), `0x5571230C` (`TLeader`), `.reloc` kept. The wrappers call `build_medal_hpmv.py`'s and `build_item_hpmv.py`'s getters through the original entry points, so either may be undone first |
+| `0x558A0100` | `build_wheeled.py` (2026-10-19) | **exclusive**, `0x200` (`cave_road` 58 B, `cave_reg` `0x558A0140` 60 B incl. the name) | Wheeled `0xC0` (`03-abilities-added.md`): hook `0x5577FE13` (5 B, `CreateMovePointTable` after the table copy), registration spliced at `0x557BCD81`. Register/rel32 only; the `STACK` arm adds one call/pop anchor to `AoWE.AoWHSMap` |
 
 ⚠ **`build_spellcast_herotier.py --apply` would abort today.** Its `ZONE_END` is `0x55848000`
 (line 125) and it asserts `cave_end..ZONE_END` is zero, but `build_spellward_rescope.py`'s cave
@@ -1632,7 +1646,7 @@ touch that script. Found 2026-09-07 during the Power Leech scoping; the abort is
 corrupting, and `build_powerleech.py` does not make it worse — its cave starts at exactly
 `0x55848000`, which is where both neighbours' zero-asserts stop.
 
-Free above `0x5589F800` (and `0x55851E40..0x55851FFF`, and `0x55851B00..0x55851BFF`) (`0x5584F440..0x5584F47F` and `0x5584F780..0x5584F7FF` are small free gaps), all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAA30..0x558FAAF8` (fly-levels popup class clone, `build_fly_levels.py`), `0x558FAB00..0x558FABFF` (shipyard-income header, `build_shipyard_income.py`; 0xA8 B used since its per-level arrays grew to 8 slots), `0x558FAC10..0x558FACFF` (True Seeing list, `build_los_terrain.py` v5), `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move), `0x558FAD20` (command bonds) and `0x558FAD40..0x558FAECF` (Mantle of Gloom, `build_los_terrain.py`) and `0x558FAEE0..0x558FAEF3` (New Map checkboxes, `build_levelset.py`) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
+Free above `0x558A0300` (and `0x55851E40..0x55851FFF`, and `0x55851B00..0x55851BFF`) (`0x5584F440..0x5584F47F` and `0x5584F780..0x5584F7FF` are small free gaps), all the way to the `0x558E7918` CODE ceiling, plus `0x5584C400..0x5584D000`. BSS: `0x558FAA30..0x558FAAF8` (fly-levels popup class clone, `build_fly_levels.py`), `0x558FAB00..0x558FABFF` (shipyard-income header, `build_shipyard_income.py`; 0xA8 B used since its per-level arrays grew to 8 slots), `0x558FAC10..0x558FACFF` (True Seeing list, `build_los_terrain.py` v5), `0x558FAD00` (Town Quake), `0x558FAD10..0x558FAD17` (world-map group move), `0x558FAD20` (command bonds) and `0x558FAD40..0x558FAECF` (Mantle of Gloom, `build_los_terrain.py`) and `0x558FAEE0..0x558FAEF3` (New Map checkboxes, `build_levelset.py`) are taken in the clear gap `0x558FAC04..0x558FAF1F`.
 
 **AoWEPACK writable state beyond BSS (2026-10-14).** The BSS page slack (`0x558FA231..0x558FAFFF`) is claimed except `0x558FAED0..0x558FAEDF`, `0x558FAEF4..0x558FAEFF` and `0x558FAF1C..0x558FAF1F` (`0x558FAF00..0x558FAF1B` went to `build_sky_parallax.py` 2026-10-15). DATA ends its VirtualSize at `0x558E9A5C` but has `0x1C00` raw, so `0x558E9A60..0x558E9BFF` (416 B, zero, file-backed, RW) is usable: `build_combatlog_actions.py` `9A60..9A9F` (RESBYTE `9A60`), `build_combatlog_endings.py` `9AA0..9ADF` (unused), `build_combatlog_ticks.py` `9AE0..9B1F`, `build_combatlog_strikes.py` `9B20..9B5F`, `build_combatlog_replays.py` `9B60..9B9F`, `build_combatlog_lib.py` `9BA0..9BFF` (unused). Beyond that: AoWTCPCK BSS `0x46C910..0x46CFFF`, or allocate at start-up and keep one pointer. Some of `build_shipyard_income.py`'s BSS claims (diagnostic recorders, superseded table layouts) may be reclaimable.
 ⚠ `aowepack_patch.run` (and `exe_patch.run`) assert that a script's caves do not overlap each other, as well
@@ -1808,6 +1822,8 @@ as AoWEPACK applies):
 | `0x0043B200` | `build_combatlog_siege.py` (AoWTCPCK half) | hooks `0x40F079`, `0x40F05E`, `0x405AE4`, `0x432930`, `0x410138`; caves + two return-address dispatch tables, to `0x43B584`; zone **`0x43B200`–`0x43B5BF`** |
 | `0x0043B5C0` | `build_combatlog_strikes.py` (AoWTCPCK half) | `tc_w2` (call retarget `0x40ABBE`), to `0x43B5E9`; zone **`0x43B5C0`–`0x43B5FF`** |
 | `0x0043B600` | `build_tc_movecursor.py` | tactical move cursor for units without Walking/Flying/Swimming (`07-ui.md` §19). Call retarget `0x41FB1C` (`UpdateMoveCursor` → `GetMoveTypes`), `mc_types` 12 B, PIC; zone **`0x43B600`–`0x43B63F`** |
+| `0x0043B640` | `build_banejavelin.py` (AoWTCPCK half) | Shoot Bane Javelin: `cave_arc` 20 B (hook `0x42725C`, `MakeAbilPath` → arc 20), `cave_ai` `0x43B660` 24 B (hook `0x417619`, `CheckUnit` → `EvalPath`), plus the category byte `0x004694FE` in `build_abiltypes_relocate.py`'s table; zone **`0x43B640`–`0x43B6FF`** |
+| `0x0043B700` | `build_flamingskull.py` (AoWTCPCK half) | Hurl Flaming Skull: `cave_arc`, `cave_ai`, `cave_flag`, `cave_msg`, `cave_te`, `cave_hid` (to `0x43B7B4`); hooks `0x4271FD`, `0x4175AD`, `0x4178DE`, `0x40C721`, `0x40C783` and the three `0x31001` handlers `0x405E0A`/`0x410310`/`0x432BC5`; category byte `0x004694FF`; zone **`0x43B700`–`0x43B7FF`** |
 
 **AoWTCPCK.dpl BSS** (VA `0x46C000`, VirtualSize `0xA1`, no file bytes): the rest of the page,
 `0x46C0A1`–`0x46CFFF`, is loader-zeroed and writable — mutable state only, reached PIC.
@@ -5688,11 +5704,13 @@ installer's `[Run]` calls `-Register` after every install, which (re)creates one
 **`Ziggurat updater`** — logon trigger (2-minute delay) plus daily 18:00, `StartWhenAvailable`,
 `Interactive`/`Limited`, no admin — unless the player chose `Don't auto-update`, which it
 respects by removing the task. Settings: `HKCU\…\Age of Wonders Z\Updater`, values `Mode`
-(`Ask`/`Auto`/`Off`), `Every` (`Daily`/`Weekly`/`Monthly`), `LastChecked`.
+(`Ask`/`Auto`/`Off`), `Every` (`Daily`/`Weekly`/`Monthly`), `LastChecked`. AoWzSetup's Updates tab
+(2026-10-19, `07-ui.md` §22) writes `Mode` and runs `-Register` when it changes, except in a folder
+with `Modding Resources` beside it.
 
 | `-Scheduled` rule | why |
 |---|---|
-| exits if any AoW program runs | the installer cannot replace locked files; no window over a game |
+| exits if any AoW program runs (`AoWzSetup` too, from 2026-10-19) | the installer cannot replace locked files; no window over a game |
 | a check is due only `Every` 1/7/30 days after `LastChecked`; the task fires daily regardless | frequency changes need no re-registration |
 | `LastChecked` is written after a completed check, before any window | "Not now" waits a full interval; a failed check retries at the next trigger |
 | downloads and verifies first; reuses a verified copy in `%TEMP%` | "Install now" starts at once; "Not now" costs no second download |

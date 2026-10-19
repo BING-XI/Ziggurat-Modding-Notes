@@ -60,6 +60,7 @@ whole battle then runs deterministically off the raw stream. A synced draw *insi
 | — Burning/Decay/Turn-Undead-AI damage gap-fix | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_damhp_gapfix.py` | `AoWEPACK.dpl` |
 | — morale re-scale (ATK ±4, RES ±6) | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_morale_scale.py` | `AoWEPACK.dpl` |
 | — tactical wall/structure HP unified 40 stone / 10 wood | 🔨 APPLIED, UNTESTED (2026-08-26) | `build_tcpck_damhp.py` | `AoWTCPCK.dpl` |
+| — wall DEF 0 in manual combat, as in auto-resolve (was −4) | applied 2026-10-18 | `build_walldef0.py` | `AoWTCPCK.dpl` |
 | Hero library skill points spent down (589 unspent → 3) | 🔨 APPLIED, UNTESTED (2026-09-08) | `build_heroskill_spend.py` | `User/Ziggurat Heroes.ahl`, `Ziggurat release/User/` — **no binary** |
 | A hero holding unspent skill points is offered them | 🔨 APPLIED, UNTESTED (2026-09-22, v2; v3 guard 2026-09-24) | `build_hero_turn1_upgrade.py` (`0x55786CB3`→nops, `0x55787FE7` call-retarget, cave `C_TURN1 0x5584B000`) | `AoWEPACK.dpl` |
 | Excess-ATK → minimum-damage bonus | vanilla mechanism, RE only, no patch | — | `AoWEPACK.dpl` |
@@ -807,6 +808,18 @@ suggests; combat structures shouldn't die to half the previous hits; map editor 
 preview HP should match in-game; tactical AI during a siege should neither over- nor under-commit;
 save/load a partially-damaged wall; one full ordinary (non-siege) tactical battle as a smoke test.
 
+### Wall DEF 0 in manual combat (`build_walldef0.py`, 2026-10-18)
+
+Owner's ruling: walls have the same DEF in both resolutions, and it is 0. Auto-resolve's
+`TCombatWall.GetDefense`/`TWallUnit.GetDefense` were already `xor eax,eax`; manual combat's
+`TCityWall.GetDefense @0x405ACC` returned −4 (vanilla −2, doubled by `build_statdouble.py` stage 9).
+One immediate, `0x405AD8` → 0. Every reader is a direct call (no VMT slot): the 11 damage rolls in
+`TCityWall.MapFieldMsgProc`, manual Wall Crushing (`0x40A260`), and the two combat-log caves, which
+now print `vs 0 DEF`. The AI's Wall Crushing estimate already read the AoWEPACK wall's 0. Effect: the
+90 % cap against a wall now needs ATK 8 instead of 4, and damage per hit drops at every ATK. Gates
+(`TCityWallDoor`) share the getter. ⚠ `fivepct_manifest.json` still records the site as −4, so
+`build_statdouble.py` counts it UNEXPECTED; its `--undo` leaves it at 0.
+
 ---
 
 ## 5. Hero stat clamps and chassis
@@ -1339,9 +1352,10 @@ The operative caps are engine clamps, not the data, and Ziggurat widened all of 
 again by the 5% conversion.** Current live ceilings (byte-verified, §3/§5): `TUnit.GetAttack` **40**
 (vanilla 10), `TUnit.GetDefense`/`GetResistance` **60** (vanilla 10), `THero.GetAttack`/`GetDefense`/
 `GetResistance` **40** (vanilla 10). Floors stay at Ziggurat's **0** (vanilla floored DEF at 1) — this
-is what makes a city wall's hard-coded **DEF 0** (`TCombatWall.GetDefense`/`TWallUnit.GetDefense` are
-both `xor eax,eax`) meaningful: any attacker versus a wall sits at `d` = its entire attack value, the
-single most common high-`d` matchup in normal play.
+is what makes a city wall's hard-coded **DEF 0** (`TCombatWall.GetDefense`/`TWallUnit.GetDefense` in
+auto-resolve, and AoWTCPCK `TCityWall.GetDefense @0x405ACC` in manual combat since `build_walldef0.py`,
+§4) meaningful: any attacker versus a wall sits at `d` = its entire attack value, the single most
+common high-`d` matchup in normal play.
 
 ⚠ **Open item, not re-derived for this merge.** The pre-conversion doc quoted a "max possible
 ATK−DEF" of **+30 (+38 with post-clamp melee bonuses)** using the *pre-5%-conversion* Ziggurat clamps
@@ -1567,8 +1581,9 @@ literally flies over the obstruction check, which is why Archery lobs and Doom G
 | style | arc | step div | abilities |
 |---|---|---|---|
 | flat, dense | 0 | 25 | Doom Gaze |
-| high lob | 100 | 50 | Archery, Hurl Boulder, Hurl Stones |
-| low arc | 20 | 50 | Fire Cannon, Fire Musket, Shoot Bolt, Throw Javelin, Lightning Bolts |
+| high lob | 100 | 50 | Archery, Hurl Boulder, Hurl Stones; Hurl Flaming Skull through `build_flamingskull.py`'s cave on the ladder head `0x4271FD` |
+| low arc | 20 | 50 | Fire Cannon, Fire Musket, Shoot Bolt, Throw Javelin, Lightning Bolts; Shoot Bane Javelin through `build_banejavelin.py`'s cave on the default exit `0x42725C` |
+| default | 50 | 50 | every id the ladder does not name: Poison Darts, Poison Spit, the other four bolts |
 | no path at all | — | — | Flame Throwing, Call Flames, the five Breaths |
 | per-spell | jump table | | Spell Casting (only ids 100/103/107/117/119 get a bespoke path) |
 

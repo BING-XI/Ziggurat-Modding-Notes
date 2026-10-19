@@ -31,7 +31,7 @@
     "18": {"Human": 10, "Azrac": 0, "Lizardman": 10, "Frostling": 10, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 60, "Orc": 25, "Goblin": 25, "Undead": 60},
     "19": {"Human": 10, "Azrac": 0, "Lizardman": 0, "Frostling": 10, "Elf": 25, "Halfling": 10, "Dwarf": 25, "HighMen": 60, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 0},
     "20": {"Human": 25, "Azrac": 25, "Lizardman": 25, "Frostling": 25, "Elf": 60, "Halfling": 25, "Dwarf": 25, "HighMen": 60, "DarkElf": 60, "Orc": 25, "Goblin": 25, "Undead": 60},
-    "21": {"Human": 60, "Azrac": 60, "Lizardman": 60, "Frostling": 60, "Elf": 60, "Halfling": 60, "Dwarf": 60, "HighMen": 60, "DarkElf": 60, "Orc": 60, "Goblin": 60, "Undead": 60},
+    "21": {"Human": 25, "Azrac": 25, "Lizardman": 25, "Frostling": 25, "Elf": 25, "Halfling": 25, "Dwarf": 25, "HighMen": 25, "DarkElf": 25, "Orc": 25, "Goblin": 25, "Undead": 25},
     "22": {"Human": 10, "Azrac": 25, "Lizardman": 10, "Frostling": 10, "Elf": 60, "Halfling": 10, "Dwarf": 10, "HighMen": 60, "DarkElf": 60, "Orc": 10, "Goblin": 10, "Undead": 60},
     "24": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 25, "HighMen": 0, "DarkElf": 0, "Orc": 25, "Goblin": 0, "Undead": 10},
     "25": {"Human": 0, "Azrac": 0, "Lizardman": 10, "Frostling": 10, "Elf": 0, "Halfling": 60, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 10, "Undead": 0},
@@ -84,7 +84,7 @@
     "109": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 25, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 0},
     "111": {"Human": 25, "Azrac": 25, "Lizardman": 25, "Frostling": 25, "Elf": 25, "Halfling": 25, "Dwarf": 25, "HighMen": 25, "DarkElf": 25, "Orc": 60, "Goblin": 25, "Undead": 25},
     "112": {"Human": 60, "Azrac": 25, "Lizardman": 25, "Frostling": 25, "Elf": 25, "Halfling": 60, "Dwarf": 25, "HighMen": 25, "DarkElf": 25, "Orc": 25, "Goblin": 25, "Undead": 25},
-    "113": {"Human": 60, "Azrac": 25, "Lizardman": 10, "Frostling": 25, "Elf": 25, "Halfling": 60, "Dwarf": 25, "HighMen": 60, "DarkElf": 25, "Orc": 25, "Goblin": 25, "Undead": 25},
+    "113": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 10, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 0},
     "114": {"Human": 25, "Azrac": 60, "Lizardman": 25, "Frostling": 25, "Elf": 10, "Halfling": 10, "Dwarf": 60, "HighMen": 10, "DarkElf": 25, "Orc": 60, "Goblin": 10, "Undead": 10},
     "115": {"Human": 10, "Azrac": 60, "Lizardman": 25, "Frostling": 25, "Elf": 25, "Halfling": 25, "Dwarf": 10, "HighMen": 10, "DarkElf": 25, "Orc": 25, "Goblin": 25, "Undead": 10},
     "116": {"Human": 25, "Azrac": 10, "Lizardman": 10, "Frostling": 10, "Elf": 10, "Halfling": 10, "Dwarf": 10, "HighMen": 10, "DarkElf": 10, "Orc": 10, "Goblin": 25, "Undead": 10},
@@ -112,8 +112,11 @@
     "173": {"Human": 10, "Azrac": 10, "Lizardman": 10, "Frostling": 10, "Elf": 10, "Halfling": 10, "Dwarf": 10, "HighMen": 10, "DarkElf": 10, "Orc": 10, "Goblin": 10, "Undead": 10},
     "174": {"Human": 10, "Azrac": 10, "Lizardman": 10, "Frostling": 10, "Elf": 10, "Halfling": 10, "Dwarf": 10, "HighMen": 10, "DarkElf": 10, "Orc": 10, "Goblin": 10, "Undead": 10},
     "175": {"Human": 10, "Azrac": 10, "Lizardman": 10, "Frostling": 10, "Elf": 10, "Halfling": 10, "Dwarf": 10, "HighMen": 10, "DarkElf": 10, "Orc": 10, "Goblin": 10, "Undead": 10},
-    "176": {"Human": 60, "Azrac": 60, "Lizardman": 25, "Frostling": 60, "Elf": 60, "Halfling": 60, "Dwarf": 60, "HighMen": 60, "DarkElf": 60, "Orc": 60, "Goblin": 60, "Undead": 60},
+    "176": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 0},
     "177": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 25},
-    "189": {"Human": 25, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 25, "HighMen": 0, "DarkElf": 25, "Orc": 60, "Goblin": 25, "Undead": 10}
+    "189": {"Human": 25, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 25, "HighMen": 0, "DarkElf": 25, "Orc": 60, "Goblin": 25, "Undead": 10},
+    "190": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 0},
+    "191": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 0},
+    "192": {"Human": 0, "Azrac": 0, "Lizardman": 0, "Frostling": 0, "Elf": 0, "Halfling": 0, "Dwarf": 0, "HighMen": 0, "DarkElf": 0, "Orc": 0, "Goblin": 0, "Undead": 0}
   }
 }

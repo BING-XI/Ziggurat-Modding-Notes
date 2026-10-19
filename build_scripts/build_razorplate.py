@@ -1085,8 +1085,8 @@ def module(path, base):
 
 
 def check_id():
-    """0xBD must be free: no other CreateEnhancementAbility idiom registers it or anything above
-    it, and neither Ability.pfs nor the constructor scan knows a higher id."""
+    """0xBD must be ours alone: no CreateEnhancementAbility idiom outside our slot registers it,
+    and ability_names gives it no other name.  Higher ids are other abilities, not a clash."""
     module(EPACK, 0x55700000)
     d = open(P.TARGET, "rb").read()
     _e, secs = P.sections(d)
@@ -1101,22 +1101,21 @@ def check_id():
                         used.append((struct.unpack_from("<I", d, i - k + 1)[0], src))
                         break
     lo, hi = E_SLOT
-    other = [i for i, src in used if i < 0x100 and not lo <= src < hi]
-    if max(other) >= ABIL_ID:
-        sys.exit("ABORT: something else registers %#x -- re-derive ABIL_ID" % max(other))
+    other = [(i, src) for i, src in used if i < 0x100 and not lo <= src < hi]
+    clash = [u for u in other if u[0] == ABIL_ID]
+    if clash:
+        sys.exit("ABORT: CreateEnhancementAbility at %08X also registers %#x -- re-derive ABIL_ID"
+                 % (clash[0][1], ABIL_ID))
     sys.path.insert(0, os.path.join(HERE, "..", "re_tools"))
     import pfs, ability_names
     keys = {rid - 10 for rid, _b in pfs.load("ability.pfs")[0]}
-    if max(keys) > ABIL_ID:
-        sys.exit("ABORT: Ability.pfs holds record %d above %#x -- re-derive ABIL_ID"
-                 % (max(keys) + 10, ABIL_ID))
     named = ability_names.names()                     # constructor scan + MODDED
-    if max(named) > ABIL_ID or named.get(ABIL_ID, NAME) != NAME:
-        sys.exit("ABORT: ability_names knows %#x %r -- re-derive ABIL_ID"
-                 % (max(named), named[max(named)]))
-    print("  id %#x free (highest other CreateEnhancementAbility id %#x, highest named id %#x); "
-          "Ability.pfs record %s" % (ABIL_ID, max(other), max(k for k in named if k != ABIL_ID),
-                                     "present" if ABIL_ID in keys else "absent"))
+    if named.get(ABIL_ID, NAME) != NAME:
+        sys.exit("ABORT: ability_names gives %#x to %r -- re-derive ABIL_ID" % (ABIL_ID, named[ABIL_ID]))
+    print("  id %#x ours alone (highest other CreateEnhancementAbility id %#x, highest other named id "
+          "%#x); Ability.pfs record %s" % (ABIL_ID, max(i for i, _s in other),
+                                           max(k for k in named if k != ABIL_ID),
+                                           "present" if ABIL_ID in keys else "absent"))
 
 
 def go(argv):

@@ -32,6 +32,7 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Astral Ward (ex Spell Ward) — rescoped to block Town Gate + Warp Party only, and renamed | ✅ **CONFIRMED WORKING (2026-09-07)** (rename applied same day, untested) | `build_spellward_rescope.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Power Leech (ex Power Leak) — steal 25% of rival node power | 🔨 APPLIED, UNTESTED (2026-09-07; income row 2026-09-09) | `build_powerleech.py`, `build_powerleech_ui.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `AoWz.exe`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Terror — spell ATK 16 → 12 (five immediates, all move together) | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_terror_atk12.py` | `AoWEPACK.dpl` |
+| Haste — +8 maximum movement points, no hex-cost change | applied 2026-10-19 | `build_haste_moves.py` (+ `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Lethargy (ex Slow) — halved movement, 50% chance of one strike fewer, AI value in both combat modes (Embrittle too); Haste 50% chance of +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25; 50% roll 2026-10-14) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Warp Party ban — per-map "Disable Warp Party" switch (cast only; research untouched) | 🔨 APPLIED 2026-09-27; editor half driven live | `build_warpban.py` (+ `build_zigeditor.py`) | `AoWEPACK.dpl`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe` |
@@ -2109,8 +2110,8 @@ drops a zero-value target. Embrittle, a `TSlow` instance, inherited both.
   prediction twin the AI and predictor use).
 - **The +2 hex cost is gone** (the `je` over the `0x84` block is now a `jmp`).
 - **Haste (`0x98`) is the mirror: one melee strike more attacking and defending** (a side with 0
-  keeps 0), in the same two caves, applied before Lethargy's. Haste keeps its
-  vanilla −1 hex cost. Texts: `Spells.pfs` record 25, `Ability.pfs` record 162 (`build_pfs_typos.py`).
+  keeps 0), in the same two caves, applied before Lethargy's. Its movement effect is the next
+  section's. Texts: `Spells.pfs` record 25, `Ability.pfs` record 162 (`build_pfs_typos.py`).
   Added 2026-09-25 at the owner's request.
 - **50% roll (v2, owner 2026-10-14).** In a real melee round Haste's +1 and Lethargy's −1 each land
   with a 50% chance: one roll per side per modifier per round, Haste first, Lethargy only while the
@@ -2179,6 +2180,28 @@ cursor vanilla shows for a refused unit):
   (`TCityWall` `[+0x2D] == 1`, HP `[+0x20] > 0`; message `0x3100B` damages only wood, and
   `CombatFire.CreateFire @0x406D64` ignites only wood), a Combat Structure or a Combat Terrain object
   (both damaged unconditionally). Refused on bare ground, even flammable ground it would have lit.
+
+---
+
+## Haste — +8 maximum movement points (2026-10-19)
+
+Owner's design 2026-10-19. `build_haste_moves.py` (`AoWEPACK.dpl`); its docstring holds every
+address. The extra melee strike above is untouched.
+
+- **Vanilla's effect is gone.** `CreateMovePointTable` took 1 off every hex cost above 2, never
+  below 2. It did nothing on a road Enchanted Roads had already brought to 2 and swung with
+  terrain. The `je` over its block at `0x5577FF54` is now a `jmp`. Every cost reader calls that
+  builder (`09-terrain-movement.md`, movement-cost matrix), so the path preview and both AIs lose
+  it with the game; `abquery.py`/`idladder.py --id 0x98` find no other movement test for Haste
+  in AoWEPACK, AoWTCPCK or AoWz.exe.
+- **+8 to the maximum.** GetMoves is VMT `+0xD4`; the slots of `TUnit` (`0x55710D80`), `THero`
+  (`0x557120C0`) and `TLeader` (`0x5571230C`) point at wrappers (`0x558A0000`) that call the
+  original getter and add 8 while the unit holds `0x98`, clamped at 127 (MP is a signed byte).
+  Nothing calls either getter directly, so the refill, the clamp in `SetMovePoints`,
+  `ValidTerrain`, the unit cards, the AI and combat (`TCombatUnit.GetMoves`) all see it. The
+  bonus sits above the hero clamp of 80, so a hasted hero reaches 88. A hasted, lethargic unit
+  has the raised total halved in battle.
+- The maximum rises when Haste lands; the turn in progress is not topped up.
 
 ---
 

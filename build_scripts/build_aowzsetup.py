@@ -14,6 +14,20 @@ LOOK (owner, 2026-10-18: "the same artistic elements as AoWSetup")
     copy, so the Ziggurat AoWSetup was silent).  Home = borderless MainImage with the four flat bold
     buttons at AoWSetup's DFM rectangles (y 416); Settings = AoWSetup's two-tab dialog at its DFM
     coordinates, Window Zoom in the row Language used.  Scaled for DPI.
+    Icon (owner, 2026-10-19): the dragon purple and mirrored left-to-right, as build_icon_purple.py
+    made AoWz.exe's -- its RECOLOUR (palette 1 and 9, the two reds) and the same flip.  AoWSetup's
+    group holds one image, 32x32 4 bpp; anything else aborts the build.
+
+UPDATES TAB (owner, 2026-10-19)
+    Ask before installing / Install automatically / Off = update.ps1's HKCU\...\Age of Wonders Z\
+    Updater "Mode" Ask / Auto / Off (REG_SZ).  Read as update.ps1 reads it: without case, anything
+    else = its default Ask.  OK writes it; a changed choice also runs update.ps1 -Register (64-bit
+    PowerShell, no window), the installer's own call, which removes the "Ziggurat updater" task for
+    Off and recreates it for Ask/Auto.  So Off stops the background check at once, and leaving Off
+    brings the task back (it had removed itself).  Not run where Modding Resources sits beside the
+    exe: in the author's tree a task would install a release over the working copy.
+    ZigUpdater.cmd still turns Off back to Ask (owner ruling 2026-09-29), and the update window
+    writes Mode too; the tab shows what is stored each time Settings opens.
 
 WHAT IT REPLACES (AoWSetup.exe TLoaderForm, read 2026-10-18; Zig notes/07-ui.md §22)
     Every AoWSetup setting, same registry values and encodings under
@@ -31,6 +45,7 @@ USAGE
     python build_aowzsetup.py           compile into Modding Resources\AoWzSetup\ (dry run)
     python build_aowzsetup.py --apply   compile to Ziggurat\AoWzSetup.exe
     python build_aowzsetup.py --undo    delete Ziggurat\AoWzSetup.exe
+    --apply and --undo first close a running AoWzSetup.exe.
 """
 import os, sys, struct, subprocess
 sys.dont_write_bytecode = True
@@ -76,6 +91,40 @@ def extract_icon(exe, out):
     open(out, "wb").write(head + b"".join(blobs))
 
 
+def purple_mirrored(ico):
+    """Rewrites the .ico in place: palette reds -> build_icon_purple's purples, XOR and AND bitmaps
+    mirrored left-to-right (4 bpp rows reverse by nibble, the 1 bpp mask by bit; row order stays)."""
+    from build_icon_purple import RECOLOUR
+    d = bytearray(open(ico, "rb").read())
+    count = struct.unpack_from("<H", d, 4)[0]
+    for i in range(count):
+        size, off = struct.unpack_from("<II", d, 6 + 16 * i + 8)
+        hsize, w, h2, _planes, bpp = struct.unpack_from("<IiiHH", d, off)
+        assert (hsize, w, h2, bpp, size) == (40, 32, 64, 4, 744), \
+            "icon image %d is not 32x32 4 bpp (%r)" % (i, (hsize, w, h2, bpp, size))
+        pal, xor = off + 40, off + 40 + 64
+        mask = xor + 32 * 16
+        for idx, (van, zig) in RECOLOUR.items():
+            assert tuple(d[pal + 4 * idx:pal + 4 * idx + 3][::-1]) == van, "palette %d is not red" % idx
+            d[pal + 4 * idx:pal + 4 * idx + 3] = bytes(zig[::-1])
+        for y in range(32):
+            row = xor + 16 * y
+            px = [d[row + x // 2] >> 4 if x % 2 == 0 else d[row + x // 2] & 15 for x in range(32)][::-1]
+            d[row:row + 16] = bytes((px[x] << 4) | px[x + 1] for x in range(0, 32, 2))
+            row = mask + 4 * y
+            bits = int.from_bytes(d[row:row + 4], "big")
+            d[row:row + 4] = int("{:032b}".format(bits)[::-1], 2).to_bytes(4, "big")
+    open(ico, "wb").write(d)
+
+
+def close_running():
+    """A running AoWzSetup.exe locks the file csc writes."""
+    subprocess.run(["powershell", "-NoProfile", "-Command",
+                    "$p = Get-Process -Name AoWzSetup -ErrorAction SilentlyContinue; "
+                    "if ($p) { $p | Stop-Process -Force; $p | Wait-Process -Timeout 10 }"],
+                   capture_output=True)
+
+
 def extract_main_image(exe, out):
     """TLoaderForm's MainImage bitmap from the DFM: Picture.Data = vaBinary(len) + 'TBitmap' + size + BMP."""
     d = open(exe, "rb").read()
@@ -101,6 +150,7 @@ def compile_to(out):
     # root (the Ziggurat copy of AoWSetup.exe is withheld from releases and may be absent).
     van_setup = os.path.join(ROOT, "AoWSetup.exe")
     extract_icon(van_setup, ICO)
+    purple_mirrored(ICO)
     extract_main_image(van_setup, BMP)
     import shutil
     shutil.copyfile(os.path.join(ROOT, "startbtn.wav"), WAV)
@@ -119,6 +169,8 @@ def compile_to(out):
 
 def main():
     print("build_aowzsetup")
+    if "--apply" in sys.argv or "--undo" in sys.argv:
+        close_running()
     if "--undo" in sys.argv:
         if os.path.exists(TARGET):
             os.remove(TARGET)
