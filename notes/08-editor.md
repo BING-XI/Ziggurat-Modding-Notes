@@ -2115,6 +2115,62 @@ the picture keeps its proportions, and the editor asks first.
 - Unproven: deleting structures and units by rewriting their tile records was never checked
   against cross-references elsewhere in the map (player-owned cities, heroes).
 
+## 18. A rank tab offers only what the lower ranks do not give (`build_deved_medalfilter.py`)
+
+Applied 2026-10-20 at the owner's request. Unit Properties > Rank Abilities > Edit: the Ability
+Editor for Copper, Silver, Gold or a Heroic tab no longer lists a single-level ability that a lower
+tab already holds (None < Copper < Silver < Gold; all four under each Heroic tab). A levelled
+ability is listed as the level after the highest a lower tab holds, disappears at its cap, and Add
+takes the tab straight to that level. The None tab and every other user of the dialog are unchanged.
+
+- The rule is one helper, `best_owner`: of this tab's set and each lower set that holds the
+  ability, the one at the highest level, ties to the lower. Listed when vanilla's `CanExpand` is
+  true on this tab's set and on that one; named by `ExpandName` on that one. `CanExpand` already
+  means "not held" for single-level abilities and "below the cap" for every levelled class, so no
+  cap is restated. `GetLevel` is 0 for every single-level ability, so holding is tested with the
+  owner's `HasAb`.
+- Abilities that need Strike (owner, 2026-10-20): the strike enhancements and Round Attack want
+  Strike `0x15` in the **same** set (`02-abilities-modded.md`, "Strike requirements"), which a
+  medal or Heroic tab lacks when the base holds it. Where `CanExpand` fails, `strike_ok` passes the
+  ability if its VMT is `TStrikeEnhancementAbility`'s or `TRoundAttackAbility`'s (rebase delta of
+  the `AoWHSSet` import), `TAbility`'s own test passes on this tab's set (not held, mask), and a
+  lower set holds `0x15`. The list (`cave_offer`) and the Add button (dialog VMT `+0x94`
+  `0x004100A8` → `cave_canadd`; vanilla enables Add from `CanExpand` on the tab's set) both ask
+  it. Monster Slaying and Parry need no Strike, so they pass `CanExpand` itself.
+- The dialog edits a copy of the tab's set; its `Owner` is the Unit Properties form, which gives the
+  tab and the live lower sets. Add is a wrapper on the published `AddBtnClick` (method-table code
+  pointer), so `build_deved_heroicchoice.py`'s three-ability cap still runs first and its bytes are
+  untouched; the wrapper raises the level further only if the set now holds the ability.
+- Unproven until driven in the editor: the lists and the Add step.
+
+## 19. Ability lists in category columns (`build_deved_abcolumns.py`)
+
+Applied 2026-10-20 at the owner's request: wherever the editor lists all abilities, they are split
+as in the hero level-up dialog — Wayfaring, Resistances, Melee, Ranged, Magic — plus **Effects**
+(statuses and spell enchantments; owner's choice), which appears only where the owner's selection
+mask admits one (Item Properties for most slots, never units or heroes).
+
+- **Ability Editor** (Unit Properties, Hero Resource, Item Properties) and **Hero Properties**:
+  side-by-side columns with headings. The dialog's lists are three times their vanilla height; the
+  hero editor's columns sit right of the Stats page at full height. After Add or Delete the
+  selection stays in the column being worked in.
+- **Settings > Abilities**: the list sits in the 365-px right-hand panel, so it is regrouped in
+  place under headings ("— Melee —"), alphabetical within each; a heading passes the selection to
+  the next ability (or the previous one on Up arrow). Regrouping the real list, not a mirror, keeps
+  `build_deved_listarrows.py`'s arrow keys, which key on that listbox's handle.
+- **Columns mirror a hidden master**: the vanilla list still receives every fill and its own
+  OnClick, so Add, Delete, the medal filter (§18) and the heroic cap run unchanged.
+- **The table** is `herodlg_cats.py` plus the script's `EXTRA` (22 assignable abilities placed by
+  kinship — Path of Sand with the Paths, Weaknesses with Resistances, Assassin/Magebane/Dragon/Self
+  Destruct in Melee, Dispel Magic/Drillmaster/the casters in Magic — and the 46 Effects ids).
+- ⚠ Settings > Abilities heading rows carry object `0x7FFFFFFF`; code walking
+  `AbilityListBox.Items` must skip them. ⚠⚠ **Never `-1`**: `TListBoxStrings.GetObject` raises
+  "List index out of bounds" when the item data equals `LB_ERR`. The first build used `-1`; the
+  click wrapper read row 0 during `THSSEdit.Activate`, and `LoadHSSFile`'s catch-all turned that
+  into **"Error loading …Release.hss"** on every mapset open. Fixed the same day. `TCustomListBox.SetSorted` and `TControl.SetColor` are called through the VCL30
+  rebase delta off the `GetItemIndex` import.
+- Unproven until driven in the editor: all three windows.
+
 ## Open items
 
 Technical opens — investigation gaps, not "please test this in-game" (each feature above that isn't yet `✅ CONFIRMED` already carries its own checklist inline).

@@ -119,8 +119,25 @@ STAT_TABLES = [(0x558E83C4, "Defense",    (0, 0, 0, 1)),
 COPPER_RAMP = [(0, (0, 0, 0)), (40, (46, 20, 10)), (90, (105, 52, 24)), (140, (160, 88, 44)),
                (190, (208, 132, 74)), (230, (236, 180, 130)), (255, (255, 226, 196))]
 
+# HEROIC medal (owner's design 2026-10-20): XP >= tier*HEROIC, double gold's threshold.  It is NOT a
+# rank -- GetRank stays 0..3 -- so the stat tables, the medal ability grants, build_medal_hpmv.py's
+# HP/MV caves and the Arena all go on treating a heroic unit as gold, and heroic grants no medal
+# abilities.  Three places know it: the painter (image ICON_HEROIC, a bluish-violet disc), the unit
+# card's "(cur/next)" (GetNextRankExperience counts up to the heroic threshold at gold and is 0 only
+# once heroic), and build_heroicchoice.py, which reads "heroic" as GetNextRankExperience == 0, adds
+# heroic's own stat totals over gold's (reading STAT_TABLES' gold entries at run time, so re-tuning
+# them here is safe) and offers the unit type's options.  None = off (the 2026-08-24..10-20 install).
+HEROIC = 30
+ICON_HEROIC = 9                                               # the other hole in COMBAT.ILB's ids
+HEROIC_SUBID = 146
+HEROIC_RAMP = [(0, (0, 0, 0)), (40, (20, 14, 48)), (90, (50, 42, 112)), (140, (88, 80, 172)),
+               (190, (134, 128, 218)), (230, (184, 180, 244)), (255, (224, 222, 255))]
+# image id -> (luminance ramp, subid) for every recoloured medal this script splices into COMBAT.ILB
+NEW_MEDALS = {8: (COPPER_RAMP, 145), ICON_HEROIC: (HEROIC_RAMP, HEROIC_SUBID)}
+
 CAVE_VA, CAVE_LEN = 0x55813000, 0xA0                          # free (highest claimed elsewhere: 0x55812900)
 GRANT_CAVE, ICON_CAVE, RW_CAVE = CAVE_VA, CAVE_VA + 0x20, CAVE_VA + 0x60
+NEXT_TAIL = CAVE_VA + 0x80                                    # GetNextRankExperience's heroic step
 
 UPDATE_DEFAULT_ABILITIES = 0x5574F518
 GETRANK_VA               = 0x5578294C
@@ -196,11 +213,12 @@ def pad(b, n, fill=b"\x90"):
 
 
 # ---- code -----------------------------------------------------------------------------------
-def gen(ladder, tier_scaled, stat_tables, copper_abilities=False, slots_on=None):
+def gen(ladder, tier_scaled, stat_tables, copper_abilities=False, slots_on=None, heroic=None):
     """Build every byte this feature writes, for a given tuning.  Returns {VA: bytes} plus the
     cave.  Parameterised so that PRIOR TUNINGS can be regenerated and accepted as a valid
     'before' state -- that is what makes re-tuning a rewrite-in-place instead of a revert."""
     C1, C2, C3 = ladder
+    assert heroic is None or (tier_scaled and heroic > C3), "heroic needs the tier-scaled ladder"
 
     # `tier` is only loaded when the ladder is tier-scaled; the flat form needs no extra load.
     _TIER = ("    mov  ecx, dword ptr [eax+0x40]\n"
@@ -232,7 +250,8 @@ done:
     ret
 """ % (_TIER, _thresh("ebx", C1), _thresh("ebx", C2), _thresh("ebx", C3)), GETRANK_VA), 44)
 
-    GETNEXT = pad(asm("""
+    if heroic is None:
+        GETNEXT = pad(asm("""
     push esi
     xor  edx, edx
     mov  dl,  byte ptr [eax+0x3C]
@@ -245,6 +264,32 @@ out:
     pop  esi
     ret
 """ % (_TIER, _thresh("esi", C1), _thresh("esi", C2), _thresh("esi", C3)), 0x55782920), 44)
+        TAIL = b""
+    else:
+        # the heroic step does not fit the 44-byte body; it runs in NEXT_TAIL with ECX = tier,
+        # EDX = XP and ESI pushed, and returns to vanilla's caller itself.
+        GETNEXT = pad(asm("""
+    push esi
+    xor  edx, edx
+    mov  dl,  byte ptr [eax+0x3C]
+%s%s    jb   out
+%s    jb   out
+%s    jb   out
+    jmp  0x%X
+out:
+    mov  eax, esi
+    pop  esi
+    ret
+""" % (_TIER, _thresh("esi", C1), _thresh("esi", C2), _thresh("esi", C3), NEXT_TAIL),
+            0x55782920), 44)
+        TAIL = asm("""
+%s    jb   t_out
+    xor  esi, esi
+t_out:
+    mov  eax, esi
+    pop  esi
+    ret
+""" % _thresh("esi", heroic), NEXT_TAIL)
 
     SETRANK = pad(asm("""
     push ebx
@@ -309,7 +354,8 @@ skip:
 """ % UPDATE_DEFAULT_ABILITIES, GRANT_CAVE)
 
     # AL = rank (1..3) -> ECX = COMBAT.ILB image id, consumed by the rewritten `mov edx,ecx`.
-    ICON = asm("""
+    if heroic is None:
+        ICON = asm("""
     cmp  al, 1
     jne  n2
     mov  ecx, %d
@@ -323,6 +369,31 @@ n3:
     mov  ecx, %d
     ret
 """ % (ICON_COPPER, ICON_SILVER, ICON_GOLD), ICON_CAVE)
+    else:
+        # EBX = the unit (TUnit.ShowEx keeps Self there).  EDX is free: the painter loads it from
+        # ECX next.  Same tier load and unsigned compare as GetRank.
+        ICON = asm("""
+    cmp  al, 1
+    jne  n2
+    mov  ecx, %d
+    ret
+n2:
+    cmp  al, 2
+    jne  n3
+    mov  ecx, %d
+    ret
+n3:
+    movzx ecx, byte ptr [ebx+0x3C]
+    mov  edx, dword ptr [ebx+0x40]
+    movsx edx, byte ptr [edx+0x2F]
+    imul edx, edx, %d
+    cmp  ecx, edx
+    mov  ecx, %d
+    jae  h
+    mov  ecx, %d
+h:
+    ret
+""" % (ICON_COPPER, ICON_SILVER, heroic, ICON_HEROIC, ICON_GOLD), ICON_CAVE)
 
     # ReadWrite: serialise the gold owner (tag 0x1F) exactly as the displaced code did, then the
     # new copper owner (tag 0x20).  ESI = the reader/writer, EDI = the resource; EBX is scratch
@@ -343,7 +414,10 @@ n3:
 """ % (slot_of(0x1F, copper_abilities, slots_on), COPPER_TAG,
        slot_of(COPPER_TAG, copper_abilities, slots_on)), RW_CAVE) if copper_abilities else b""
 
-    cave = pad(pad(GRANT, 0x20, b"\x00") + pad(ICON, 0x40, b"\x00") + RW, CAVE_LEN, b"\x00")
+    body = pad(GRANT, 0x20, b"\x00") + pad(ICON, 0x40, b"\x00") + RW
+    if TAIL:
+        body = pad(body, NEXT_TAIL - CAVE_VA, b"\x00") + TAIL
+    cave = pad(body, CAVE_LEN, b"\x00")
 
     PAINT_HEAD = pad(asm("""
     test al, al
@@ -401,14 +475,19 @@ V6_STATS = [(0x558E83C4, "Defense", (0, 0, 0, 1)), (0x558E83C8, "Attack", (0, 1,
             (0x558E83CC, "Damage", (0, 0, 1, 1)), (0x558E83D0, "Resistance", (0, 1, 2, 3)),
             (0x558E83D4, "Hits", (0, 0, 0, 0))]
 #   v7 2026-08-24  DAM/HP doubling decision H2: Damage -> (0,0,1,2) on the doubled damage scale
+V7_STATS = [(0x558E83C4, "Defense", (0, 0, 0, 1)), (0x558E83C8, "Attack", (0, 1, 2, 3)),
+            (0x558E83CC, "Damage", (0, 0, 1, 2)), (0x558E83D0, "Resistance", (0, 1, 2, 3)),
+            (0x558E83D4, "Hits", (0, 0, 0, 0))]
+#   v8 2026-10-20  heroic medal at tier*30 (HEROIC): icon id 9, next-XP counts on past gold
 PRIOR_TUNINGS = [((1, 2, 6), True, V1_STATS, False, None),
                  ((2, 6, 15), False, V4_STATS, False, None),
                  ((2, 6, 15), True, V4_STATS, False, None),
                  ((2, 6, 15), True, V4_STATS, True, OWNER_SLOTS_BUGGY),
                  ((2, 6, 15), True, V5_STATS, True, None),
-                 ((2, 6, 15), True, V6_STATS, True, None)]
+                 ((2, 6, 15), True, V6_STATS, True, None),
+                 ((2, 6, 15), True, V7_STATS, True, None, None)]
 
-NEWBYTES, CAVE = gen(LADDER, TIER_SCALED, STAT_TABLES, COPPER_GRANTS_ABILITIES)
+NEWBYTES, CAVE = gen(LADDER, TIER_SCALED, STAT_TABLES, COPPER_GRANTS_ABILITIES, None, HEROIC)
 assert [t for _o, t, _n in OWNER_SLOTS_ON] == [0x19, COPPER_TAG, 0x1E, 0x1F], (
     "owner slots must be in RANK order: base, copper, silver, gold")
 PRIORS = [gen(*t) for t in PRIOR_TUNINGS]
@@ -628,25 +707,25 @@ def disc_start(px, cw, ch, transparent):
     return y + 1
 
 
-def copper(v, transparent):
+def recolour(v, transparent, ramp):
     if v == transparent:
         return v
     r, g, b = rgb565_to_rgb(v)
     lum = (r * 299 + g * 587 + b * 114) // 1000
-    for i in range(len(COPPER_RAMP) - 1):
-        l0, c0 = COPPER_RAMP[i]
-        l1, c1 = COPPER_RAMP[i + 1]
+    for i in range(len(ramp) - 1):
+        l0, c0 = ramp[i]
+        l1, c1 = ramp[i + 1]
         if l0 <= lum <= l1:
             t = (lum - l0) / (l1 - l0) if l1 > l0 else 0.0
             out = tuple(int(round(c0[k] + (c1[k] - c0[k]) * t)) for k in range(3))
             break
     else:
-        out = COPPER_RAMP[-1][1]
+        out = ramp[-1][1]
     return rgb_to_rgb565(*out)
 
 
-def copper_payload(data, r):
-    """Silver medal recoloured to copper on the DISC ONLY; the ribbon is copied verbatim."""
+def medal_payload(data, r, ramp=COPPER_RAMP):
+    """Silver medal recoloured through `ramp` on the DISC ONLY; the ribbon is copied verbatim."""
     imgdir = r["hdr"]["imgdir"]
     src = next(im for im in r["images"] if im["id"] == SRC_MEDAL)
     gold = next(im for im in r["images"] if im["id"] == ICON_GOLD)
@@ -656,19 +735,33 @@ def copper_payload(data, r):
     spx = struct.unpack_from("<%dH" % (cw * ch), data, imgdir + src["offset"])
     gpx = struct.unpack_from("<%dH" % (cw * ch), data, imgdir + gold["offset"])
     y0 = disc_start(gpx, cw, ch, tr)
-    out = [copper(v, tr) if i // cw >= y0 else v for i, v in enumerate(spx)]
+    out = [recolour(v, tr, ramp) if i // cw >= y0 else v for i, v in enumerate(spx)]
     return struct.pack("<%dH" % len(out), *out), src, y0, ch
 
 
+copper_payload = medal_payload          # the name main() reports the disc split through
+
+
 def build_ilb(data):
-    """-> ILB bytes with image NEW_MEDAL present and up to date, or None if already correct."""
+    """-> ILB bytes with every NEW_MEDALS image present and up to date, or None if already correct."""
+    cur = data
+    for new_id in sorted(NEW_MEDALS):
+        if new_id == ICON_HEROIC and HEROIC is None:
+            continue
+        ramp, subid = NEW_MEDALS[new_id]
+        cur = build_one(cur, new_id, ramp, subid) or cur
+    return None if cur == data else cur
+
+
+def build_one(data, new_id, ramp, subid):
+    """-> ILB bytes with image `new_id` present and up to date, or None if already correct."""
     r = ilb.parse(data)
-    payload, src, y0, ch = copper_payload(data, r)
-    existing = next((im for im in r["images"] if im["id"] == NEW_MEDAL), None)
+    payload, src, y0, ch = medal_payload(data, r, ramp)
+    existing = next((im for im in r["images"] if im["id"] == new_id), None)
     if existing is not None:
         # already spliced in: the geometry is identical, so just refresh the pixels in place
         at = r["hdr"]["imgdir"] + existing["offset"]
-        assert existing["size"] == len(payload), "existing copper image has unexpected size"
+        assert existing["size"] == len(payload), "existing image %d has unexpected size" % new_id
         if bytes(data[at:at + len(payload)]) == payload:
             return None
         out = bytearray(data)
@@ -694,8 +787,8 @@ def build_ilb(data):
     assert filelen == len(data), "header filelen %d != actual %d" % (filelen, len(data))
     assert data[imgdir - 4:imgdir] == b"\xff\xff\xff\xff", "no -1 terminator at end of directory"
 
-    struct.pack_into("<I", rec, 0, NEW_MEDAL)
-    struct.pack_into("<I", rec, o_sub, NEW_SUBID)
+    struct.pack_into("<I", rec, 0, new_id)
+    struct.pack_into("<I", rec, o_sub, subid)
     struct.pack_into("<I", rec, o_off, filelen - imgdir)       # appended at the old end of data
 
     out = bytearray(data)
@@ -722,10 +815,10 @@ def build_ilb(data):
               for im in r["images"]}
     after = {im["id"]: {k: v for k, v in im.items() if k not in ("idx", "dir_off")}
              for im in r2["images"]}
-    assert NEW_MEDAL in after, "new image did not parse back"
+    assert new_id in after, "new image did not parse back"
     for i, rec_before in before.items():
         assert after[i] == rec_before, "image id %d changed: %s -> %s" % (i, rec_before, after[i])
-    new = after[NEW_MEDAL]
+    new = after[new_id]
     assert (new["w"], new["h"], new["size"], new["s16"]) == \
            (src["w"], src["h"], src["size"], src["s16"]), "new record geometry mismatch"
     assert bytes(out[r2["hdr"]["imgdir"] + new["offset"]:][:new["size"]]) == payload
@@ -741,7 +834,9 @@ def main():
     fmt = "tier*%d" if TIER_SCALED else "%d XP"
     print("ladder:   copper " + fmt % LADDER[0] + ", silver " + fmt % LADDER[1] +
           ", gold " + fmt % LADDER[2])
-    print("icons:    copper=%d silver=%d gold=%d\n" % (ICON_COPPER, ICON_SILVER, ICON_GOLD))
+    print("heroic:   %s" % ("tier*%d, not a rank; icon %d" % (HEROIC, ICON_HEROIC) if HEROIC else "off"))
+    print("icons:    copper=%d silver=%d gold=%d heroic=%d\n"
+          % (ICON_COPPER, ICON_SILVER, ICON_GOLD, ICON_HEROIC))
 
     slots = OWNER_SLOTS_ON if COPPER_GRANTS_ABILITIES else OWNER_SLOTS_OFF
     print("copper abilities: %s\nowners (slot = rank): %s\ntransport capacity at +0x%02X\n"
@@ -754,7 +849,7 @@ def main():
                        (0x55782978, "SetRank"), (0x557826FC, "painter head"),
                        (RW_GOLD_VA, "ReadWrite gold/copper hook"),
                        (GRANT_CAVE, "grant cave"), (ICON_CAVE, "icon cave"),
-                       (RW_CAVE, "ReadWrite owner cave")]:
+                       (RW_CAVE, "ReadWrite owner cave"), (NEXT_TAIL, "next-XP heroic tail")]:
             code = NEWBYTES.get(va) or CAVE[va - CAVE_VA:]
             print("=== %s" % nm)
             for i in cs.disasm(code.rstrip(b"\x00") or code, va):
@@ -783,14 +878,15 @@ def main():
         _p, _src, y0, ch = copper_payload(raw, ilb.parse(raw))
         where = "rows %d-%d of %d are the disc (recoloured); 0-%d stay as silver" % (
             y0, ch - 1, ch, y0 - 1)
+        ids = "/".join(str(i) for i in sorted(NEW_MEDALS) if i != ICON_HEROIC or HEROIC)
         if built is None:
-            print("%-14s image id %d already correct  [%s]" % (name + ":", NEW_MEDAL, where))
+            print("%-14s image ids %s already correct  [%s]" % (name + ":", ids, where))
         elif len(built) == len(raw):
-            print("%-14s refresh image id %d pixels in place  [%s]" % (name + ":", NEW_MEDAL, where))
+            print("%-14s refresh image ids %s pixels in place  [%s]" % (name + ":", ids, where))
             ilb_work.append((path, built))
         else:
-            print("%-14s add image id %d (copper), %d -> %d bytes  [%s]"
-                  % (name + ":", NEW_MEDAL, len(raw), len(built), where))
+            print("%-14s add medal image(s), ids %s, %d -> %d bytes  [%s]"
+                  % (name + ":", ids, len(raw), len(built), where))
             ilb_work.append((path, built))
 
     ed = bytearray(open(EDITOR, "rb").read())
@@ -846,7 +942,7 @@ def main():
             os.makedirs(BACKUP_DIR, exist_ok=True)
             shutil.copy2(path, bak)
         open(path, "wb").write(built)
-        print("%s: image id %d written." % (os.path.basename(path), NEW_MEDAL))
+        print("%s: medal images written." % os.path.basename(path))
     print("\nAPPLIED.")
 
 

@@ -40,6 +40,8 @@ canonical cross-project cave-ownership map is `12-re-toolchain.md`.
 | Wheeled — a road hex costs 2, not 3 (`0xC0`) | applied 2026-10-19 | `build_wheeled.py` + `build_wheeled_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Copper Medal — rank ladder, stat bonus, icon | ✅ CONFIRMED WORKING (2026-07-30) | `build_copper_medal.py` | AoWEPACK.dpl + `Images/*Combat.ILB` |
 | Copper Medal — 4th ability-owner slot (copper bonus abilities) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_copper_medal.py` (`COPPER_GRANTS_ABILITIES=True`) | AoWEPACK.dpl + `AoWDevEd.exe` |
+| Heroic medal — tier×30, bluish-violet icon (id 9), ATK +4 DEF +2 DAM +3 RES +4 HP +10 MV +4 | applied 2026-10-20 | `build_copper_medal.py` (`HEROIC = 30`) + `build_heroicchoice.py` (`HEROIC_TOTALS`) | AoWEPACK.dpl + `Images/*Combat.ILB` |
+| Heroic choices — per-type options (≤3 abilities + 6 stat deltas), Heroic 1–3 tabs, AI draw, heroic window | applied 2026-10-20; the in-game path is unproven (below) | `build_heroicchoice_data.py` + `build_deved_heroicchoice.py` + `build_heroicchoice.py` | AoWEPACK.dpl + AoWz.exe + `AoWDevEd.exe` |
 | Ability-id ceiling — 4× `TCAI.EvalBattle` scans + item/hover banner popups | 🔨 APPLIED, UNTESTED (ladder at `0xB3`, 2026-09-01) | `build_abilityid_ceilings.py` | AoWTCPCK.dpl + AoWz.exe |
 | Ability-id ceiling — in-combat unit panel (`CreateTCAbList`) | 🔨 APPLIED, UNTESTED (ladder at `0xB2`, 2026-08-28) | `build_tcablist_ceiling.py` | AoWTCPCK.dpl |
 | `AbilTypes` relocation — 170→256-entry table, bound `{0,169}`→`{0,255}` | ✅ CONFIRMED WORKING (2026-09-02) | `build_abiltypes_relocate.py` | AoWTCPCK.dpl |
@@ -1163,11 +1165,11 @@ the pre-apply backup was exactly the six sites plus one contiguous cave block, n
 2.7 MB file. `--undo` → `--apply` round-trips byte-exact by hash. `check_ids_free` on the patched
 file reports no clash for `0xAC`–`0xAF`.
 
-Two small, explicitly non-blocking follow-ups remain open even though the feature as a whole is
-confirmed: **tag 5 (description) is empty on all four** records, and **Enchanter/Ritualist read a
-live level-up cost of 30, not the 40 the design intended** (see the table above) — both are DevEd
-edits, not script bugs, since the cave cannot set either value (per the general level-up-cost
-section). **A fifth ability, `0xB0`, appeared in the registry mid-way through this feature's own
+The cards (`Ability.pfs` records 182–185, tag 5) read "Cuts 40% off the cost of …"
+(`build_pfs_typos.py`, 2026-10-20; the owner's DevEd text said "Halves"). One non-blocking
+follow-up remains open: **Enchanter/Ritualist read a live level-up cost of 30, not the 40 the
+design intended** (see the table above) — a DevEd edit, not a script bug, since the cave cannot set
+it (per the general level-up-cost section). **A fifth ability, `0xB0`, appeared in the registry mid-way through this feature's own
 build session, registered by unrelated concurrent work** — it turned out to be Shield (see the
 Magebane section above for the cave it shares); noted here only because it is a concrete
 demonstration of why the id-freshness procedure in the general mechanics section has to be run on
@@ -1258,6 +1260,109 @@ no-op) rather than by any resource-directory surgery.
    This is the one thing the field move could plausibly have broken.
 3. Sanity-check that dropping `AbilityRankTabs.TabOrder` did not disturb keyboard tab order on the
    unit-resource form (expected: no change).
+
+---
+
+## Heroic medal and heroic choices (2026-10-20)
+
+Owner's design: a fifth medal, **Heroic**, at twice gold's experience (tier×30), bluish-violet, with
+its own stat totals in place of gold's — ATK +4, DEF +2, DAM +3, RES +4, HP +10, MV +4, every heroic
+unit — and no medal abilities beyond gold's. A heroic unit takes **one of its type's options** — up to three per
+unit type, each up to three abilities (a multi-level ability counts once) plus six signed stat deltas
+(−10..+10). The prompt can be dismissed and reopens from the event log until an option is taken; the
+AI picks uniformly at random; units placed on the map already heroic are offered it on day 1. The
+docstrings of the four scripts hold every address, cave and undo; `build_scripts/heroicchoice.py` is
+the one layout definition.
+
+- **Heroic is not a rank.** `GetRank` stays 0..3, so the stat tables, the medal ability grants,
+  `build_medal_hpmv.py` and the Arena all treat a heroic unit as gold; `build_heroicchoice.py` adds
+  the difference between heroic's totals (`HEROIC_TOTALS`) and gold's, reading gold's at run time
+  (the stat tables' entry 3; 3 × `build_medal_hpmv.py`'s per-rank multipliers), so re-tuning either
+  medal script keeps the totals. `TUnit.SetExperience` calls `Changed` after every XP change, so the
+  ATK/DEF/RES/DAM part lands as the unit crosses tier×30. `build_copper_medal.py`
+  (`HEROIC = 30`, a re-tune in place) draws image id 9 for it and makes `GetNextRankExperience`
+  count on to tier×30 at gold; **"heroic" everywhere else is `GetNextRankExperience == 0`**, so
+  the ladder has one definition.
+- **Data** (`build_heroicchoice_data.py`): `TUnitResource` grows `0x54 → 0x74` (nothing inherits
+  it); three option owners at `+0x54/+0x58/+0x5C`, deltas at `+0x60..+0x71`, `Unitres.pfs` tags
+  `0x21..0x35`, written only for types that have options, cleared before every read (Assign/Copy
+  stream through ReadWrite, so an Assign of a type without options must not keep stale ones).
+- **Editor** (`build_deved_heroicchoice.py`): Heroic 1/2/3 tabs added to the Rank Abilities strip
+  at runtime; the four `[res + tab*4 + 0x38]` lookups resolve tabs 4–6 to the option owners, so the
+  same Edit button and Ability Editor work unchanged; six stat spinners beside the list; the Ability
+  Editor's Add refuses a fourth distinct ability while it is open for a Heroic tab.
+- **Unit state**: `TUnit +0x3F` (vanilla's dead byte) — option taken in bits 0–1, "announced" in
+  bit 7 — saved as tag `0x24` from inside the vanilla `TUnit.ReadWrite` body.
+- **Rules** (`build_heroicchoice.py`, DLL): at the owner's `NewTurn` a pending unit with one option
+  is granted it; an AI owner draws `TAoWHSMap.Random(map, n)` (P1 SYNCED DRAW, `RNG_SITE
+  0x558B14C4`); a human owner gets a `THeroUpgradeEventLog` marked `0xFF/0xFF` in its old/new level
+  bytes, in its own logbook only, re-added quietly when the log trims it after three days. The pick
+  travels as `THeroUpgradeTE` with `+0x15` = the option; its `Execute` has a unit branch that checks
+  owner, alive, still pending and option present, then grants the bundle (`UpdateDefaultAbilities` +
+  the Leadership-aura formation refresh), recomputes caches, and re-clamps current HP and moves.
+  Stat deltas are read live from the unit type: ATK/DEF/RES/DAM into `TUnit.Changed`'s modifier
+  cache (with the heroic bonus), HP and MV after their getters (heroic bonus + delta, then floor 1,
+  ceilings 100 and 127, only when either moved the value). Day 1's ability rebuild
+  re-grants a taken option.
+- **Window** (`build_heroicchoice.py`, exe): a clone of `TPartyJoinDlg` that keeps the donor's class
+  name, so it loads the donor's own DFM — no resource added — with its own method table. The
+  marked event is routed there by retargeting `TheMapExecuteEventLog`'s `call THeroUpgradeDlg.Setup`
+  at `0x0044F1F3`. Options are the memo lines; the buttons are the options in order (two options:
+  Left and Right); Close and Esc defer. ⚠ The donor's own painters call the event's `vmt+0x78`,
+  which on `THeroUpgradeEventLog` is the class-name text: the clone's face painter joins the
+  donor's body after that call, its unit-strip handlers are no-ops.
+- **Authored data — Spell Casting option** (`build_heroic_spellcasting.py`, `Unitres.pfs` only,
+  owner's rule 2026-10-20): every unit type with Spell Casting has option 1 = Spell Casting one level
+  above its own (32 types; the Charlatan's was the owner's). Left empty at the cap of 5: Yaka Avatar,
+  Undead Reaper, Aether Barge. `--undo` empties only a Spell-Casting-only option 1 and never touches
+  the Charlatan.
+- ⚠⚠ **Every load wiped every option until 2026-10-20 (fixed).** Right after each load,
+  `TAoWEngine.TranslateEObjectFromFile` streams every resource through a
+  `TTranslateStorageStream` (StorageMode `0x15`, no data, strings only). `cave_rw` took bit 0 as
+  "loading" and cleared the options before reading nothing back, so options lived only until the
+  next load, and any save after a load wrote them out empty (the 16:39 save that day lost all 33
+  Spell Casting options and the Charlatan's; the script restored them). Fix: clear only on a true
+  load, `StorageMode & 0x45 == 1`, the engine's own test before `Clear` (`build_heroicchoice_data.py`
+  `LOAD_MASK`). Proved by tracing the editor: a load reads each unit twice (the `.pfs`, then the
+  translation pass); after the fix the options are in memory once loading ends. ⚠ Any `ReadWrite`
+  override that resets state on "read" must use the same test.
+- **The Always set** (owner's design, 2026-10-20): a fourth heroic ability set, not part of the
+  choice — every heroic unit of the type gains it besides its option. `TUnitResource +0x74` (class
+  `0x74 → 0x78`), `Unitres.pfs` tag `0x36`, no stat deltas. Editor: an **Always** tab after Heroic
+  3 (tab 7), a plain list like a medal tab, no three-ability cap. Game: `cave_always_turn` wraps
+  `cave_newturn` — at the owner's turn a heroic unit without state bit `0x40` gets
+  `UpdateDefaultAbilities` + the option grant's refresh, then bit `0x40`; `cave_always_day`
+  re-grants it after the day-1 rebuild. Both wrappers sit after `cave_rw`, so every pinned entry and
+  `RNG_SITE` stayed put; no draw. The manual lists it as "Heroic (always)" with the options.
+- **Authored data — Always** (`build_heroic_progressions.py`, owner's rule): one level past Gold of
+  every multi-level ability except Spell Casting whose level rises over base → Copper → Silver →
+  Gold, within its cap; flat abilities (a Shaman's Marksmanship) are not progressed. 86 types: mostly
+  Marksmanship, also Vision (16), Dispel Magic (11), Turn Undead (4 below the cap) and one
+  Leadership (Human Archer 1 → 2). Records are copied from the unit's own highest rank, so Dispel
+  Magic keeps its class (`0x202CD`, level in tag `0x0B`).
+- Proved: all three scripts round-trip byte-identically from vanilla on scratch copies; relocfix
+  audit 0; RNG audit unchanged. Unproven: the Always tab and the in-game grant (not run).
+
+⚠ **Undo order:** `build_heroicchoice.py` → `build_deved_heroicchoice.py` (then
+`build_zigeditor.py --apply`) → `build_heroicchoice_data.py`, all before touching
+`build_copper_medal.py`'s HEROIC, `build_haste_moves.py`, `build_spellcast_multiturn.py` or
+`build_medal_hpmv.py` (all four are chained or read). The DLL and exe halves of
+`build_heroicchoice.py` apply and undo together; never ship the DLL half alone — a marked event
+under an unpatched exe opens the hero level-up dialog on a plain unit.
+
+**Proved:** both `--undo`/`--apply` round trips byte-identical; `build_relocfix.py --audit` 0;
+`rng_audit.py --owners` lists the draw as `ok`; the editor live-tested (seven tabs, per-option
+spinners, the three-ability cap with levelling still allowed, OK/reopen keeps every option,
+emptying them clears, Cancel discards); `AoWz.exe` starts and stays up. **Unproven — needs the game
+played:** the event raise, the window, the token and the grant; the AI draw; the day-1 re-grant.
+First suspects if it misbehaves: the clone's lazily created `TDataModule` (DFM cross-form references),
+and the event queue stalling if the window never fires the stored callback.
+
+Driving the editor from a test (2026-10-20): `GetWindowText` on another process's edit returns a
+cached caption — send `WM_GETTEXT`; a raw `WM_SETTEXT` on a `TSpin` fires no `OnChange` (its edit is
+multi-line, so no `EN_CHANGE`) — follow it with `CM_TEXTCHANGED` (`0xB012`) as VCL's `SetText` does;
+`PrintWindow` drops a `TTabControl`'s added tabs and its `TLabel` children — grab the screen
+DPI-aware instead.
 
 ---
 
@@ -1590,8 +1695,8 @@ passive for machines that roll on wheels. The owner assigns the carriers in the 
 - **Copper Medal's ability-owner slot**: no unit currently carries `Unitres.pfs` tag `0x20`, so the
   whole mechanism is exercised only by the editor round trip described in that section's checklist,
   never yet in a real battle.
-- **Caster Cost's two non-blocking follow-ups** (empty tag-5 descriptions on all four; Enchanter and
-  Ritualist reading a live cost of 30 instead of the intended 40) remain open DevEd edits.
+- **Caster Cost's non-blocking follow-up** (Enchanter and Ritualist reading a live cost of 30
+  instead of the intended 40) remains an open DevEd edit.
 - **The spellcasting-economy caves above are unowned.** Claiming them with a real script (address,
   `--undo`, a doc row) is worth doing before either ladder is next retuned, so the change has a
   revert path.

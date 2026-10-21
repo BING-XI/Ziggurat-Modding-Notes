@@ -134,7 +134,11 @@ USER = os.path.join(GAME, "User")
 # Ability-set owners on a unit record, in rank order.  0x20 (copper) is NOT vanilla -- it is added
 # by build_scripts/build_copper_medal.py with COPPER_GRANTS_ABILITIES on, which gives TUnitResource
 # a 4th ability owner at +0x44; unpatched installs simply never carry the tag.
-UNIT_OWNERS = [(0x19, "base"), (0x20, "copper"), (0x1E, "silver"), (0x1F, "gold")]
+# 0x21-0x23 are the heroic OPTIONS, not medal deltas: a heroic unit gains exactly one of them
+# (build_scripts/build_heroicchoice_data.py; their six stat deltas each sit at 0x24 + 6*k + i).
+# 0x36 is the heroic ALWAYS set, gained by every heroic unit besides its option.
+UNIT_OWNERS = [(0x19, "base"), (0x20, "copper"), (0x1E, "silver"), (0x1F, "gold"),
+               (0x21, "heroic 1"), (0x22, "heroic 2"), (0x23, "heroic 3"), (0x36, "heroic always")]
 
 # An item's per-ability level sub-record tag. See the ITEMS.PFS section of the docstring.
 ITEM_ABILITY_RECORD_BASE = 0x32

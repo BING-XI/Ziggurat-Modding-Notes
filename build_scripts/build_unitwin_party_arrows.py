@@ -71,8 +71,8 @@ THE FIX -- drive the arrows from the unit's OWN army, vanilla-first
       does the own-army path run.  This structurally rules out the arrows-visible/clicks-dead
       failure mode: every case vanilla could handle is still handled by vanilla's own code.
 
-PATCH SITES (all three verified reloc-free, and byte-identical in AoWz.exe and
-the pristine `Ziggurat upload/AoW.exe` -- that donor is VANILLA and keeps its vanilla name)
+PATCH SITES (all three verified reloc-free, and byte-identical in AoWz.exe and the vanilla
+root `AoW.exe`)
       0x00407EAD  8 B  8B 06 8B 80 14 02 00 00   -> E9 rel32 + 90 90 90   (hide-arrows block)
                   The only inbound branches are the four chain exits at 0x00407E5A / 0x00407E6A /
                   0x00407E7B / 0x00407E8B and all four land exactly ON 0x00407EAD; a CODE-wide
@@ -80,8 +80,18 @@ the pristine `Ziggurat upload/AoW.exe` -- that donor is VANILLA and keeps its va
       0x0040ABF0  5 B  53 56 8B F0 A1            -> E9 rel32   (TUnitWindow.PPrevClick)
       0x0040AC9C  5 B  53 56 8B F0 A1            -> E9 rel32   (TUnitWindow.PNextClick)
                   Both prologues are `push ebx / push esi / mov esi,eax` + the first byte of
-                  `mov eax,[0x0045A420]`, so the vanilla resume points are 0x0040ABF4 / 0x0040ACA0
-                  -- instruction boundaries, asserted against the pristine exe.
+                  `mov eax,[0x0045A420]`, so the cave replays all four instructions and resumes
+                  at 0x0040ABF9 / 0x0040ACA5 -- instruction boundaries, asserted against the
+                  pristine exe.
+
+      v1 (2026-09-03 .. 2026-10-21) replayed only the first three and resumed at 0x0040ABF4 /
+      0x0040ACA0: the hook's own last rel32 byte (0x00).  Every click where vanilla's
+      PartyIndexOfUnit passed -- the ordinary case, a unit of the army selected on the map --
+      executed `add [Self],ah / movsb / inc ebp / add [ebx-0x172DCD00],cl / cli`.  The add
+      shifted the TUnitWindow's VMT pointer, so the next virtual call jumped into the class-name
+      string "TUnitWindow" (EIP 0x69577469 = 'itWi'); `cli` faults in user mode regardless.  The
+      game hung behind a hidden exception dialog.  G2 now refuses any cave branch that lands
+      inside a displaced run; H2 never saw this one because it scans CODE, not the cave.
 
       NOTE the published-method-table entries are NOT repointed; they still hold 0x0040ABF0 /
       0x0040AC9C.  build_wheel_ext.py's aowInt.dpl cave identifies the party arrows by comparing
@@ -146,9 +156,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import zigexe                                   # mod binary names (AoWz.exe)
 
 EXES = zigexe.EXES
-# ⚠ VANILLA_EXE keeps the name `AoW.exe` on purpose -- this is the 2025-03-21 stock donor under
-# `Ziggurat upload\`, a READ-ONLY reference, not a patch target. It was NOT renamed in 2026-09-09.
-PRISTINE = os.path.join("Ziggurat upload", zigexe.VANILLA_EXE)  # the only unpatched exe left
+# the vanilla AoW.exe at the game ROOT -- a READ-ONLY reference, never a patch target
+PRISTINE = os.path.join("..", zigexe.VANILLA_EXE)
 DLL = "AoWEPACK.dpl"
 SUFFIX = ".pre-unitwinpartyarrows"
 BACKUP_DIR = os.path.join(GAME, "backups")      # ⚠ backups/, never the game root -- rule 2026-09-03
@@ -172,8 +181,8 @@ VIS_CONT = 0x00407EB5                               # rest of the vanilla hide b
 HOOK_PREV = 0x0040ABF0
 HOOK_NEXT = 0x0040AC9C
 CLICK_ORIG = bytes.fromhex("53568bf0a1")            # push ebx/push esi/mov esi,eax/ mov eax,
-VAN_PREV = 0x0040ABF4                               # vanilla PPrevClick body resume
-VAN_NEXT = 0x0040ACA0                               # vanilla PNextClick body resume
+VAN_PREV = 0x0040ABF9                               # vanilla PPrevClick, after mov eax,[P_GENERAL]
+VAN_NEXT = 0x0040ACA5                               # vanilla PNextClick, after mov eax,[P_GENERAL]
 
 # --------------------------------------------------------------- engine anchors (AoWz.exe)
 REFRESH = 0x00407DB8        # TUnitWindow.UpdateUnitWindow(eax = Self)
@@ -365,6 +374,7 @@ _prev:
     push ebx
     push esi
     mov  esi, eax
+    mov  eax, dword ptr [{pgen:#x}]
     jmp  {vanprev:#x}
 _prev_ret:
     ret
@@ -377,6 +387,7 @@ _next:
     push ebx
     push esi
     mov  esi, eax
+    mov  eax, dword ptr [{pgen:#x}]
     jmp  {vannext:#x}
 _next_ret:
     ret
@@ -675,6 +686,10 @@ def build_checks(code, entries, hooks):
             fail.append("G2: cave branches to UNEXPECTED %#010x (%s)" % (t, mns))
     if GETUNIT not in seen:
         fail.append("G2: no call to the TUnitList.GetUnit thunk %#010x" % GETUNIT)
+    for t in seen:
+        for va, orig, nm in SITES:
+            if va < t < va + len(orig):
+                fail.append("G2: cave branches to %#010x, inside %s's displaced bytes" % (t, nm))
 
     # G3 -- hook blob lengths match the runs they displace, and every hook lands on a cave entry.
     for va, orig, nm in SITES:
@@ -1001,7 +1016,7 @@ def main():
         print("  UNDONE -- hooks restored, cave zeroed.  The .pyar section header is left in "
               "place (inert): removing it would renumber sections and truncate the file, which "
               "is exactly the operation that can unmap another feature's cave.")
-        return 0 if not lf else 1
+        return 0
 
     if installed:
         print("  already applied and current.")

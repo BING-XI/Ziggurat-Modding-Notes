@@ -165,7 +165,7 @@ DERIVED = {
         (0x2C, 1, 'cached_this_structure_is_currently', 'M', "Cached 'this structure is currently hidden by fog of war' boolean (1 = hidden). Recomputed by FogChanged: seeded from the map's global fog flag (map+0"),
     ],
     'TUnit': [
-        (0x3F, 1, 'unknown_no_semantic_a_dead_byte_it', 'D', "UNKNOWN / no semantic - a dead byte. It is never read, written, compared, LEA'd, or streamed anywhere in AoWEPACK.dpl. Structurally it is the 1-byte a"),
+        (0x3F, 1, 'heroic_state', 'D', '⚠ INSTALLED ONLY -- vanilla: a dead padding byte, never read, written or streamed. build_heroicchoice.py: bits 0-1 the heroic option taken (1..3), bit 7 announced; tag 0x24'),
     ],
     'TUnitResource': [
         (0x1C, 0, 'the_unit_type_s_name_a_delphi_ansi', 'M', "The unit type's name - a Delphi AnsiString (long-string pointer). It is the base component of the displayed unit name: TUnitResource.GetUnitName assig"),

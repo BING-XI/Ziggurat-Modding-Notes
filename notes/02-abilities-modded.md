@@ -175,6 +175,8 @@ switch on `monsterslay.REWORK` — re-running either owner keeps the rework. Cha
 Card text: `Ability.pfs` record 122, "Against monstrous units: +5 Dam and +5 Def in melee, +2 Dam and
 +2 Def at range."
 
+Strike prerequisite: none since 2026-10-20 (see "Strike requirements" below).
+
 ⚠ **Coupling.** `cave_melee`, `cave_melee3` and `cave_rng` call `ms_test`. Each of the three scripts
 installs it zero-or-ours before writing a caller; `build_monster_slaying.py --undo` zeroes it only
 when no caller is left outside its own zone.
@@ -190,6 +192,31 @@ when no caller is left outside its own zone.
 4. A Monster with ATK below 4 (if any) attacking a slayer: no absurd hit chance (byte floor).
 5. Assassin and Holy/Unholy Champion unchanged in melee and at range.
 6. The ability card shows the new text.
+
+## Strike requirements — Monster Slaying, Parry, Round Attack
+
+Applied 2026-10-20 (`build_strike_prereqs.py`), owner's rulings: Monster Slaying `0x70` and Parry
+`0x71` no longer need Strike `0x15`; Round Attack `0x72` does. A unit with Round Attack and no
+Strike breaks in game (owner's report; `TRoundAttackAbility`'s strikes read Strike's record through
+`GetAbility(0x15)`). No unit or item in the installed data has Round Attack without Strike (scan of
+every `Unitres.pfs` owner and `Items.pfs`, same day).
+
+- Fourteen abilities are `TStrikeEnhancementAbility` (VMT `0x5571E4D0`): Fire/Cold/Lightning/
+  Poison/Death/Holy/Magic Strike `0x0E`–`0x14`, Charge `0x6F`, `0x70`, `0x71`, Extra Strike `0x73`,
+  First Strike `0x74`, Lifestealing `0x76`, Entangle Strike `0x77`. Its `CanExpand` @`0x5576723C`
+  wants Strike in the same owner (or a `TItem` owner); `TStrikeAbility.Remove` removes every
+  enhancement with Strike (`call IsClass` @`0x55766AC0`; the loop calls `Remove` until it fails).
+  Round Attack (`TRoundAttackAbility`, VMT `0x5571FFA0`) inherited plain `TAbility.CanExpand`.
+- S1: the enhancements' `+0xC4` slot `0x5571E594` → `cave_ce 0x558B2100`: `0x70`/`0x71` →
+  `TAbility.CanExpand`, the rest → `0x5576723C`. S2: Round Attack's slot `0x55720064` → `0x5576723C`
+  itself. R: the `IsClass` call → `cave_rmcls 0x558B2120`: `0x70`/`0x71` kept, `0x72` removed with
+  Strike.
+- Granting asks neither rule (`UpdateDefaultAbilities` copies bits); combat's `GetAbilityEnabled`
+  is "holds the id". Parry takes 8 off the attacker's strike against the holder in
+  `CalculateStrikes` with no test of the holder's Strike, so it works on a unit that cannot melee.
+- The rule reaches the editor's Ability Editor and the hero level-up offers. On medal and Heroic
+  tabs the editor counts Strike from a lower set for the twelve enhancements and Round Attack
+  (`08-editor.md` §18).
 
 ## Invisibility → attacker ATK penalty, negated by True Seeing
 
@@ -3040,6 +3067,29 @@ reproduces the pre-apply and post-apply md5 exactly; `build_relocfix.py --audit`
 8. Split/move/end turn/save-reload: bonuses recompute, no stale "received" text.
 9. Auto-resolve: the bonus applies there too.
 10. Map editor: assigning and removing Leadership still behaves.
+
+### F. Removing a received Leadership underflowed it — 40 ATK / 0 DEF stacks (`build_leadership_underflow.py`, 2026-10-20)
+
+Owner's report: units stacked with certain heroes showed 40 Attack and 0 Defense, normal again once
+moved away. The Khazlkound and Highpass PBEM files (the second received the day before, so the
+defect predates that day's heroic and editor work) carry heroes and leaders whose **own**
+Leadership is 254/252/250, and their stacks' units borrow it.
+
+- **Vanilla defect.** `TMultiLevelAbility.Remove @0x557653E0` deletes the record at level 1 and
+  otherwise `dec byte [rec+0x0C]`, so level 0 wraps to 255. A hero in another leader's aura holds a
+  Leadership record with own 0 (the aura's record); the level-up dialog lists it, it is not
+  "inherent", so `THeroUpgradeDlg.RemoveBtnClick` (AoWz.exe `0x00447134`) calls Remove with no level
+  check, and each further click goes one lower. Done's `UpdateDefaultAbilities` copies 254 because it
+  reads as higher. The aura then propagates 254, and the bonus getters index the five-entry ladders at
+  `0x5580F0C0`/`0x5580F0C8` with it, reading code bytes; the getters clamp the result to 40 / 0.
+- **Fix:** Remove refuses at level 0 (`0x55765419`, every caller); `TLeadershipAbilityData`'s
+  ReadWrite (VMT `+0x18`, `0x55721F34`) resets own and borrowed levels above the cap (read from
+  `0x5576618A`) to 0 on a true load (`StorageMode & 0x45 == 1`), which heals corrupted heroes in live
+  saves the first time an updated client loads them. Records load through `rwCreateEObject` →
+  `MainReadWrite` → VMT `+0x18`, so every saved record passes the repair.
+- ⚠ A player on an older build can still corrupt a hero and send it on; every PBEM player needs the
+  release. Unproven in game: the heal on a real load of the affected PBEM (not loaded here, since a
+  second load of a live PBEM file is broadcast to every player).
 
 ---
 

@@ -18,6 +18,8 @@ AoWCompat.exe by `build_herodlg_columns.py` (`exe.wr(D["cattbl"], CATS.lookup_ta
 any change here, re-run `python build_scripts/build_herodlg_columns.py --apply` -- it rewrites
 the executable. Skipping it leaves the old table live and the ability lands in
 DEFAULT_CAT (Magic) with no error anywhere. (Cost QA a finding on 2026-08-27, for Shield.)
+The EDITOR bakes the same table too: `build_deved_abcolumns.py` (its own EXTRA adds the ids the
+level-up never offers) -- re-run it with --undo then --apply, then build_zigeditor.py --apply.
 
 ⚠ The 100 vanilla ids are exactly the Ability.pfs records carrying tag 6. Mod-added ids are
 listed here as well and need NOT carry tag 6 yet -- but an ability with no tag 6 is

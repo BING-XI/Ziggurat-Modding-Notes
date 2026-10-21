@@ -100,6 +100,14 @@ FIELDS = {
         (0x48, 4, "description_list", "M", "TStringList OBJECT POINTER, not an AnsiString -- reading it as a string is wrong. pfs tag 0x1A"),
         (0x4C, 4, "gold_cost", "D", "pfs tag 0x1B"),
         (0x50, 1, "unit_size", "M", "TUnit.GetUnitSize reads [[unit+0x40]+0x50]"),
+        (0x54, 4, "heroic_option_owner1", "D", "⚠ INSTALLED ONLY -- build_heroicchoice_data.py grows "
+                                               "the class 0x54 -> 0x78; owners +0x54/+0x58/+0x5C, pfs tags 0x21..0x23"),
+        (0x58, 4, "heroic_option_owner2", "D", "⚠ INSTALLED ONLY"),
+        (0x5C, 4, "heroic_option_owner3", "D", "⚠ INSTALLED ONLY"),
+        (0x60, 0, "heroic_option_deltas", "D", "⚠ INSTALLED ONLY -- 3 x 6 signed bytes in base-stat "
+                                               "field order (ATK DEF DAM HP MV RES), pfs tags 0x24..0x35"),
+        (0x74, 4, "heroic_always_owner", "D", "⚠ INSTALLED ONLY -- abilities every heroic unit gains "
+                                              "besides its option, pfs tag 0x36"),
     ],
     "TItem": [
         (0x04, 4, "container", "D", "set by TItem.SetOwner"),

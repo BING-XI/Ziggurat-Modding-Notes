@@ -673,6 +673,26 @@ FIXES = [
      "Attempts to remove enchantments from a selected unit, and to wrest a unit bound to an "
      "enemy from its master (Res vs Res).\r\n",
      "record 18 = Dispel Magic (spell 8)"),
+
+    # Caster Cost cards, 2026-10-20: the discount became x0.6 on 2026-09-25 (build_caster_cost.py
+    # DISCOUNT_MUL) and the four DevEd-authored cards still said "Halves". `old` is the owner's
+    # authored text -- these records have no vanilla state.
+    ("Ability.pfs", 182,  5,
+     "Halves the cost of damage spells.\r\n",
+     "Cuts 40% off the cost of damage spells.\r\n",
+     "record 182 = Evoker (ability 0xAC)"),
+    ("Ability.pfs", 183,  5,
+     "Halves the cost of Summon spells.\r\n",
+     "Cuts 40% off the cost of Summon spells.\r\n",
+     "record 183 = Conjurer (ability 0xAD)"),
+    ("Ability.pfs", 184,  5,
+     "Halves the cost of Enchantment spells. \r\n",
+     "Cuts 40% off the cost of Enchantment spells.\r\n",
+     "record 184 = Enchanter (ability 0xAE)"),
+    ("Ability.pfs", 185,  5,
+     "Halves the cost of spells which affect the world or the map.\r\n",
+     "Cuts 40% off the cost of spells which affect the world or the map.\r\n",
+     "record 185 = Ritualist (ability 0xAF)"),
 ]
 
 

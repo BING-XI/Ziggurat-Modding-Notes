@@ -171,6 +171,22 @@ file carries the specific checklist for its own rows.
   Checklist: `01-combat-maths.md` §5.
 
 ### Abilities — `02-abilities-modded.md`, `03-abilities-added.md`
+- **Heroic medal + heroic choices** (2026-10-20): Heroic at tier×30, bluish-violet, ATK +4 DEF +2
+  DAM +3 RES +4 HP +10 MV +4 in place of gold's (`build_copper_medal.py` `HEROIC`;
+  `build_heroicchoice.py` `HEROIC_TOTALS`, added over gold's figures read live; not a rank —
+  "heroic" is `GetNextRankExperience == 0`). A
+  heroic unit takes one of its type's ≤3 options (≤3 abilities + 6 stat deltas each), authored on
+  the editor's Heroic 1–3 tabs; human: a reopenable logbook event + a cloned `TPartyJoinDlg`; AI: a
+  P1 synced draw. `build_heroicchoice_data.py` + `build_deved_heroicchoice.py` +
+  `build_heroicchoice.py` (DLL + exe, never one half alone). The in-game path is unproven.
+  Option 1 of every Spell Casting unit = its level + 1 (`build_heroic_spellcasting.py`, data only).
+  **Always set** (tag `0x36`, editor tab Always): every heroic unit also gains the next level of
+  each multi-level ability that rises on its ranks, Spell Casting excepted
+  (`build_heroic_progressions.py` fills 86 types).
+  `03-abilities-added.md`, "Heroic medal and heroic choices".
+- **Evoker / Conjurer / Enchanter / Ritualist cards say 40 %** (2026-10-20): `Ability.pfs` records
+  182–185 read "Cuts 40% off the cost of …", matching `build_caster_cost.py`'s ×0.6.
+  `build_pfs_typos.py`.
 - **Shoot Bane Javelin** (`0xBE`): a 14/11 javelin, 1 shot, long range, physical and death damage,
   the black-javelin sprite and Shoot Bolt's sounds; Ranged column at level-up, 0 % for every race.
   The Orc Shredder Bolt carries it in place of Shoot Bolt. `build_banejavelin.py` (`AoWEPACK.dpl` +
@@ -401,6 +417,10 @@ file carries the specific checklist for its own rows.
 - Leadership — aura instant-refresh on level-up — 2026-07-20
 - Leadership IV grants Fearless — 2026-09-01
 - Leadership buffs only the OTHER units in the party; card shows "own (+received)" — 2026-09-16
+- Leadership: removing a received level no longer underflows (the 40 ATK / 0 DEF stacks); saves
+  heal on load (`build_leadership_underflow.py`, vanilla defect) — 2026-10-20, `02-abilities-modded.md` §F
+- Strike requirements: Monster Slaying and Parry no longer need Strike, Round Attack does
+  (`build_strike_prereqs.py`) — 2026-10-20, `02-abilities-modded.md` "Strike requirements"
 - Dispel Magic — level cap III → V — 2026-08-09
 - Magebane — enchantment-scaling ATK/DMG (`0xAA`) re-tune, and its description text — 2026-08-29
 - Item-granted HP / MV bonuses — 2026-08-31
@@ -569,12 +589,23 @@ file carries the specific checklist for its own rows.
   show/place/feed path). **When cloning a DFM component, audit its ident properties for references
   to the donor's siblings** — handler names are meant to be shared, control references are not.
   `07-ui.md` §2.2a. `build_herodlg_columns.py` on `Ziggurat/AoWz.exe`.
-- Unit-window party arrows, every entry path — 2026-09-03
+- Unit-window party arrows, every entry path — 2026-09-03. ⚠⚠ **v1 crashed on every arrow click
+  for a unit of the map-selected army** (fixed 2026-10-21): the click caves resumed vanilla on the
+  last byte of their own `jmp rel32`. `07-ui.md` §3; the trap and an all-binary sweep in
+  `12-re-toolchain.md` §5.2d.
 - Combat log — spell labelling (live tactical), touch attacks, effect-landing roll
 - Mouse wheel — editor Win32 scrollbars — 2026-09-02
 - 12 added hero faces moved into the right resolution set (`H_Faces` 79 @103×128, `_H_Faces` 79 @52×64) — 2026-09-04
 
 ### Editor — `08-editor.md`, `Map_Generator.md`
+- **Rank tabs offer only what the lower ranks do not give** (`build_deved_medalfilter.py`, applied
+  2026-10-20): the Ability Editor on Copper/Silver/Gold/Heroic hides single-level abilities a lower
+  tab holds and lists levelled ones at the next level up; Add grants that level; abilities that
+  need Strike count Strike held by a lower tab. `08-editor.md` §18.
+- **Ability lists in category columns** (`build_deved_abcolumns.py`, applied 2026-10-20): Ability
+  Editor and Hero Properties split into Wayfaring/Resistances/Melee/Ranged/Magic(/Effects) columns;
+  Settings > Abilities grouped under headings. Table = `herodlg_cats.py` + the script's EXTRA.
+  `08-editor.md` §19.
 - **Drop a picture on the editor to rebuild the level being viewed** (`build_deved_pngdrop.py` +
   `Zig Modding Tools\zig_pngmap.py` / `zig_pngcrop.py`) — applied 2026-10-07. Confirm, then a crop
   window with preview and Mountains / Hills / Desert sliders; terrain, mountains and hills are read
