@@ -112,6 +112,13 @@ FORWARD HAZARDS
     Flaming Skull (checked against the root copy 2026-10-23) and either script may be applied or
     undone first.  Before that, this script died at import with "no id before GetAbility/GetSpell
     at 00405E0F".  Reshaping cave_hid brings that abort back: update HID_SHAPE with it.
+  * ⚠ OPEN (2026-10-25): build_deathfire_tc.py turned the `mov edx,0x75` before GetSpell at
+    0x405F06 (and three more sites) into `call 0x43E8A0`, a different shape (`cmp [edx+0x10],
+    'BANE'`, fallback 0x75).  hid_id() does not match it, so this script now dies at import with
+    "no id before GetAbility/GetSpell at 00405F0B" -- dry run, --apply and --undo alike.  The
+    installed caves are unaffected (a 5-byte mov became a 5-byte call; no SetHitPoints return
+    address moved; hooks 0x405AE4/0x432930/0x410138 checked live).  Teach hid_id() that shape
+    before re-running this script.
 
     python build_scripts/build_combatlog_siege.py            dry run + state, both modules
     python build_scripts/build_combatlog_siege.py --apply
