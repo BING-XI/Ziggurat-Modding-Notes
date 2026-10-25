@@ -23,7 +23,7 @@ built, what is waiting to be tested, what will hurt you, and where the detail li
 | `02-abilities-modded.md` | changes to vanilla abilities — Invisibility, Turn Undead, Vision, Panic, Leadership, Dispel, lifesteal, enchantment re-grade |
 | `03-abilities-added.md` | abilities minted from scratch, plus id budget, registration, ceilings and costs |
 | `04-spells-modded.md` | changes to vanilla spells, tier research, mastery cost, spell-id budget |
-| `05-spells-added.md` | Embrittle and Grip of Winter, and the recipe for a new spell |
+| `05-spells-added.md` | Embrittle, Grip of Winter, Regeneration, the dual-sphere spells (Death/Fire built), two-offer Wizard's Towers, and the recipe for a new spell |
 | `06-unit-spellcasting.md` | the Spellcasting ability on ordinary units — the largest multi-binary feature |
 | `07-ui.md` | the game's UI: combat log, hero level-up dialog, unit window, cursor |
 | `08-editor.md` | the map editor: performance, autosave, palette, toolbar, validation, party generator |
@@ -116,7 +116,7 @@ file carries the specific checklist for its own rows.
   immediate `0x405AD8`, −4 → 0) — 2026-10-18. Gates share the getter; the combat log follows. §4.
 - HP ceiling 120 → 100 (four places that must move together) — 2026-08-31
 - Morale re-scale (ATK ±4, RES ±6) — 2026-08-26
-- Flyers lose morale underground (−5 Caverns / −10 Depths / −15 Abyss, units only, Cave Crawling exempt) — 2026-09-27
+- Flyers lose morale underground (−5 Caverns / −10 Depths / −15 Abyss, units only, Cave Crawling and Night Vision exempt) — 2026-09-27; Night Vision 2026-10-21
 - Auto-resolve ends after round 200; the attackers retreat (`build_autocombat_roundcap.py`) — 2026-09-27
 - Map-fire dead-code fix (was ~4× too weak) — 2026-08-26
 - Burning / Decay / Turn-Undead-AI damage gap-fix — 2026-08-26
@@ -158,11 +158,12 @@ file carries the specific checklist for its own rows.
   (26 B): level 3 → sight +3 after any halving, clamped to 15 (the army's sight nibble). True
   Seeing holders get it on true sight too. Surgical `--undo`. Checklist: `11-engine-internals.md`,
   "+3 sight on the Firmament".
-- **Breath and Flame Throwing aim each strike at its own hex** (`build_breath_line.py`) — 🔨 APPLIED,
-  UNTESTED (2026-09-24). Each damaging strike's obstruction line now runs to the hex it damages, not
-  along the spray angle, so corridors no longer eat strikes. Hook `0x40D5F1` → cave `0x439400`
-  (164 B, AoWTCPCK). Surgical `--undo`. Checklist: `01-combat-maths.md`, "Breath and Flame Throwing
-  aim each strike at its own hex".
+- **Breath and Flame Throwing aim each strike at its own hex** (`build_breath_line.py`, 2026-09-24;
+  drawn sweep 2026-10-22). Each damaging strike's obstruction line runs to the hex it damages, not
+  along the spray angle, so corridors no longer eat strikes. The flame is drawn on vanilla's sweep,
+  cut at the first obstacle or the blocking distance. Hooks `0x40D5F1`/`0x40F0B1` → caves
+  `0x439400`/`0x4394E0` (AoWTCPCK). Surgical `--undo`. `01-combat-maths.md`, "Breath and Flame
+  Throwing aim each strike at its own hex".
 - **The AI hero level-up offers a stat whenever it can afford it** (`build_ai_levelup_gates.py`) —
   🔨 APPLIED, UNTESTED (2026-09-24). `ExecuteUpgradeHeroAI`'s five `cmp esi,N` constants are gates
   on unspent points, not the target levels a 2026-09-08 ruling took them for. They go from the
@@ -171,6 +172,27 @@ file carries the specific checklist for its own rows.
   Checklist: `01-combat-maths.md` §5.
 
 ### Abilities — `02-abilities-modded.md`, `03-abilities-added.md`
+- **Paths of Life and Decay leave lava alone** (2026-10-22, `build_chasm_sky_spellguard.py`
+  re-tune): no Path turns lava into anything now. `09-terrain-movement.md`, after the Path of Frost
+  lava fix.
+- **Path of Sand does nothing on the cave levels** (2026-10-22, `build_path_sand.py` re-tune):
+  Caverns, Depths and the Abyss are excluded; the surface and the Firmament keep it.
+  `03-abilities-added.md`, "Path of Sand".
+- **The Commanded Undead ankh shows on the manual-combat battlefield** (2026-10-22,
+  `build_ankh_battlefield.py`): the battlefield draws status icons from a fixed id list, not
+  `ShowEx`; `0x89` is now on it. A new status icon needs both. `02-abilities-modded.md` B9.
+- **Shield no longer crashes auto-resolve** (2026-10-22, `build_shield.py`): its ranged cave told
+  manual from auto by instance size, which `build_combatunit_slot.py` had changed the day before.
+  It now identifies `TFastCombatUnit` by its VMT, and the 75 % roll works again.
+  `01-combat-maths.md` §S2.
+- **Units that join the winner in combat go to the next hex when its stack is full**
+  (`build_overflow_army.py`, 2026-10-21): vanilla made them a second army on the winner's hex, which
+  was wiped out the next turn if the winner could not move off. `02-abilities-modded.md`,
+  "Side-switched units and a full winning stack".
+- **High Prayer's blessing and the Blood Shrine's Bloodlust reach a unit's stats at once**
+  (`build_blessing_cache.py`, 2026-10-21): three direct `Expand` calls (`0x557F7E0E`, `0x557F7EF1`,
+  `0x557E2CB3`) now call `TUnit.Changed`, as `build_debuffcache.py` does for Web and Entangle.
+  `02-abilities-modded.md`, "Three more sites".
 - **Heroic medal + heroic choices** (2026-10-20): Heroic at tier×30, bluish-violet, ATK +4 DEF +2
   DAM +3 RES +4 HP +10 MV +4 in place of gold's (`build_copper_medal.py` `HEROIC`;
   `build_heroicchoice.py` `HEROIC_TOTALS`, added over gold's figures read live; not a rank —
@@ -187,18 +209,63 @@ file carries the specific checklist for its own rows.
 - **Evoker / Conjurer / Enchanter / Ritualist cards say 40 %** (2026-10-20): `Ability.pfs` records
   182–185 read "Cuts 40% off the cost of …", matching `build_caster_cost.py`'s ×0.6.
   `build_pfs_typos.py`.
+- **Reforming Flesh heals +4 HP per round** (2026-10-23, was +5): `build_reformingflesh.py` `HEAL`,
+  the `add edx` imm8 at `0x55826089`; card `Ability.pfs` 187 in `build_pfs_typos.py`.
 - **Shoot Bane Javelin** (`0xBE`): a 14/11 javelin, 1 shot, long range, physical and death damage,
   the black-javelin sprite and Shoot Bolt's sounds; Ranged column at level-up, 0 % for every race.
   The Orc Shredder Bolt carries it in place of Shoot Bolt. `build_banejavelin.py` (`AoWEPACK.dpl` +
   `AoWTCPCK.dpl`) + `build_banejavelin_pfs.py` + `build_shredderbolt_banejavelin.py` (Unitres),
   applied 2026-10-19. The section also holds the id census for any new
   ranged ability (`re_tools/idladder.py`) and the `Ability.pfs` tag-8 image-list format.
+  Flies at Shoot Bolt's speed since 2026-10-21: hook S at the projectile-step switch `0x429FC1`,
+  which the first census missed (`idladder.py` decodes that head since 2026-10-22).
 - **Hurl Flaming Skull** (`0xBF`): Hurl Boulder's lob at 8/11, long range, with physical, fire, death and
   wall damage, flying the cut ability's own sprite (`Combat.ILB` 116); Ranged column, 0 % for every
   race; no unit carries it yet. ⭐ Wall damage needed four id-keyed hooks besides the type bit —
   breacher status is per unit by id, and manual combat damages walls through a map-field message
   priced off Hurl Boulder's id. `build_flamingskull.py` + `build_flamingskull_pfs.py`, applied
   2026-10-19. `03-abilities-added.md`, "Hurl Flaming Skull".
+- **Skirmisher** (`0xC4`): an attack costs 12 movement points instead of the turn, once per round;
+  manual combat. Moves kept at the two zeroing sites, three gates on a per-round mark in the new
+  combat-unit slot (`build_combatunit_slot.py`). `build_skirmisher.py` + `_pfs`, applied 2026-10-21.
+  `03-abilities-added.md`, "Skirmisher".
+- **Searing Aura** (`0xC5`): at the holder's turn start every enemy within 2 hexes rolls Fire Strike's
+  ignite roll; the ability's own NewCombatTurn, no hook site. `build_searingaura.py` + `_pfs`,
+  applied 2026-10-21. `03-abilities-added.md`, "Searing Aura".
+- **Mirror Image** (`0xC6`): multi-level I–XX, 4 points a level; each image makes one strike or
+  shot miss and vanishes; the images return every battle and show as half-transparent copies in
+  manual combat (Show wrapped, ILPACK's own blend). `build_mirrorimage.py` + `_pfs`, applied
+  2026-10-21. `03-abilities-added.md`, "Mirror Image".
+- **Mental Discipline** (`0xC7`): Charm, Seduce, Dominate, Possess and Turn Undead cannot target
+  it (one hook in the shared `TTouchAbility.CanTouch`; the Turn Undead spell treats it as living);
+  no fear effect (Fearless covers that). `build_mentaldiscipline.py` + `_pfs`, applied
+  2026-10-22. `03-abilities-added.md`, "Mental Discipline".
+- **Rime Aura** (`0xC8`): Searing Aura's cold twin — at the holder's turn start every enemy within
+  2 hexes rolls Cold Strike's roll (Frozen). `build_rimeaura.py` + `_pfs`, applied 2026-10-22;
+  `03-abilities-added.md`, "Rime Aura".
+- **Lucky** (`0xC9`): once per battle, damage that would kill it leaves it at 1 HP — one clamp in
+  `TCombatObject.ExecuteDamage`, both combat systems, every damage source; slot byte 3.
+  `build_lucky.py` + `_pfs`, applied 2026-10-22. `03-abilities-added.md`, "Lucky".
+- **Smoky Haze** (`0xCA`): the poison twin of Searing Aura and Rime Aura — at the holder's turn
+  start every enemy within 2 hexes rolls Poison Strike's roll (Poisoned). `build_smokyhaze.py` +
+  `_pfs`, applied 2026-10-22. `03-abilities-added.md`, "Smoky Haze".
+- **Stone Gaze** (`0xCB`, status Petrified `0xCC`): at an enemy's turn start, a facing enemy
+  within 6 hexes (mutual 120° arcs; auto-resolve: melee reach) may be petrified for the battle —
+  stunned, +8 DEF, dead for the result; winners' statues revert, losers' die; Dispel Magic and
+  Remedy remove it; drawn beige-grey through Mirror Image's draw hooks. Basilisk, Cockatrice
+  Hussar (both in place of Doom Gaze) and Beholder. `build_stonegaze.py` + `_pfs` + `_holders`,
+  applied 2026-10-22; LADDERs `0xCD`. `03-abilities-added.md`, "Stone Gaze".
+- **Rally** (`0xC2`, status Rallied `0xC3`): fires when clicked, no targeting (the no-target spell
+  precedent: `AbRangedTC` at the user's own hex), spends the action; every ally within 6 hexes
+  rolls 50 % to lose Panicked and gains +30 morale for the battle. Both AIs follow one rule (panic
+  in range; else morale only when enemies are near and cannot panic). `build_rally.py` (three
+  modules) + `build_rally_pfs.py`, applied 2026-10-21; LADDERs `0xC4`. `03-abilities-added.md`,
+  "Rally".
+- **Extra Shots** (`0xC1`): each missile shot has a 25 % chance to grant another, and an extra shot
+  rolls again. Auto-resolve shot loop (P2 raw, one draw per shot) and manual combat's
+  `NextStrike` (P1 synced); Ranged column, 0 % for every race. `build_extrashots.py` +
+  `build_extrashots_pfs.py`, applied 2026-10-21; LADDERs `0xC2`. `03-abilities-added.md`,
+  "Extra Shots".
 - **Wheeled** (`0xC0`): a road hex costs 2 movement points instead of 3, in the one table builder
   the game, the path preview and both AIs read; no stacking with Enchanted Roads (owner). Wayfaring
   column, 0 % for every race; the owner assigns the units in the editor. `build_wheeled.py` (hook
@@ -345,6 +412,12 @@ file carries the specific checklist for its own rows.
   ⚠ `PUBLIC` is in the cache key (`CACHE_VERSION` 2). The runtime net is `window.zmCanAuthor()`,
   which must test `location.protocol === 'file:'` **first** — pywebview injects its api
   asynchronously. `12-re-toolchain.md` §14.6.
+- **Ziggurat Manual page chrome after the AoWx manual** — built 2026-10-23, **no binary patched**:
+  one-row colour-coded group nav (header 178 → 56 px at 1024), landing tiles with live counts,
+  search, hover cards, game icons and native tile art (main-menu orbs, city vignettes, portraits),
+  relation heat-map, medal colours, fold-out unit
+  lists, `#units/<group>` and `#spells/<sphere>` sub-pages, the hotkey diagram, Uncial Antiqua
+  (OFL) headings; spell-card labels no longer break mid-word. `07-ui.md` §2.10.
 - **Reforming Flesh's level-up cost — 0 → 20** — 🔨 APPLIED, UNTESTED (2026-09-10):
   `build_reformingflesh.py` v3 on `AoWEPACK.dpl` alone. **A registration-time store of
   `[ability+0x14]` can never work**, which is why v2's `mov dword [eax+0x14], 50` left the ability
@@ -448,7 +521,8 @@ file carries the specific checklist for its own rows.
   - Holy Woods → Vertigo, Evil Woods → Cursed (`build_ground_debuffs.py`).
   - Ooze puts out fires and Burning (`build_ooze_extinguish.py`, AoWTCPCK).
   - Level Terrain leaves rocks (`build_levelterrain_rocks.py`).
-  - Town Quake by wall type and level (`build_townquake_retune.py`).
+  - Town Quake by wall type and level (`build_townquake_retune.py`); the level is read from the
+    city's hex since 2026-10-21 (it read an unrelated byte).
   - Vortex ATK 20, 14/10/4, movement drain (`build_vortex_rebalance.py`).
   - Spellbook texts in `build_pfs_typos.py`; manual lines in `SPELL_BEHAVIOUR`.
 - **Ice Storm's terrain change takes effect 25% of the time**, was 75% (`build_icestorm_gate25.py`,
@@ -459,6 +533,13 @@ file carries the specific checklist for its own rows.
   Mastery spell no longer starts and does nothing, and the opposed ×1.5 is now charged on instant
   casts. Caves `0x5584D300`/`D360`/`D3A0`. Surgical `--undo`. Checklist: `03-abilities-added.md`,
   "Families are data, and the wallet".
+- **The spellbook opens the casting page only for a spell that is charging**
+  (`build_spellbook_castpage.py`, `AoWz.exe`, 2026-10-21): the click handler asks
+  `CanCastSpellInstantly`, so it follows the wallet's discounted or surcharged cost. In place at
+  `0x430833`. `04-spells-modded.md`, after the wallet table.
+- **Global enchantments can be cancelled and dispelled after a reload**
+  (`build_globalench_active.py`, 2026-10-21): the active bit, never saved, is restored for every
+  listed enchantment. `04-spells-modded.md`, "Global enchantments after a reload".
 - **Caster family is data: `Spells.pfs` tag `0x12`** (`build_spell_family.py`, then
   `build_caster_cost.py`'s data classifier) — 🔨 APPLIED, UNTESTED (2026-09-25). Evoker /
   Conjurer / Enchanter / Ritualist membership now reads spell byte `+0x23`, seeded from the class
@@ -476,8 +557,13 @@ file carries the specific checklist for its own rows.
   Surgical `--undo`. Checklist: `04-spells-modded.md`, "Vortex".
 - **Power Leech (ex Power Leak)** — the halving is gone; the caster steals 25% of the power of every magic node owned by another player, and that owner loses the same. 🔨 APPLIED, UNTESTED (2026-09-07): `build_powerleech.py` on `AoWEPACK.dpl` (4 B at `0x5577CEC5`, 1 B at `0x5577CED8`, `cave_powerleech @0x55848000`), plus the rename, the `Spells.pfs` record 58 description and `NEWMECH_POWERLEECH` in the manual. One-at-a-time is **already vanilla** and was verified, not built. The **income row** is a separate patch: `build_powerleech_ui.py` on `Ziggurat/AoWz.exe` (7 B at `0x0042CFD9`, `cave_powerleech_ui @0x0062D100`) adds a "Power Leech (gained)" / "Power Leech (lost)" row to the Magic window's power breakdown — 🔨 APPLIED, UNTESTED (2026-09-09)
 - **Terror — spell ATK 16 → 12** — 🔨 APPLIED, UNTESTED (2026-09-09): `build_terror_atk12.py` on `AoWEPACK.dpl`, pure immediate rewrite, no cave/hook (`0x557F9A81` w1, `0x557F9887`/`0x557F9A0B`/`0x557F9CA6`/`0x557F9D8F` w4; snapshot `backups\AoWEPACK.dpl.pre-terroratk12`; surgical `--undo` restores **16**, not vanilla 6). ⚠ **Terror's power is encoded FIVE times — a partial edit is silent** (different powers in tactical vs auto-resolve vs the AI estimate). ⚠ Vanilla was **6**: the recorded "8 → 16" doubled an undocumented pre-convention Ziggurat value, so **`live / 2` is not the vanilla number** — see the trap in `01-combat-maths.md` §3
-- Embrittle — the whole spell — 2026-09-01 ⚠ **v1 broke startup; a cave that runs at package init must be proved by launching the exe**
+- Embrittle — the whole spell — 2026-09-01 ⚠ **v1 broke startup; a cave that runs at package init must be proved by launching the exe**; the Embrittled constructor's owner (ECX) zeroed 2026-10-21 (v4)
 - Grip of Winter — the spell, its description, and its manual prose — 2026-09-01
+- Regeneration — Water tier-1 enchantment (spell 79, ability `0x53`): the unit heals fully each turn — 2026-10-22, launch-proved — `05-spells-added.md`, "Regeneration"
+- Living Flame (ex Fire Halo) — fire heals the enchanted unit on the map and in battle; passive `0x52` on Fire Elemental, Fire Sprite and Salamander — 2026-10-22, launch-proved — `04-spells-modded.md`, "Living Flame"; ⚠ Fire Mastery grants the same enchantment
+- Dual-sphere spells — owner's rule (tiers 1–3, never researched: tier N of both spheres researched grants the pair's tier N) 2026-10-24; the manual's Planned Spells tab (Single and Dual sphere) is the planning page, Spells shows only the live game; Inioch's 54 as a review page `Inioch/dual_sphere_review.html` (`build_dual_review.py`), the owner's verdicts in `Inioch/dual_sphere_review.json` — `05-spells-added.md`, "Dual-sphere spells"
+- Death/Fire, the first dual pair — Taint the Flame, Pillar of Banefire, Enmity of Nine Hells, plus the groundwork every pair uses (grant, unit gate, two-sphere Mastery) — 2026-10-25, launch-proved (game and editor) — `05-spells-added.md`, "Death/Fire — as built"
+- Wizard's Towers offer two spells and re-roll every d20 days with a terrain change; Next button in the tower window; editor level checkboxes, Life/Death exclusive — 2026-10-25, launch-proved — `05-spells-added.md`, "Death/Fire — as built"
 - Storm / Poison Plant debuff — roll vs Resistance — 2026-07-30
 - Magic tab (Main) and the Power Distribution dialog name the research group — "Cosmos II" plus its unresearched members, and the sphere's spell-icon disc with a Roman tier numeral — instead of the representative spell (`build_magictab_tiername.py`, `.hcol` `0x0062A520`) — 2026-09-27; numeral white with a black outline 2026-10-18
 - Magic tab hides "No spell is being researched" while a research is set (`build_magictab_nonepnl.py`, `.hcol` `0x0062AD40`) — 2026-10-18
@@ -523,6 +609,9 @@ file carries the specific checklist for its own rows.
   v2's right-click (2026-10-03), which is vanilla again; migrates v1 or v2 in place. The AI's
   end-of-turn is diverted; v3.1 2026-10-18: a multi-unit selection is unselected when its run
   starts, so groups move and attack. §18.
+- **Q on Spellcasting no longer raises "Invalid SpellID"** (`build_castcursor_guard.py`, AoWTCPCK
+  hook `0x41F82F` → `0x43CC00`) — 2026-10-23. `UpdateMoveCursor` read the not-yet-chosen spell (−1)
+  while the cursor was on the battlefield. §23.
 - **The taskbar shows the hex under the cursor** (`build_taskbar_coords.py`) — 🔨 APPLIED,
   UNTESTED (2026-09-25). "X,Y,Z" at the right end of the message box. Grows `.ibnr` to `0xD000` as a
   tenant above `build_itembanner_hpmv.py`, whose `--undo` now refuses while it is there. §16.
@@ -892,6 +981,13 @@ file carries the specific checklist for its own rows.
 - Terrain rolls draw from the synced RNG (3 sites) — 2026-08-31
 
 ### AI & structures — `10-ai-and-structures.md`
+- **AI site raids measure real strength; the leader holds back; weak groups gather forces**
+  (`build_ai_sitesearch.py` re-tune, 2026-10-21). Every strength call had passed damage kind 0 =
+  Fire, so non-fire defenders read as undefended; all three numbers now use `GetStrengthMax` with
+  `dtAll`. A group holding the leader is drawn only at ≥ 1.75× and the leader's army searches only
+  at ≥ 2×, leader HP ≥ 75 % both times. A leaderless group below 1.5× answers 15, and the site's
+  strength becomes the target's required strength, so the engine's own recruitment gathers forces
+  (two finder hooks, a process-local tag table). §1.4.
 - **Shipyards: 1 gold per 12 hexes, and the idle bonus is back** (2026-10-14):
   `build_shipyard_income.py` re-tune, `HEXES_PER_GOLD` 5 → 12; `entry` re-implements vanilla's
   +25 % (rounded half-to-even) unless the shipyard is building a ship. §6, §6.7.
@@ -1069,7 +1165,7 @@ file carries the specific checklist for its own rows.
   its only observable is the *absence* of a later "Combat already created". Latent-defect fix, verified
   against vanilla's own `0x55749D09`. §4.4.3b.
   §4.4.3 / §4.4.7 / §4.4.9 / §4.4.11.
-- AI paths to and searches exploration sites — 2026-09-03
+- AI paths to and searches exploration sites — 2026-09-03; strength metric, leader rule and site recruit 2026-10-21
 - City raze as a real battle (Stage 9), and AI non-city scorched-earth allowance (v6)
 - City loot gold multiplier (9× → 10×) — 2026-07-12
 - Arena — dialog re-layout, empty-state sprite
@@ -1096,10 +1192,12 @@ file carries the specific checklist for its own rows.
   exception's message. Decode as for the TE dialog. `12-re-toolchain.md` §3a.
 - Firmament map level — a 4th map level at index 3, filled with Sky terrain `0x0E`, surface-like vision, global-target spells, storm spells and Bird's View. 🔨 APPLIED, UNTESTED 2026-09-06 (v2): `build_maplevel4.py` (cap byte `0x5577768E` `03→04`, cave `0x55844000`, 250 B, 8 hooks) + in-place cave re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6: earth elementals excluded from the Firmament, air elementals included); UI half `build_skylevel_ui.py` (v3, caption "Firmament") + editor Level Up/Down display order `build_deved_levelnav.py` (`AoWDevEd.exe`, `AoWEd.exe`). Target binaries: `Ziggurat/AoWEPACK.dpl` + `Ziggurat/AoWz.exe`, not the DLL alone. Editor New-Map dialog and the map-gen tools still to do
 - **Abyss map level** — a 5th map level at index 4, a third cave level **below Depths** (order Firmament 3 / Surface 0 / Caverns 1 / Depths 2 / Abyss 4). 🔨 APPLIED, UNTESTED 2026-09-27. `build_maplevel4.py` **v3**: cap byte `04→05`; all twelve `TCave` level±1 sites (CanPlace, PlaceHX ×4, Destroy ×2, MoveExclusive ×2, EnterMovePoints, CanEnterSelection, EnterEx, ArmyPlaced) routed through one order helper at `0x55844100`, so caves link Depths↔Abyss and never touch the Firmament. In-place re-tunes: `build_skylevel_ui.py` v4 (strip "… \| Depths \| Abyss"), `build_deved_levelnav.py` v2 + `build_zigeditor.py` (Level Down reaches it; underground palette), `build_shipyard_income.py` (`MAX_LEVELS 5`, else no water income on a 5-level map), `build_townquake_retune.py` (Abyss counts as underground). Surgical `--undo` on each. **Checklist:** `11-engine-internals.md` "Abyss map level"
-- **Disabled map levels + the editor's Map Levels popup** — any set of levels, Surface always on; a left-out level below the highest is a disabled placeholder (mask `[TAoWHSMap+0x41C]`, saved as id `0x60`). 🔨 APPLIED, UNTESTED in game 2026-09-27 (editor half driven live). `build_maplevel4.py` v4 (mask + caves skip disabled levels), `build_fly_levels.py` relaid out (`fly_next`), `build_levelset.py` (new: Options > Map Levels replaces Add/Remove Level; New Map level checkboxes), `build_deved_levelnav.py` v3 (Level Up/Down skip). Warp Party's destination levels follow the flying order (`build_fly_levels.py` `cave_warp`, hook `0x557EB2CE`). ⚠ Vanilla Remove Level deleted the *viewed* level and renumbered the rest; it is retired. **Not done:** the game strip as two rows with unexplored/disabled cells blank. **Checklist:** `11-engine-internals.md` "Disabled levels"
+- **Disabled map levels + the editor's Map Levels popup** — any set of levels, Surface always on; a left-out level below the highest is a disabled placeholder (mask `[TAoWHSMap+0x41C]`, saved as id `0x60`). 🔨 APPLIED, UNTESTED in game 2026-09-27 (editor half driven live). `build_maplevel4.py` v4 (mask + caves skip disabled levels), `build_fly_levels.py` relaid out (`fly_next`), `build_levelset.py` (new: Options > Map Levels replaces Add/Remove Level; New Map level checkboxes), `build_deved_levelnav.py` v3 (Level Up/Down skip). Warp Party's destination levels follow the flying order (`build_fly_levels.py` `cave_warp`, hook `0x557EB2CE`). ⚠ Vanilla Remove Level deleted the *viewed* level and renumbered the rest; it is retired. **Checklist:** `11-engine-internals.md` "Disabled levels"
+- **World Map level strip — a fixed two-row grid** (Surface · Firmament · Faery / Caverns · Depths · Abyss); a cell is a blank button unless its level exists, is switched on and has a hex explored by the seated player (the viewed level always shows); PgUp/PgDn skip blank levels. Applied 2026-10-21, `build_skylevel_ui.py` **v5** (`AoWz.exe`): the strip gets its own copy of the `TAOWTabPanel` VMT (Draw / CheckMouseDown / SetSize overridden; aowInt.dpl untouched), cave B `0x0062B600`, three form values (map bottom offset 32→47, window min/default height 216→231). Record: `11-engine-internals.md` "World Map level strip v5"
 - **Firmament ↔ Surface caves** — a cave placed on the Firmament spawns its lower mouth on Surface; the cave chain is Firmament 3 → Surface 0 → Caverns 1 → Depths 2 → Abyss 4. 🔨 APPLIED 2026-09-30, `build_maplevel4.py` **v5** (`strict5` `0x55844308`, `strict4` zeroed, no hook site changed). Record: `11-engine-internals.md` "Firmament ↔ Surface caves"
 - **Firmament structure art** — cities (and every structure) on the Firmament use their surface art: `ForceTerrainType` ×2 falls back on Grass there instead of Dirt, and `GetCityImage`'s fallback treats level 3 as surface. 🔨 APPLIED 2026-10-01, `build_firmament_structart.py` (three in-place rewrites, no cave). Record: `11-engine-internals.md` "Structure art on the Firmament"
 - **Sky/Chasm bridges obey the water rule** — one-hex span, land at both ends of an axis; no more chains. `AoWE.Land` rewritten in place so Sky and Chasm are not land (its only callers are the hexagon bridge). 🔨 APPLIED 2026-10-01, `build_bridge_skychasm.py`. Record: `09-terrain-movement.md` §7
+- **Tactical line of sight and fog of war** — combat sight is triple the strategic sight, halved in exploration sites without Night Vision; every tactical combat starts unexplored, and in world battles each player's units flood-explore everything they can reach without crossing a blocker; units explore combat sight + 8 and see their combat sight, both through a clear line; cave rock blocks sight and exploration; houses, buildings, obstacles, trees and rocks block sight, and exploration only in exploration sites; city walls and gates block one way (units inside see out, units outside do not see in); walls, gates and buildings are explored whole; unseen hexes keep their terrain and decorations (walls, trees, corpses, fire…) under the shade but show no units or effects, and take no orders; no shared vision between allies; the AI stays omniscient except when it plays your units (Space, Auto). 🔨 APPLIED 2026-10-23, `build_tactical_los.py` (`AoWTCPCK.dpl`, zone `0x441000`, 32 sites; moves may target explored hexes, routes ignore unseen units, and a move halts when its unit sees its route blocked; `--emulate` runs the caves under unicorn). Record: `11-engine-internals.md` "Tactical line of sight and fog of war"
 
 ---
 
@@ -1151,6 +1249,6 @@ file carries the specific checklist for its own rows.
 | `<root>/backups/` | **deleted 2026-09-10** (29 `.pre-*` snapshots, 52 MB, sitting inside the pristine vanilla install). `Ziggurat/backups/` is where scripts mint now, and it does not exist yet — it is created on demand. |
 | Does any `.pre-*` binary snapshot survive? | **No.** Zero `*.exe.pre-*` and zero `*.dpl.pre-*` anywhere in the tree (measured 2026-09-10). Only 10 **data-file** snapshots remain — `.ILB`, `.pfs`, `.ail` — and each exists twice, once at the root and once in `Ziggurat/`. Revert is always the script's surgical `--undo`. |
 | Zip or installer? | **Installer** — owner ruling 2026-09-11 supersedes the 2026-09-07 "plain zip" decision, which is now deleted from `12-re-toolchain.md` §13.3. Inno Setup 7, `installer/Ziggurat.iss`. A zip cannot copy the player's own vanilla data into `Ziggurat\` (that is what keeps the download 18 MB instead of 370) and cannot write the `Age of Wonders Z` registry key. |
-| Offline or web installer? | **Both**, owner ruling 2026-09-27. `/DWeb` builds `Ziggurat Web Setup.exe`, which downloads and signature-checks `Ziggurat-payload.7z` from the latest release; `installer/build_installer.py <ver>` builds all four assets. ⚠⚠ Every release must carry the `.7z` + `.7z.issig`, and the private key lives outside this tree. `12-re-toolchain.md` §13.3a. |
+| Offline or web installer? | **Both**, owner ruling 2026-09-27. `/DWeb` builds `Ziggurat Web Setup.exe`, which downloads and signature-checks `Ziggurat-payload.7z` from the latest release; `installer/build_installer.py <ver>` builds all five assets. ⚠⚠ Every release must carry the `.7z` + `.7z.issig` and, from 2026-10-22, `Ziggurat Setup <ver>.exe.issig` (`update.ps1` installs only a signed exe); the private key lives outside this tree. `12-re-toolchain.md` §13.3a. |
 | What is the version number? | **The release date**, owner ruling 2026-09-28: `build_version_stamp.py <AppVer> --apply` writes `Version: Ziggurat <AppVer>` into `Dict/ResStr` before staging; `build_installer.py` refuses a mismatch. The engine's own 20.21.78 (`SetVersion` in `TAoWEngine.Create`) stays fixed for the MP handshake. `12-re-toolchain.md` §13.5. |
 | Does the installer ship the manual? | **No** — the Pages site is the manual and the changelog. Nor its **builder**: `build_ziggurat_manual.py` + `Ziggurat Manual.html.build.json` joined `NEVER_SHIP` on 2026-09-13, payload 347 → 345. |

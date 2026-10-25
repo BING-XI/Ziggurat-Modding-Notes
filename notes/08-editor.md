@@ -2121,7 +2121,8 @@ Applied 2026-10-20 at the owner's request. Unit Properties > Rank Abilities > Ed
 Editor for Copper, Silver, Gold or a Heroic tab no longer lists a single-level ability that a lower
 tab already holds (None < Copper < Silver < Gold; all four under each Heroic tab). A levelled
 ability is listed as the level after the highest a lower tab holds, disappears at its cap, and Add
-takes the tab straight to that level. The None tab and every other user of the dialog are unchanged.
+takes the tab straight to that level (at most 20 levels a click, `MAX_STEPS`; 8 until Mirror Image,
+2026-10-21). The None tab and every other user of the dialog are unchanged.
 
 - The rule is one helper, `best_owner`: of this tab's set and each lower set that holds the
   ability, the one at the highest level, ties to the lower. Listed when vanilla's `CanExpand` is

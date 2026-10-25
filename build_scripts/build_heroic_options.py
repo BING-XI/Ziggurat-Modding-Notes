@@ -4,6 +4,11 @@ build_heroic_options.py -- heroic options for unit types whose option slots are 
 Ziggurat/Release/Unitres.pfs.  Owner's request 2026-10-21 ("fill out the empty level up choices
 for human units at the heroic level"); OPTIONS below is the design, one row per unit type.
 
+NOT APPLIED -- the owner's order (2026-10-22): draft every race here first (done 2026-10-22: all
+12 races, the shared war machines and the ships; owner-authored slots are skipped), then he
+reviews and I redraft, then --apply, then he fine-tunes in the editor.  PENDING holds the rows
+waiting for a proposed ability; the dry run lists them.
+
     python build_scripts/build_heroic_options.py              dry run (prints every option)
     python build_scripts/build_heroic_options.py --apply
     python build_scripts/build_heroic_options.py --undo [--apply]
@@ -46,45 +51,793 @@ HEROIC_TAGS = set(G.OWNER_TAGS) | {G.stat_tag(k, i) for k in range(3) for i in r
 STAT = {n: i for i, n in enumerate(G.STAT_FIELDS)}
 
 # (record id, name) -> [(option slot 1..3, [ability or (ability, level)], {stat: delta})]
+#
+# Owner's design rules (2026-10-21): thick strokes -- each option a stark, skewed direction, not a
+# spread of small bonuses.  A stat malus only beside a very strong ability (Physical Protection ->
+# fewer Moves for the armour; Flying -> less Defense and Moves); otherwise no negatives.  No
+# elemental protections: elemental immunities, Magic Protection and Physical Protection only;
+# Magic Immunity rarely; Physical Immunity never.
 OPTIONS = {
     (10, "Human Archer"): [
-        (1, ["Forestry", "Concealment"], {"Moves": 2}),
-        (2, [("Marksmanship", 5), "Night Vision"], {}),
+        (1, ["Forestry", "Concealment"], {"Moves": 4}),
+        (2, [("Marksmanship", 6), "Night Vision"], {}),
         (3, ["Monster Slaying", "Fearless"], {}),
     ],
     (4, "Human Pikeman"): [
-        (1, ["Monster Slaying"], {"Hits": 2}),
-        (2, ["Parry"], {"Defense": 2}),
+        (1, ["Monster Slaying"], {"Hits": 4}),
+        (2, ["Parry"], {"Defense": 3}),
         (3, ["Drillmaster", "Fearless"], {}),
     ],
     (3, "Human Man-at-Arms"): [
-        (1, ["Razor Plate"], {"Defense": 1}),
-        (2, ["Fearless"], {"Hits": 4}),
-        (3, ["True Seeing", "Night Vision"], {"Resistance": 1}),
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Razor Plate"], {"Defense": 2}),
+        (3, ["True Seeing", "Night Vision"], {"Resistance": 2}),
     ],
     (2, "Human Lancer"): [
-        (1, [("Vision", 4)], {"Moves": 4}),
+        (1, [("Vision", 5)], {"Moves": 6}),
         (2, ["Throw Javelin"], {"Moves": 2}),
-        (3, ["Parry"], {"Defense": 2, "Moves": -2}),
+        (3, ["Physical Protection"], {"Moves": -6}),
     ],
     (9, "Human Zweihander"): [
-        (1, [], {"Defense": 2, "Hits": 4}),
-        (2, ["Magebane", "True Seeing"], {"Resistance": 1}),
-        (3, ["Charge"], {"Attack": 2, "Defense": -2}),
+        (1, [], {"Defense": 2, "Hits": 6}),
+        (2, ["Magebane", "Magic Protection"], {}),
+        (3, ["Charge"], {"Attack": 2}),
     ],
     (1, "Human Priest"): [
-        (2, ["Holy Champion", "Death Protection"], {}),
-        (3, ["Bard's Skills"], {"Hits": 2, "Resistance": 2}),
+        (2, ["Holy Champion", "Death Immunity"], {}),
+        (3, ["Bard's Skills"], {"Resistance": 4}),
     ],
     (6, "Human Cavalier"): [
         (2, ["Holy Champion", "Healing"], {}),
-        (3, ["Monster Slaying", "Lightning Protection"], {}),
+        (3, ["Monster Slaying", "Fire Immunity"], {}),
     ],
     (8, "Human Musketeer"): [
-        (1, [("Marksmanship", 7), "Night Vision"], {}),
+        (1, [("Marksmanship", 8), "Night Vision"], {}),
         (2, [], {"Hits": 2, "Moves": 6}),
         (3, ["Shield", "Parry"], {}),
     ],
+
+    # ---- Frostlings (drafted 2026-10-22) -------------------------------------------------------
+    (36, "Frostling Archer"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, [("Marksmanship", 6), "Night Vision"], {}),
+    ],
+    (45, "Frostling Frakkaman"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Shield"], {"Defense": 2}),
+    ],
+    (39, "Frostling Swordsman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Strike"], {"Attack": 2}),
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (38, "Frostling Wolf Rider"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Cause Fear"], {"Attack": 2}),
+        (3, [("Vision", 4), "True Seeing", "Night Vision"], {}),
+    ],
+    (47, "Frostling Sherpa"): [
+        (1, ["Forestry"], {"Moves": 6}),
+        (2, ["Charge"], {"Attack": 2}),
+        (3, ["Cold Immunity"], {"Hits": 6}),
+    ],
+    (40, "Dire Penguin"): [
+        (1, ["Charge"], {"Moves": 4}),
+        (2, ["Round Attack"], {"Hits": 4}),
+        (3, ["Cold Immunity", "Regeneration"], {}),
+    ],
+    (46, "Frostling Mammoth Rider"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Charge", "Round Attack"], {}),
+        (3, ["Cause Fear"], {"Hits": 8}),
+    ],
+    (41, "Yeti"): [                                  # no ranged attack for a pure melee unit
+        (1, ["Cause Fear", "Round Attack"], {}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Rime Aura"], {}),
+    ],
+    (37, "Frostling Shaman"): [                      # option 1 = Spell Casting 2
+        (2, ["Rally"], {"Resistance": 2}),
+        (3, ["Dispel Magic", "Magic Protection"], {}),
+    ],
+    (44, "Frostling Nordic Glow"): [                 # option 1 = Spell Casting 2
+        (2, [("Mirror Image", 4)], {}),
+        (3, ["Healing", "Rally"], {}),
+    ],
+    (42, "Frost Queen"): [                           # option 1 = Spell Casting 5; 3 is PENDING
+        (2, [("Mirror Image", 6)], {}),
+    ],
+    (43, "Glacier Drake"): [                         # option 1 = Spell Casting 4
+        (2, ["Rime Aura"], {}),
+        (3, ["Magic Protection"], {"Hits": 8}),
+    ],
+    (252, "Frost Blower"): [                         # a shared war machine (ids 246-257)
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, [], {"Hits": 8, "Defense": 2}),
+        (3, ["Rime Aura"], {}),
+    ],
+
+    # ---- Lizardmen (drafted 2026-10-22) --------------------------------------------------------
+    (54, "Lizardman Archer"): [
+        (1, ["Extra Shots"], {}),
+        (2, [("Marksmanship", 6), "Night Vision"], {}),   # stand-in until Venomous Missiles
+        (3, ["Skirmisher"], {"Moves": 4}),
+    ],
+    (66, "Lizardman Javelineer"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),          # stand-in until Venomous Missiles
+        (3, ["Shield"], {"Defense": 2}),
+    ],
+    (57, "Lizardman Club-Sword"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Round Attack"], {}),
+        (3, ["Lifestealing"], {"Attack": 2}),
+    ],
+    (56, "Lizardman Frog Rider"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Entangle Strike"], {}),
+        (3, ["Regeneration"], {"Hits": 4}),
+    ],
+    (59, "Lurker"): [
+        (1, ["Assassin", "First Strike"], {}),
+        (2, ["Entangle Strike"], {"Hits": 4}),
+        (3, ["Invisibility"], {}),
+    ],
+    (60, "Giant Slug"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Shots"], {}),
+        (3, [], {"Hits": 10, "Defense": 2}),
+    ],
+    (61, "Swamp Wyvern"): [                          # no breath: a pure melee unit stays melee
+        (1, ["Round Attack"], {}),
+        (2, ["Lifestealing"], {"Hits": 6}),
+        (3, ["Magic Protection"], {"Attack": 2}),
+    ],
+    (65, "Basilisk"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Mental Discipline", "Magic Protection"], {}),
+        (3, ["Regeneration"], {"Hits": 6}),
+    ],
+    (55, "Lizardman Shaman"): [                      # option 1 = Spell Casting 2
+        (2, ["Entangle"], {}),
+        (3, ["Rally", "Mental Discipline"], {}),
+    ],
+    (58, "Salamander"): [                            # option 1 = Spell Casting 3
+        (2, ["Searing Aura"], {}),
+        (3, ["Fire Breath"], {}),
+    ],
+    (62, "Turtle Catapult"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -4}),
+        (3, [], {"Hits": 8, "Defense": 2}),
+    ],
+    (63, "Turtle Ballista"): [
+        (1, ["Extra Shots"], {}),
+        (2, [("Marksmanship", 8)], {}),
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (64, "Turtle Ram"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, [], {"Hits": 8, "Defense": 2}),
+    ],
+
+    # ---- Elves (drafted 2026-10-22) ------------------------------------------------------------
+    (72, "Elf Longbowman"): [
+        (1, ["Extra Shots"], {}),
+        (2, [("Marksmanship", 7), "Night Vision"], {}),   # stand-in until Piercing Shots
+        (3, ["Skirmisher"], {"Moves": 4}),
+    ],
+    (74, "Elven Dragoon"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Extra Shots"], {}),
+        (3, ["Physical Protection"], {"Moves": -6}),
+    ],
+    (75, "Elf Longswordsman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Strike"], {"Attack": 2}),
+        (3, ["First Strike"], {"Defense": 2}),      # stand-in until Forest Cover
+    ],
+    (81, "Elf Sergeant"): [
+        (1, ["Drillmaster", "Rally"], {}),
+        (2, ["Round Attack"], {"Hits": 4}),
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (78, "Elf Ranger"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Night Vision", "True Seeing"], {}),   # stand-in until Forest Cover
+        (3, ["Assassin", "First Strike"], {}),
+    ],
+    (76, "Fairy"): [
+        (1, [("Mirror Image", 4)], {}),
+        (2, ["Healing", "Rally"], {}),
+        (3, ["Invisibility"], {}),
+    ],
+    (77, "Nymph"): [
+        (1, ["Charm"], {}),
+        (2, [("Mirror Image", 3)], {}),
+        (3, ["Regeneration"], {"Hits": 6}),
+    ],
+    (83, "Ent"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Regeneration"], {"Hits": 8}),
+        (3, ["Extra Shots"], {}),
+    ],
+    (73, "Elf Cleric"): [                            # option 1 = Spell Casting 2
+        (2, ["Rally"], {"Resistance": 2}),           # stand-in until Hymn
+        (3, ["Mental Discipline", "Death Immunity"], {}),
+    ],
+    (79, "Unicorn"): [                               # option 1 = Spell Casting 2
+        (2, ["Holy Champion"], {"Attack": 2}),
+        (3, ["Regeneration"], {"Hits": 6}),
+    ],
+    (80, "Nature Elemental"): [                      # option 1 = Spell Casting 4
+        (2, ["Mental Discipline", "Magic Protection"], {}),
+        (3, ["Round Attack"], {"Hits": 8}),
+    ],
+    (82, "Elf Druidess"): [                          # option 1 = Spell Casting 3
+        (2, [("Mirror Image", 4)], {}),
+        (3, ["Healing", "Rally"], {}),
+    ],
+
+    # ---- Halflings (drafted 2026-10-22) --------------------------------------------------------
+    (90, "Halfling Slinger"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Lucky"], {}),
+    ],
+    (92, "Halfling Pony Rider"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["First Strike"], {"Attack": 2}),
+        (3, ["Forestry", "Mountaineering"], {"Moves": 4}),
+    ],
+    (93, "Halfling Swordsman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Lucky"], {}),
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (94, "Halfling Rogue"): [
+        (1, ["Invisibility"], {}),
+        (2, ["Extra Shots"], {}),
+        (3, ["Lucky"], {}),
+    ],
+    (95, "Halfling Eagle Rider"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Round Attack"], {"Attack": 2}),
+        (3, ["Physical Protection"], {"Moves": -6}),
+    ],
+    (96, "Satyr"): [
+        (1, ["Cause Fear"], {"Attack": 2}),
+        (2, ["Seduce"], {}),
+        (3, ["Regeneration"], {"Hits": 4}),
+    ],
+    (98, "Centaur"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Extra Shots"], {}),
+        (3, ["Charge"], {"Attack": 2}),             # stand-in until Forest Cover
+    ],
+    (99, "Halfling Cockatrice Hussar"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Round Attack"], {}),
+        (3, ["Magic Protection"], {"Hits": 6}),
+    ],
+    (91, "Halfling Cleric"): [                       # option 1 = Spell Casting 2
+        (2, ["Rally"], {"Resistance": 2}),           # stand-in until Hymn
+        (3, ["Lucky"], {}),
+    ],
+    (97, "Leprechaun"): [                            # option 1 = Spell Casting 3
+        (2, ["Lucky"], {}),
+        (3, [("Mirror Image", 4)], {}),
+    ],
+    (101, "Leshy"): [                                # option 1 = Spell Casting 5; race unconfirmed
+        (2, ["Round Attack"], {"Hits": 8}),
+        (3, [("Mirror Image", 5)], {}),
+    ],
+
+    # ---- Dwarves (drafted 2026-10-22) ----------------------------------------------------------
+    (108, "Dwarf Archer"): [
+        (1, ["Extra Shots"], {}),
+        (2, [("Marksmanship", 6), "Night Vision"], {}),   # stand-in until Piercing Shots
+        (3, ["Magic Protection"], {"Resistance": 2}),     # stand-in until Spellward
+    ],
+    (117, "Dwarf Arbalest"): [
+        (1, ["Extra Shots"], {}),
+        (2, [("Marksmanship", 6), "Night Vision"], {}),   # stand-in until Piercing Shots
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (111, "Dwarf Axeman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Strike"], {"Attack": 2}),
+        (3, ["Magic Protection"], {"Defense": 2}),  # stand-in until Spellward
+    ],
+    (112, "Dwarf Berserker"): [                      # no armour for a berserker
+        (1, ["Lifestealing"], {"Attack": 2}),
+        (2, ["Regeneration"], {"Hits": 6}),
+        (3, ["Extra Strike"], {"Damage": 2}),
+    ],
+    (110, "Dwarf Boar Rider"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Round Attack"], {"Attack": 2}),
+        (3, ["Cause Fear"], {"Hits": 4}),
+    ],
+    (116, "Dwarf Mole"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Round Attack"], {"Hits": 4}),
+        (3, ["Assassin", "First Strike"], {}),
+    ],
+    (118, "Dwarf Miner"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Strike"], {"Attack": 2}),
+        (3, ["Round Attack"], {"Hits": 4}),
+    ],
+    (113, "Giant"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Round Attack"], {"Hits": 8}),
+    ],
+    (114, "Dwarven Balloon"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, [], {"Hits": 10, "Defense": 2}),
+    ],
+    (109, "Dwarf Cleric"): [                         # option 1 = Spell Casting 2
+        (2, ["Rally"], {"Resistance": 2}),           # stand-in until Hymn
+        (3, ["Mental Discipline", "Magic Protection"], {}),   # stand-in until Spellward
+    ],
+    (115, "Dwarf First Born"): [                     # option 1 = Spell Casting 4
+        (2, ["Magic Immunity"], {}),                # stand-in until Spellward
+        (3, ["Round Attack"], {"Hits": 8}),
+    ],
+
+    # ---- Highmen (drafted 2026-10-22) ----------------------------------------------------------
+    (126, "Highman Archer"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, [("Marksmanship", 6), "Night Vision"], {}),
+    ],
+    (136, "Highman Chariot"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, [], {"Hits": 8, "Defense": 2}),
+    ],
+    (128, "Highman Paladin"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Holy Champion"], {"Attack": 2}),
+        (3, ["Mental Discipline"], {"Resistance": 4}),   # stand-in until Martyr
+    ],
+    (129, "Highman Legionary"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Round Attack"], {"Hits": 4}),         # stand-in until Martyr
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (135, "Highman Legionary"): [                    # a second record of the same name
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Round Attack"], {"Hits": 4}),         # stand-in until Martyr
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (130, "Spirit Puppet"): [
+        (1, [("Mirror Image", 3)], {}),
+        (2, ["Extra Shots"], {}),
+        (3, [], {"Hits": 6, "Resistance": 4}),
+    ],
+    (131, "Titan"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Cause Fear"], {"Hits": 8}),
+        (3, ["Mental Discipline", "Magic Protection"], {}),
+    ],
+    (132, "Valkyrie"): [
+        (1, ["Healing", "Rally"], {}),              # stand-in until Martyr
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Holy Champion"], {"Attack": 2}),
+    ],
+    (127, "Highman Chanter"): [                      # option 1 = Spell Casting 2
+        (2, ["Rally"], {"Resistance": 2}),           # stand-in until Hymn
+        (3, ["Mental Discipline", "Magic Protection"], {}),
+    ],
+    (133, "Astra"): [                                # option 1 = Spell Casting 4
+        (2, ["Rally"], {"Resistance": 2}),           # stand-in until Hymn
+        (3, ["Round Attack"], {"Hits": 8}),
+    ],
+    (134, "Highman Avenger"): [                      # option 1 = Spell Casting 3
+        (2, ["Assassin", "First Strike"], {}),
+        (3, ["Skirmisher"], {"Moves": 4}),
+    ],
+
+    # ---- Dark Elves (drafted 2026-10-22) -------------------------------------------------------
+    (144, "Dark Elf Longbowman"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Assassin", ("Marksmanship", 7)], {}),
+    ],
+    (146, "Dark Elf Mounted Sergeant"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Round Attack"], {"Attack": 2}),
+    ],
+    (147, "Dark Elf Longswordman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Strike"], {"Attack": 2}),
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (153, "Dark Elf Sergeant"): [
+        (1, ["Drillmaster", "Rally"], {}),          # stand-in until Demoralise
+        (2, ["Round Attack"], {"Hits": 4}),
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (154, "Dark Elf Spider Thane"): [
+        (1, ["First Strike"], {"Attack": 2}),       # stand-in until Ambush
+        (2, ["Entangle Strike"], {}),
+        (3, ["Poison Strike"], {"Hits": 4}),
+    ],
+    (148, "Lady of Pain"): [
+        (1, ["Charm"], {}),                          # stand-in until Demoralise
+        (2, ["Lifestealing"], {"Hits": 4}),
+        (3, [("Mirror Image", 3)], {}),
+    ],
+    (149, "Dark Elf Executioner"): [
+        (1, ["Round Attack"], {}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Assassin", "First Strike"], {}),
+    ],
+    (151, "Shadow"): [
+        (1, [("Mirror Image", 3)], {}),
+        (2, ["Round Attack"], {}),
+        (3, ["Lifestealing"], {"Attack": 2}),
+    ],
+    (145, "Dark Elf Storm Priest"): [                # option 1 = Spell Casting 2
+        (2, ["Mental Discipline", "Magic Protection"], {}),   # stand-in until Demoralise
+        (3, [("Mirror Image", 3)], {}),
+    ],
+    (150, "Spider Queen"): [                         # option 1 = Spell Casting 3
+        (2, ["Entangle Strike"], {"Hits": 4}),
+        (3, ["Smoky Haze"], {}),
+    ],
+    (152, "Incarnate"): [                            # option 1 = Spell Casting 4
+        (2, [("Mirror Image", 6)], {}),
+        (3, ["Round Attack"], {"Hits": 8}),
+    ],
+
+    # ---- Orcs (drafted 2026-10-22) -------------------------------------------------------------
+    (162, "Orc Archer"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, [("Marksmanship", 6), "Night Vision"], {}),
+    ],
+    (172, "Orc Javelineer"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Shield"], {"Defense": 2}),
+    ],
+    (165, "Orc Swordsman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Strike"], {"Attack": 2}),       # stand-in until Bloodrage
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (171, "Orc Axeman"): [
+        (1, ["Extra Strike"], {"Damage": 2}),
+        (2, ["Round Attack"], {"Hits": 4}),         # stand-in until Bloodrage
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (164, "Orc Heavy Cavalry"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Round Attack"], {"Attack": 2}),
+        (3, ["Cause Fear"], {"Hits": 6}),
+    ],
+    (166, "Orc Warlord"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Rally"], {"Attack": 2}),              # stand-in until Bloodrage
+        (3, ["Mental Discipline", "Magic Protection"], {}),
+    ],
+    (167, "Kobold"): [
+        (1, ["First Strike"], {"Attack": 2}),       # stand-in until Ambush
+        (2, ["Lucky"], {}),
+        (3, ["Skirmisher"], {"Moves": 4}),
+    ],
+    (168, "Doom Bat"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Smoky Haze"], {}),
+        (3, ["Magic Protection"], {"Hits": 4}),
+    ],
+    (169, "Orc Assassin"): [
+        (1, ["Invisibility"], {}),
+        (2, ["First Strike"], {"Attack": 2}),       # stand-in until Ambush
+        (3, ["Extra Shots"], {}),
+    ],
+    (173, "Minotaur"): [
+        (1, ["Charge"], {"Moves": 4}),
+        (2, ["Cause Fear"], {"Hits": 6}),           # stand-in until Bloodrage
+        (3, ["Physical Protection"], {"Moves": -6}),
+    ],
+    (163, "Orc Shaman"): [                           # option 1 = Spell Casting 2
+        (2, ["Rally"], {"Resistance": 2}),           # stand-in until Demoralise
+        (3, ["Regeneration"], {"Hits": 4}),         # stand-in until Bloodrage
+    ],
+    (170, "Red Dragon"): [                           # option 1 = Spell Casting 4
+        (2, ["Searing Aura"], {}),
+        (3, ["Magic Protection"], {"Hits": 8}),
+    ],
+
+    # ---- Goblins (drafted 2026-10-22) ----------------------------------------------------------
+    (180, "Goblin Darter"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, [("Marksmanship", 6), "Concealment"], {}),
+    ],
+    (182, "Goblin Wolf Rider"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Cause Fear"], {"Attack": 2}),
+        (3, ["First Strike"], {"Attack": 2}),       # stand-in until Ambush
+    ],
+    (183, "Goblin Spearman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Lucky"], {}),
+        (3, ["Monster Slaying"], {"Hits": 4}),
+    ],
+    (186, "Goblin Bomber"): [
+        (1, [], {"Hits": 4, "Moves": 6}),
+        (2, [("Mirror Image", 3)], {}),
+        (3, ["Concealment", "Forestry"], {}),
+    ],
+    (189, "Goblin Butcher"): [
+        (1, ["Regeneration"], {"Hits": 4}),         # stand-in until Devour
+        (2, ["Extra Strike"], {"Attack": 2}),
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (185, "Goblin Wyvern Rider"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, ["Smoky Haze"], {}),
+        (3, ["Magic Protection"], {"Hits": 6}),
+    ],
+    (188, "Goblin Big Beetle"): [
+        (1, ["Round Attack"], {"Attack": 2}),
+        (2, ["Magic Protection"], {"Hits": 6}),
+        (3, ["Charge"], {"Moves": 4}),
+    ],
+    (184, "Troll"): [
+        (1, ["Round Attack"], {"Hits": 6}),         # stand-in until Devour
+        (2, ["Extra Shots"], {}),
+        (3, ["Physical Protection"], {"Moves": -6}),
+    ],
+    (187, "Karagh"): [
+        (1, ["Round Attack"], {}),                  # stand-in until Devour
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Regeneration"], {"Hits": 8}),
+    ],
+    (190, "Werewolf"): [
+        (1, ["Lifestealing"], {"Attack": 2}),       # stand-in until Devour
+        (2, ["Round Attack"], {"Hits": 4}),
+        (3, ["Charge"], {"Moves": 4}),              # stand-in until Ambush
+    ],
+    (181, "Goblin Shaman"): [                        # option 1 = Spell Casting 2
+        (2, ["Smoky Haze"], {}),
+        (3, ["Rally"], {"Resistance": 2}),
+    ],
+
+    # ---- Undead (drafted 2026-10-22) -----------------------------------------------------------
+    (198, "Undead Archer"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Mental Discipline"], {"Resistance": 2}),
+    ],
+    (201, "Undead Swordsman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Extra Strike"], {"Attack": 2}),       # stand-in until Undying
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (200, "Undead Knight"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Round Attack"], {"Attack": 2}),       # stand-in until Undying
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (202, "Hell Hound"): [
+        (1, ["Searing Aura"], {}),
+        (2, ["Lifestealing"], {"Hits": 4}),         # stand-in until Devour
+        (3, ["Skirmisher"], {"Moves": 4}),
+    ],
+    (204, "Undead Bone Horror"): [
+        (1, ["Round Attack"], {"Hits": 6}),         # stand-in until Devour
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Smoky Haze"], {}),
+    ],
+    (206, "Undead Wraith"): [
+        (1, [("Mirror Image", 3)], {}),
+        (2, ["Mental Discipline", "Magic Protection"], {}),
+        (3, ["Assassin", "First Strike"], {}),
+    ],
+    (220, "Undead Mummy"): [
+        (1, ["Smoky Haze"], {}),
+        (2, ["Mental Discipline", "Magic Protection"], {}),
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (203, "Undead Reaper"): [                        # Spell Casting 5 is the cap: all three free
+        (1, ["Mental Discipline", "Magic Protection"], {}),
+        (2, ["Smoky Haze"], {}),
+        (3, [], {"Hits": 10, "Defense": 2}),        # stand-in until Undying
+    ],
+    (248, "Undead Skull Thrower"): [
+        (1, ["Extra Shots"], {}),
+        (2, [], {"Hits": 8, "Defense": 2}),
+    ],
+    (249, "Undead Bone Ram"): [
+        (1, [], {"Hits": 8, "Defense": 2}),
+        (2, [], {"Moves": 6}),
+    ],
+    (199, "Undead Doom Priest"): [                   # option 1 = Spell Casting 2
+        (2, [("Mirror Image", 3)], {}),              # stand-in until Demoralise
+        (3, ["Mental Discipline", "Magic Protection"], {}),
+    ],
+    (205, "Demon"): [                                # option 1 = Spell Casting 3
+        (2, ["Searing Aura"], {}),
+        (3, ["Round Attack"], {"Hits": 8}),
+    ],
+
+
+    # ---- Azracs (drafted 2026-10-22; Yaka Avatar, Djinn and Scorpion are owner-authored) -------
+    (18, "Azrac Bowman"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, [("Mirror Image", 3)], {}),
+    ],
+    (28, "Azrac Javelineer"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Shield"], {"Defense": 2}),
+    ],
+    (21, "Azrac Swordsman"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, ["Searing Aura"], {}),
+        (3, ["Mental Discipline"], {"Resistance": 4}),
+    ],
+    (20, "Azrac Rider"): [
+        (1, ["Skirmisher"], {"Moves": 4}),
+        (2, [("Mirror Image", 3)], {}),
+        (3, ["Physical Protection"], {"Moves": -6}),
+    ],
+    (29, "Azrac Chariot"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Skirmisher"], {"Moves": 4}),
+    ],
+    (30, "Azrac Howdah"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Cause Fear"], {"Hits": 6}),
+    ],
+    (23, "Elephant"): [
+        (1, ["Physical Protection"], {"Moves": -6}),
+        (2, ["Cause Fear"], {"Hits": 8}),
+        (3, ["Charge", "Round Attack"], {}),
+    ],
+    (26, "Sandworm"): [
+        (1, ["Round Attack"], {"Hits": 8}),         # stand-in until Devour
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, ["Cause Fear"], {"Attack": 2}),
+    ],
+    (19, "Azrac Yakamajal"): [                       # option 1 = Spell Casting 2
+        (2, ["Searing Aura"], {}),
+        (3, ["Rally"], {"Resistance": 2}),
+    ],
+    (24, "Beholder"): [                              # option 1 = Spell Casting 4
+        (2, ["Extra Shots"], {}),
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+
+    # ---- Human gap: Air Galley (Crossbowman and Charlatan are owner-authored) ------------------
+    (7, "Air Galley"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -6}),
+        (3, [], {"Hits": 10, "Defense": 2}),
+    ],
+
+    # ---- Shared war machines (drafted 2026-10-22; Frost Blower 252 sits above) ----------------
+    (246, "Bombard"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -4}),
+        (3, [], {"Hits": 8, "Defense": 2}),
+    ],
+    (247, "Flame Thrower"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, [], {"Hits": 8, "Defense": 2}),
+        (3, ["Searing Aura"], {}),
+    ],
+    (257, "Filth Spreader"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, [], {"Hits": 8, "Defense": 2}),
+        (3, ["Smoky Haze"], {}),
+    ],
+    (251, "Catapult"): [
+        (1, ["Extra Shots"], {}),
+        (2, ["Physical Protection"], {"Moves": -4}),
+        (3, [], {"Hits": 8, "Defense": 2}),
+    ],
+    (254, "Ballista"): [
+        (1, ["Extra Shots"], {}),
+        (2, [("Marksmanship", 8)], {}),
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (256, "Shredder Bolt"): [
+        (1, ["Extra Shots"], {}),
+        (2, [("Marksmanship", 8)], {}),
+        (3, ["Physical Protection"], {"Moves": -4}),
+    ],
+    (250, "Battering Ram"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, [], {"Hits": 8, "Defense": 2}),
+    ],
+    (253, "Drill"): [
+        (1, ["Physical Protection"], {"Moves": -4}),
+        (2, [], {"Hits": 8, "Defense": 2}),
+        (3, [], {"Moves": 6}),
+    ],
+    (255, "Builder"): [
+        (1, [], {"Moves": 6}),
+        (2, [], {"Hits": 10, "Defense": 2}),
+    ],
+
+    # ---- Ships (drafted 2026-10-22) ------------------------------------------------------------
+    (258, "Dragon Ship"): [
+        (1, ["Extra Shots"], {}),
+        (2, [], {"Hits": 10, "Defense": 2}),
+    ],
+    (259, "Cog"): [
+        (1, [], {"Hits": 10, "Defense": 2}),
+        (2, [], {"Moves": 6}),
+    ],
+    (260, "Galley"): [
+        (1, ["Round Attack"], {"Hits": 6}),
+        (2, [], {"Hits": 10, "Defense": 2}),
+    ],
+}
+
+# Rows the build does not write yet: an ability that is only proposed, or one this writer cannot
+# encode (Leadership has its own data class, TLeadershipAbilityData).  Same shape as OPTIONS; a
+# PENDING row replaces the OPTIONS row in its slot once its ability exists.  None of the proposed
+# abilities here is endorsed (owner, 2026-10-22: "not fully formed ideas"); the OPTIONS rows are
+# the drafts.
+PENDING = {
+    (42, "Frost Queen"): [(3, [("Leadership", 2), "Mental Discipline"], {})],
+    (54, "Lizardman Archer"): [(2, ["Venomous Missiles"], {})],
+    (66, "Lizardman Javelineer"): [(2, ["Venomous Missiles"], {})],
+    (72, "Elf Longbowman"): [(2, ["Piercing Shots"], {})],
+    (108, "Dwarf Archer"): [(2, ["Piercing Shots"], {}), (3, ["Spellward"], {})],
+    (117, "Dwarf Arbalest"): [(2, ["Piercing Shots"], {})],
+    (75, "Elf Longswordsman"): [(3, ["Forest Cover"], {})],
+    (78, "Elf Ranger"): [(2, ["Forest Cover"], {})],
+    (98, "Centaur"): [(3, ["Forest Cover"], {})],
+    (73, "Elf Cleric"): [(2, ["Hymn"], {})],
+    (91, "Halfling Cleric"): [(2, ["Hymn"], {})],
+    (109, "Dwarf Cleric"): [(2, ["Hymn"], {}), (3, ["Spellward"], {})],
+    (127, "Highman Chanter"): [(2, ["Hymn"], {})],
+    (133, "Astra"): [(2, ["Hymn"], {})],
+    (111, "Dwarf Axeman"): [(3, ["Spellward"], {})],
+    (115, "Dwarf First Born"): [(2, ["Spellward"], {})],
+    (128, "Highman Paladin"): [(3, ["Martyr"], {})],
+    (129, "Highman Legionary"): [(2, ["Martyr"], {})],
+    (135, "Highman Legionary"): [(2, ["Martyr"], {})],
+    (132, "Valkyrie"): [(1, ["Martyr"], {})],
+    (153, "Dark Elf Sergeant"): [(1, ["Demoralise"], {})],
+    (148, "Lady of Pain"): [(1, ["Demoralise"], {})],
+    (145, "Dark Elf Storm Priest"): [(2, ["Demoralise"], {})],
+    (163, "Orc Shaman"): [(2, ["Demoralise"], {}), (3, ["Bloodrage"], {})],
+    (199, "Undead Doom Priest"): [(2, ["Demoralise"], {})],
+    (154, "Dark Elf Spider Thane"): [(1, ["Ambush"], {})],
+    (167, "Kobold"): [(1, ["Ambush"], {})],
+    (169, "Orc Assassin"): [(2, ["Ambush"], {})],
+    (182, "Goblin Wolf Rider"): [(3, ["Ambush"], {})],
+    (190, "Werewolf"): [(1, ["Devour"], {}), (3, ["Ambush"], {})],
+    (204, "Undead Bone Horror"): [(1, ["Devour"], {})],
+    (203, "Undead Reaper"): [(3, ["Undying"], {})],
+    (165, "Orc Swordsman"): [(2, ["Bloodrage"], {})],
+    (171, "Orc Axeman"): [(2, ["Bloodrage"], {})],
+    (166, "Orc Warlord"): [(2, ["Bloodrage"], {})],
+    (173, "Minotaur"): [(2, ["Bloodrage"], {})],
+    (189, "Goblin Butcher"): [(1, ["Devour"], {})],
+    (184, "Troll"): [(1, ["Devour"], {})],
+    (187, "Karagh"): [(1, ["Devour"], {})],
+    (202, "Hell Hound"): [(2, ["Devour"], {})],
+    (201, "Undead Swordsman"): [(2, ["Undying"], {})],
+    (200, "Undead Knight"): [(2, ["Undying"], {})],
+    (26, "Sandworm"): [(1, ["Devour"], {})],
 }
 
 _BY_NAME = {}
@@ -250,6 +1003,11 @@ def main():
     caps, names = ability_names.levels(), ability_names.names()
     d = open(TARGET, "rb").read()
     changed, out = run(d, a.undo, caps, names)
+    for (rid, name), rows in PENDING.items():
+        for slot, abil, stats in rows:
+            print(f"[pend] {rid:4d} {name:<20} option {slot} -> "
+                  + ", ".join(x if isinstance(x, str) else "%s %d" % x for x in abil)
+                  + "".join(f"   {k} {v:+d}" for k, v in stats.items()))
     if not changed:
         print("[i   ] nothing to do -- already in the target state")
         return

@@ -19,7 +19,9 @@ any change here, re-run `python build_scripts/build_herodlg_columns.py --apply` 
 the executable. Skipping it leaves the old table live and the ability lands in
 DEFAULT_CAT (Magic) with no error anywhere. (Cost QA a finding on 2026-08-27, for Shield.)
 The EDITOR bakes the same table too: `build_deved_abcolumns.py` (its own EXTRA adds the ids the
-level-up never offers) -- re-run it with --undo then --apply, then build_zigeditor.py --apply.
+level-up never offers).  Run its --undo BEFORE editing this table (it only recognises the cave
+the current table generates; afterwards it reports FOREIGN and refuses), then edit, then --apply,
+then build_zigeditor.py --apply.
 
 ⚠ The 100 vanilla ids are exactly the Ability.pfs records carrying tag 6. Mod-added ids are
 listed here as well and need NOT carry tag 6 yet -- but an ability with no tag 6 is
@@ -32,6 +34,17 @@ so give it one in AoWDevEd. Mod-added so far:
     190 Shoot Bane Javelin -> 3 Ranged     (build_banejavelin.py, tag 6 = 4 since 2026-10-19)
     191 Hurl Flaming Skull -> 3 Ranged     (build_flamingskull.py, tag 6 = 20 since 2026-10-19)
     192 Wheeled          -> 0 Wayfaring    (build_wheeled.py, tag 6 = 4 since 2026-10-19)
+    193 Extra Shots      -> 3 Ranged       (build_extrashots.py, tag 6 = 8 since 2026-10-21)
+    194 Rally            -> 4 Magic        (build_rally.py, tag 6 = 12 since 2026-10-21)
+    196 Skirmisher       -> 0 Wayfaring    (build_skirmisher.py, tag 6 = 12 since 2026-10-21)
+    197 Searing Aura     -> 2 Melee        (build_searingaura.py, tag 6 = 12 since 2026-10-21)
+    198 Mirror Image     -> 1 Resistances  (build_mirrorimage.py, tag 6 = 4 since 2026-10-21)
+    199 Mental Discipline -> 1 Resistances (build_mentaldiscipline.py, tag 6 = 8 since 2026-10-22)
+    200 Rime Aura        -> 2 Melee        (build_rimeaura.py, tag 6 = 12 since 2026-10-22)
+    201 Lucky            -> 1 Resistances  (build_lucky.py, tag 6 = 8 since 2026-10-22)
+    202 Smoky Haze       -> 2 Melee        (build_smokyhaze.py, tag 6 = 12 since 2026-10-22)
+    203 Stone Gaze       -> 4 Magic        (build_stonegaze.py, tag 6 = 32 since 2026-10-22)
+     82 Living Flame     -> 1 Resistances  (build_livingflame.py, tag 6 = 20 since 2026-10-22)
 Still MISSING from this table (they fall into Magic today, which may or may not be wanted):
 170 Magebane, 171 Drillmaster, 172-175 the caster-cost abilities. Left alone deliberately --
 placing them is the owning feature's call, not this file's.
@@ -60,8 +73,11 @@ ABILITY_CATS = {
     144: (0, "Water Concealment"),    145: (0, "Concealment"),
     # mod-added (build_wheeled.py, id 0xC0): a road hex costs 2 movement points, not 3.
     192: (0, "Wheeled"),
+    # mod-added (build_skirmisher.py, id 0xC4): an attack costs 12 moves, once per round.
+    196: (0, "Skirmisher"),
 
-    # ---- 1 Resistances: immunities, protections (18: 17 vanilla + Reforming Flesh) -----
+    # ---- 1 Resistances: immunities, protections (22: 17 vanilla + Reforming Flesh, Mirror Image,
+    #      Mental Discipline, Lucky, Living Flame)
     6:   (1, "Magic Immunity"),       7:   (1, "Fire Immunity"),
     8:   (1, "Cold Immunity"),        9:   (1, "Lightning Immunity"),
     10:  (1, "Poison Immunity"),      11:  (1, "Death Immunity"),
@@ -74,6 +90,15 @@ ABILITY_CATS = {
     # mod-added (build_reformingflesh.py, id 0xB1): +5 HP at the start of every combat round.
     # User-placed in Resistances 2026-08-31 -- it is a survivability passive, not a strike.
     177: (1, "Reforming Flesh"),
+    # mod-added (build_mirrorimage.py, id 0xC6): levels I..XX, each image absorbs one attack.
+    198: (1, "Mirror Image"),
+    # mod-added (build_mentaldiscipline.py, id 0xC7): untouchable by the command trio, Possess and
+    # Turn Undead.
+    199: (1, "Mental Discipline"),
+    # mod-added (build_lucky.py, id 0xC9): once per battle a lethal blow leaves it at 1 HP.
+    201: (1, "Lucky"),
+    # mod-added (build_livingflame.py, id 0x52, a gap below vanilla's top): fire heals the unit.
+    82:  (1, "Living Flame"),
 
     # ---- 2 Melee (22: 20 vanilla + Shield, Razor Plate) ----------------------------------------------
     14:  (2, "Fire Strike"),          15:  (2, "Cold Strike"),
@@ -94,8 +119,14 @@ ABILITY_CATS = {
     # mod-added (build_razorplate.py, id 0xBD): melee strikes that land on the unit cut the
     # striker for d5.
     189: (2, "Razor Plate"),
+    # mod-added (build_searingaura.py, id 0xC5): adjacent enemies roll to catch fire each turn.
+    197: (2, "Searing Aura"),
+    # mod-added (build_rimeaura.py, id 0xC8): enemies within 2 hexes roll to be frozen each turn.
+    200: (2, "Rime Aura"),
+    # mod-added (build_smokyhaze.py, id 0xCA): enemies within 2 hexes roll to be poisoned each turn.
+    202: (2, "Smoky Haze"),
 
-    # ---- 3 Ranged: shots, bolts, breaths (22: 20 vanilla + Bane Javelin, Flaming Skull) -
+    # ---- 3 Ranged: shots, bolts, breaths (23: 20 vanilla + Bane Javelin, Flaming Skull, Extra Shots)
     22:  (3, "Archery"),              24:  (3, "Hurl Boulder"),
     25:  (3, "Hurl Stones"),          32:  (3, "Marksmanship"),
     44:  (3, "Fire Cannon"),          45:  (3, "Fire Musket"),
@@ -111,8 +142,10 @@ ABILITY_CATS = {
     190: (3, "Shoot Bane Javelin"),
     # mod-added (build_flamingskull.py, id 0xBF): Hurl Boulder with fire, death and wall damage.
     191: (3, "Hurl Flaming Skull"),
+    # mod-added (build_extrashots.py, id 0xC1): each missile shot may grant another.
+    193: (3, "Extra Shots"),
 
-    # ---- 4 Magic: spells, mind control, party buffs (16) --------------------------------
+    # ---- 4 Magic: spells, mind control, party buffs (18: 16 vanilla + Rally, Stone Gaze) -
     27:  (4, "Web"),                  28:  (4, "Dominate"),
     29:  (4, "Seduce"),               30:  (4, "Flame Throwing"),
     31:  (4, "Call Flames"),          35:  (4, "Invoke Death"),
@@ -121,6 +154,10 @@ ABILITY_CATS = {
     47:  (4, "Healing"),              49:  (4, "Regeneration"),
     52:  (4, "Spell Casting"),        55:  (4, "Doom Gaze"),
     106: (4, "Possess"),              148: (4, "Charm"),
+    # mod-added (build_rally.py, id 0xC2): no-target battle ability, cures panic, +30 morale.
+    194: (4, "Rally"),
+    # mod-added (build_stonegaze.py, id 0xCB): Doom Gaze's column; petrifies a facing enemy.
+    203: (4, "Stone Gaze"),
 }
 
 TABLE_SIZE = 256          # lookup indexed directly by ability id; ids >= this use DEFAULT_CAT

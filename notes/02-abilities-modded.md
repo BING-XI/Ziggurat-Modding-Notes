@@ -16,10 +16,12 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | Turn Undead damage = 0.5×level×casterRES | ✅ CONFIRMED WORKING (2026-07-16) | `build_turnundead_res.py` | AoWEPACK.dpl |
 | Turn Undead roll 2 (stun/seize gate): attacker term swapped to casterRES×(4+level)/5 | ✅ CONFIRMED WORKING (2026-09-02, as part of the evil-command test) | `build_turnundead_resroll.py` | AoWEPACK.dpl |
 | Turn Undead — Evil/Pure Evil casters seize the undead instead of damaging it, never a Leader | ✅ CONFIRMED WORKING (2026-09-02); Leader exclusion applied 2026-10-14 | `build_turnundead_evilcommand.py` | AoWEPACK.dpl |
-| Turn Undead — commanded-undead ankh overlay icon | ✅ CONFIRMED WORKING (2026-09-02) | `build_commandedundead_pfs.py` + a `ShowEx` cave in `build_turnundead_evilcommand.py` | Release/Ability.pfs + AoWEPACK.dpl |
+| Turn Undead — commanded-undead ankh overlay icon | panel and auto-resolve: ✅ CONFIRMED WORKING (2026-09-02); manual-combat battlefield: missing until `build_ankh_battlefield.py`, applied 2026-10-22 | `build_commandedundead_pfs.py` + a `ShowEx` cave in `build_turnundead_evilcommand.py` | Release/Ability.pfs + AoWEPACK.dpl |
 | Vision — nine levels, +1 sight/level | ✅ CONFIRMED WORKING (2026-08-09) | `build_vision9.py` | AoWEPACK.dpl + Release/Ability.pfs |
 | Unit enchantment / status / combat-boost re-grade (odd-value grades) | ✅ CONFIRMED WORKING (2026-08-24) | `build_buff_regrade.py` (+ `build_assassin.py` cave copies) | AoWEPACK.dpl |
 | Webbed / Entangled DEF penalty silently not applying to units | ✅ CONFIRMED WORKING (2026-07-21) | `build_debuffcache.py` | AoWEPACK.dpl |
+| High Prayer's blessing and the Blood Shrine's Bloodlust: the same stale cache | applied 2026-10-21 | `build_blessing_cache.py` | AoWEPACK.dpl |
+| Units that change sides in combat no longer form a second army on a full winner's hex | applied 2026-10-21 | `build_overflow_army.py` | AoWEPACK.dpl |
 | Panic — blocks offensive melee, retaliation preserved | ✅ CONFIRMED WORKING (2026-09-13; 6th hook `meleemove` applied 2026-09-12) | `build_panic_nomelee.py` | AoWTCPCK.dpl + AoWEPACK.dpl |
 | Panic — cleared by any damage that lands | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_panic_cleardamage.py` | AoWEPACK.dpl |
 | Command abilities — bonds revert with the commander, −1 RES per thrall, RES vs RES roll, Dispel takes thralls | 🔨 APPLIED, UNTESTED (2026-09-25) | `build_command_bond.py`, `build_command_resroll.py`, `build_command_bond_pfs.py`, rows in `build_pfs_typos.py` | AoWEPACK.dpl + Release/Ability.pfs + Release/Spells.pfs |
@@ -704,7 +706,12 @@ row will look "broken" there because manual combat never granted it to begin wit
 
 #### B9. The ankh overlay icon
 
-**Status: ✅ CONFIRMED WORKING (2026-09-02)**, both combat modes. Two halves, neither sufficient alone:
+**Status:** the panel and auto-resolve are ✅ CONFIRMED WORKING (2026-09-02). The manual-combat
+battlefield showed no ankh (owner, 2026-10-22): it never calls `ShowEx`, but draws overhead status
+icons from AoWTCPCK's own fixed list of 14 ids in `TTacticalCombatUnitHS.Show`. **Third half,
+2026-10-22:** `build_ankh_battlefield.py` copies that list with `0x89` appended to `0x0043C400`,
+repoints its two readers, and raises the loop count and bound to 15. The first two halves, neither
+sufficient alone:
 (1) an `Ability.pfs` record for `M = 0x89` (key 147, `build_commandedundead_pfs.py`, cloned from
 `0x22`'s SEFFECT.ILB sequence); (2) a block in **`TAbstractUnit.ShowEx @0x557812EC`**, which draws
 persistent status icons from a **hard-coded chain of 16 ability ids** (`0x30` Seduced, `0x96`
@@ -1168,6 +1175,24 @@ fixed**, only made non-fatal: a revert is still incomplete for those four rows.
 
 ---
 
+## Side-switched units and a full winning stack — `build_overflow_army.py` (2026-10-21)
+
+A vanilla bug, confirmed by the owner, found by Inioch (share9). `TCombatUnit.Finalize` places a unit
+that changed sides in combat (Seduce, Charm, Dominate, the evil Turn Undead seizure) or has no
+strategic party in pass 2, with `Place` flags 1, at the combat target hex — where it forms a new army,
+the defender being dead. `TArmyCombatMoveTE.ExecuteCombat` then `PlacePrivate`s the moving units
+(`[unit+0x25] & 4`) onto the same hex with no merge check. If they cannot absorb the joiners, two
+armies share the hex. Moving the winner off avoids it, but a unit without the movement points stays,
+and the second stack is wiped out the next turn.
+
+The three pass-2 `call Place` sites (`0x55724EA9`, `0x55724ED1`, `0x55724F0E`) are retargeted to
+`cave_place 0x558B3A00`. When the joiner is the attacker's, no other player's army is on the target,
+and movers + the attacker's units already there + 1 exceed `TArmy.MaxSize`, it walks the engine's
+hex spiral from ring 1 and places the unit on the first hex `CanPlace` accepts. Otherwise it calls
+vanilla `Place`. No RNG. When everything fits, nothing changes.
+
+---
+
 ## Webbed / Entangled DEF penalty — the units-cache-vs-heroes-recompute bug
 
 **Status: ✅ CONFIRMED WORKING (2026-07-21)**, user-validated in-game. Script `build_debuffcache.py`
@@ -1285,6 +1310,23 @@ jmp). New caves should be allocated from `0x55810000` onward — the ~880 KB zer
 
 Deliberately **not** touched: `TUnit.GetDefense` (carries the intentional morale no-op above) and
 `TFrozenAbility.GetDefense` (the intentional +2/+3 bonus above).
+
+### Three more sites — `build_blessing_cache.py` (2026-10-21)
+
+The census above missed three direct `Expand` calls, found through Inioch's share9 (his High Prayer
+clone showed "ability shows, stats unchanged" in game):
+
+| site | CALL VA | applies | cave VA |
+|---|---|---|---|
+| `TFastCombatHighPrayerCA.Execute` | `0x557F7E0E` | High Prayer Blessing `0x64` | `0x558B3800` |
+| `TTacticalCombatHighPrayerCA.Execute` | `0x557F7EF1` | High Prayer Blessing `0x64` | `0x558B3820` |
+| `TBloodShrine.ExecuteBloodlust` | `0x557E2CB3` | Bloodlust `0xA8` (world map) | `0x558B3840` |
+
+The unit is in EDX at all three (at the Blood Shrine it is a strategic unit from `TUnitList.GetUnit`,
+not `[EBX+0x4C]`), so the cave keeps EDX across `Expand`, calls the unit's `Changed` (VMT `+0x90`)
+unless it is nil, and returns `Expand`'s EAX. Same 6-byte `jmp` + nop hooks, own slot, surgical
+`--undo`; `build_healwrap_fixes.py` hooks the same two High Prayer functions elsewhere (`0x557F7DE3`,
+`0x557F7EC6`), no shared byte.
 
 ### Revert
 

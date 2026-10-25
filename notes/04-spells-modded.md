@@ -33,8 +33,11 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Power Leech (ex Power Leak) — steal 25% of rival node power | 🔨 APPLIED, UNTESTED (2026-09-07; income row 2026-09-09) | `build_powerleech.py`, `build_powerleech_ui.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `AoWz.exe`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs` |
 | Terror — spell ATK 16 → 12 (five immediates, all move together) | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_terror_atk12.py` | `AoWEPACK.dpl` |
 | Haste — +8 maximum movement points, no hex-cost change | applied 2026-10-19 | `build_haste_moves.py` (+ `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Release\Spells.pfs`, `Release\Ability.pfs` |
+| Global enchantments stay cancellable and dispellable after a reload | applied 2026-10-21 | `build_globalench_active.py` | `AoWEPACK.dpl` |
+| Spellbook: "cast now" or the casting page decided on the charged cost | applied 2026-10-21 | `build_spellbook_castpage.py` | `AoWz.exe` |
 | Lethargy (ex Slow) — halved movement, 50% chance of one strike fewer, AI value in both combat modes (Embrittle too); Haste 50% chance of +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25; 50% roll 2026-10-14) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Warp Party ban — per-map "Disable Warp Party" switch (cast only; research untouched) | 🔨 APPLIED 2026-09-27; editor half driven live | `build_warpban.py` (+ `build_zigeditor.py`) | `AoWEPACK.dpl`, `AoWDevEd.exe` → `AoWzEd.exe` |
+| Living Flame (ex Fire Halo) — fire heals the enchanted unit, map and battle | applied 2026-10-22, launch-proved | `build_livingflame.py`, `build_firefeed.py` v3 (+ `build_resstr_names.py`, `build_pfs_typos.py`) | `AoWEPACK.dpl`, `Dict/ResStr`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe` |
 | HP/MV casting cost (extra sacrifice on top of points) | SPECULATIVE (85% "in addition", 60% "instead of") | none | `AoWEPACK.dpl` |
 | Unit-enchantment cost/upkeep scaled by target level | SPECULATIVE (85% upkeep, 55% cast-cost) | none | `AoWEPACK.dpl` |
@@ -691,6 +694,15 @@ that already pass `CastingMana` (tactical `TSpell.CombatSpellCast`, Sites A–C)
 their cost is either ≠ raw or equal to `CastingMana`. Safe because every gate ahead of a charge
 ends in `THero.CanCastSpell`'s mana ≥ `CastingMana` test (`0x5578976E`). `--undo` is surgical.
 
+**The strategic spellbook's page follows the wallet** (2026-10-21, `build_spellbook_castpage.py`,
+`AoWz.exe`). The click handler (fn `0x430788`) chose "cast and close" or the casting page by comparing
+casting points with the raw `[spell+0x14]` at `0x430844`, so a discount that made a spell instant
+still opened the casting page, and the ×1.5 surcharge closed the book on a spell that had only
+started. `0x430833–0x430852` now calls `CanCastSpellInstantly` (thunk `0x4027A4`; EAX hero, EDX spell
+id, ECX raw cost — hook F turns it into `CastingMana` — and the handler's message local on the
+stack, `ret 4`) and takes `0x430871` or `0x4308AC` on its answer. In place, no cave; from Inioch's
+share9.
+
 **⚠ Forward hazard:** `build_caster_cost.py`'s Sites A–C are what makes instantly-cast
 summons/global enchantments visible to `build_mastery_cost.py` at all — **undoing Sites A–C
 silently re-exempts those spells from the Mastery multiplier**, reverting to the vanilla
@@ -1284,7 +1296,9 @@ automatically) — unnecessary until more than 22 new spells exist. **A worked t
 this relocation already exists**: `build_abiltypes_relocate.py` moved the analogous ability table
 (`AbilTypes`) to a new 256-entry buffer, repointing 13 references and 9 bound pairs — see
 `03-abilities-added.md`. The same recipe (relocate → repoint disp32 refs → repoint bound pairs →
-repoint export RVA) applies to `SpellTypes`, scaled to its 12 refs / 2 bound pairs.
+repoint export RVA) applies to `SpellTypes`, scaled to its 12 disp32 refs and 13 `bound` sites on 9
+`{0,130}` limit words (`0x40CDC4`, `0x415120`, `0x4180E8`, `0x41B034` ×5, `0x41E00C`, `0x41EDF0`,
+`0x423428`, `0x427628`, `0x4288A0`; census of vanilla TCPCK 2026-10-21).
 
 ### `Spells.pfs` record anatomy — why data-side edits reach further than expected
 
@@ -2044,10 +2058,14 @@ manual's `SPELL_BEHAVIOUR` has one line each.
   - ⚠ Shelved `build_raiseterrain_mtn.py` would hook `0x5579F14D`, inside the replayed span.
 - **Town Quake retune** (`build_townquake_retune.py`; his `patch_town_quake_v1.py`, our scale).
   - Walls fall: wood 80%, stone 50%, +10% underground. The same single synced `Random(10)` is
-    used, via `cave_walls 0x5584D700` (89 B) from `0x557B1E79`.
+    used, via `cave_walls 0x5584D700` (95 B) from `0x557B1E79`.
   - Underground garrisons with a wooden wall or none are hit at ATK 18 instead of 14, via
-    `cave_atk 0x5584D75C` (32 B) from `0x557B1CE7`, which reads BSS `G_ATK 0x558FAD00`.
+    `cave_atk 0x5584D760` (30 B) from `0x557B1CE7`, which reads BSS `G_ATK 0x558FAD00`.
   - "Underground" is every level except 0 and 3 (Caverns, Depths, the Abyss; re-tuned 2026-09-27 — it was `1 or 2`, which missed the Abyss). His `level != 0` would have counted the Firmament.
+  - The level is `[[city+4]+0x12]`, a byte of the city's map hex (vanilla `TCity.UpdateImages`
+    `0x557AC51F`; HSEPack `GetLhx 0x556095C1`). Until 2026-10-21 the cave read `[city+0x12]`, which
+    is not the level, so the underground rules hung on an unrelated byte. Inioch's share9 found the
+    same read in his own script; his mines read 0 on every level.
 - **Vortex rebalance** (`build_vortex_rebalance.py`; his sites A–C ×2).
   - ATK 16 → 20 (`0x557A1645`, 1 byte).
   - Ratings: Sailing 14, Swimming 10, any other non-flier 4 (was 20 / 14 / 0), via
@@ -2205,6 +2223,24 @@ address. The extra melee strike above is untouched.
 
 ---
 
+## Global enchantments after a reload (2026-10-21)
+
+`build_globalench_active.py`, from Inioch's share9 (`patch_globalench_loadactive_v1.py`). Bit 0 of
+`TGlobalEnchantment[+0x10]` is "active": `Activate 0x5577DBA0` sets it and lists the enchantment,
+`Deactivate 0x5577DC3C` clears it and unlists (or destroys) it, so at run time listed = active. But
+`ReadWrite 0x5577DA1C` streams `+8/+0x14/+0x18/+0x19/+0x1C/+0x20` and not `+0x10`, so after a load
+every listed enchantment reads inactive. Vanilla's `Deactivate` overrides for city enchantments
+(`0x557AE308`), Smoke Cloud (`0x5579C348`), the Watcher (`0x5579F7A8`) and `TWatcherHS`
+(`0x5579FE6E`) return early on a clear bit, and Remove `0x5577E077` / Dispel `0x5577DED7` reach them
+through VMT `+0x60`: cancelling or dispelling one after a reload did nothing, and its upkeep went on.
+
+The fix sets the bit for every listed member inside `UpdateActiveEnchantments 0x5577E46C`, the
+rebuild pass that `TGlobalMagicControl.ReadWrite` (`0x5577E215`) and `Update` (`0x5577E411`) run
+after the list changes: `0x5577E493` (`mov dl,[eax+0x18] / mov eax,esp`, 5 B) → `call cave_lb
+0x558B3900` (12 B). No RNG; every peer loads the same list.
+
+---
+
 ## Warp Party ban — per-map switch — 🔨 APPLIED (2026-09-27)
 
 Owner request 2026-09-27: forbid casting Warp Party in a given scenario, including a match
@@ -2232,6 +2268,27 @@ Unproven risk:
   mode-gated ids `0x18`, `0x1D`, `0x3C`, `0x37`, `0x3A`) is not established. Do not route a live
   match through the editor until it is.
 - Every player needs the patched DLL: an unpatched game re-saves without id `0x61`.
+
+## Living Flame (ex Fire Halo) — fire heals the enchanted unit (2026-10-22)
+
+Owner's design. The spell (id 40) and its enchantment `0xA3` are renamed by one `Dict/ResStr` row
+(both load `AoWE.FireAuraRStr`); descriptions `Spells.pfs` record 50 and `Ability.pfs` record 173
+(`build_pfs_typos.py`; ⚠ record 173's directory is u8, so its text may grow by at most 48 B). The
+enchantment keeps fire immunity, fire strike and lava crossing. The creatures' passive is
+`03-abilities-added.md`, "Living Flame" (`0x52`); either id heals.
+
+- **In battle** (`build_livingflame.py`): `TCombatObject.ExecuteDamageRole` / `…Ex` return 0 with
+  no roll when `~immunity & mask` is 0. The hook replays that computation; when it is 0, the mask
+  carries fire and the target holds `0xA3` or `0x52` (combat VMT `+0xA8`; walls answer 0), it heals
+  by `ExecuteDamageRole_500(damage, margin 8)`, minimum 1 — the map rule of fire-feed v2, no to-hit
+  roll — summed in 32 bits and capped at max HP before the byte setter. Then 0 damage, as vanilla.
+  A mixed hit (fire + physical) is not fully immune and harms as before. No "+N" is drawn in battle.
+- **On the map** (`build_firefeed.py` v3): the two caves that tested unit index 226/228 test the
+  item-aware ability query (`+0x148`) for `0xA3` then `0x52` — so a hero under the spell heals too.
+- ⚠ **Fire Mastery hands out `0xA3`.** Ziggurat's patched `TAbstractUnit.SetFireMasteryProtection
+  @0x55780A4C` adds `0xA3` (data `[+0xC]` = `0xFE`, which `ResetFireMasteryProtection` removes), so
+  every unit Fire Mastery covers now heals from fire too. Not yet ruled on by the owner.
+- RNG: P2 (12-re-toolchain §4.8). Unproven: the in-game heal itself in both systems.
 
 ## Open items
 

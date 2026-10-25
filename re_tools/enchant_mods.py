@@ -75,7 +75,7 @@ DISPLAY = {
     "TBloodlustAbility": "Bloodlust", "TFuryAbility": "Fury", "TCursedAbility": "Cursed",
     "TPoisonedAbility": "Poisoned", "TVertigoAbility": "Vertigo", "TWebbedAbility": "Webbed",
     "TStunnedAbility": "Stunned", "TEntangledAbility": "Entangled", "TFrozenAbility": "Frozen",
-    "TCosmeticSurgeryAbility": "Cosmetic Surgery", "TFireAuraEnchantment": "Fire Halo",
+    "TCosmeticSurgeryAbility": "Cosmetic Surgery", "TFireAuraEnchantment": "Living Flame",
     "TFreeMovementAbility": "Free Movement", "THolyChampionEnchantment": "Holy Champion",
     "TUnholyChampionEnchantment": "Unholy Champion", "TLiquidFormEnchantment": "Liquid Form",
     "TSlowEnchantmentAbility": "Lethargy", "TTurnedUndeadAbility": "Turned Undead",

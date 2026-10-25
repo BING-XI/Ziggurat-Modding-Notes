@@ -131,6 +131,12 @@ RENAMES = [
      "owner's rename 2026-09-26 with build_los_terrain.py v4 (briefly 'Gloom Aura' the same day): "
      "enemies see through the 6-hex aura at half range, and the trail still un-explores. "
      "Ability.pfs record 36 (build_pfs_typos.py) carries the card text."),
+    ("Fire Halo", "", "Living Flame",
+     "owner's rename 2026-10-22: fire now heals the unit (build_livingflame.py in battle, "
+     "build_firefeed.py v3 on the map). ONE row covers the spell name and the enchantment name on "
+     "the unit card -- TFireAura.Create @0x557E7AE0 and TFireAuraEnchantment.Create @0x557BB8A8 "
+     "both load AoWE.FireAuraRStr. The passive 0x52 carries the same name as a literal in its "
+     "registration cave. Spells.pfs record 50 / Ability.pfs record 173 (build_pfs_typos.py)."),
 ]
 
 

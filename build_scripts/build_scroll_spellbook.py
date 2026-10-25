@@ -537,10 +537,27 @@ def is_ours(region):
     return bytes(region[:len(OURS_SIG)]) == OURS_SIG
 
 
+# build_dual_sphere_exe.py (2026-10-25) turns the unit branch's `movzx edi,[ecx+0x21] /
+# cmp edi,[ebp-0xC]` (7 B at 0x0060C114) into `call cave_booktier` + 2 nop, so a dual-sphere spell
+# needs Spellcasting tier+1.  That chained cave is an accepted applied state; --undo refuses while
+# it is in place (undo build_dual_sphere_exe.py first).
+DUAL_BOOK_SITE, DUAL_BOOKTIER = 0x0060C114, 0x0062BD00
+_k = DUAL_BOOK_SITE - CAVE_VA
+assert cave[_k:_k + 7] == bytes.fromhex("0fb679213b7df4"), "unit tier compare moved"
+CHAINED = cave[:_k] + b"\xE8" + rel(DUAL_BOOK_SITE, DUAL_BOOKTIER) + b"\x90\x90" + cave[_k + 7:]
+
+
 def patches_for_exe(d):
     """[(file_offset, unpatched_bytes, patched_bytes, desc)]."""
     secs = load_secs(d)
-    out = [(va2off(secs, CAVE_VA), OLD_REGION, cave,
+    o = va2off(secs, CAVE_VA)
+    mine = cave
+    if bytes(d[o:o + len(CHAINED)]) == CHAINED:
+        if '--undo' in sys.argv:
+            sys.exit("REFUSED: build_dual_sphere_exe.py chains through cave_bookfilter; undo it first.")
+        print("cave_bookfilter carries build_dual_sphere_exe.py's chained tier test (accepted).")
+        mine = CHAINED
+    out = [(o, OLD_REGION, mine,
             f"cave @{CAVE_VA:08X} ({len(old_cave)}->{len(cave)} B)"),
            (va2off(secs, EXE_UI_GATE_VA) + 3, bytes([SCROLL_TYPE]), bytes([DEAD_TYPE]),
             f"Use-button gate @{EXE_UI_GATE_VA:08X}")]

@@ -45,6 +45,13 @@ HOW
   557CCEF0 and CHAINS: not Chasm/Sky -> jmp 5580DB20 (that feature runs untouched);
   Chasm/Sky -> jmp epilogue 557CCF39.  No byte of the other feature's caves is written.
 
+LAVA (owner, 2026-10-22, after Inioch's share9 AoWx rule): Paths of Life and Decay leave lava (9)
+alone.  The two path caves add `cmp ax, 9 / je _skip`; that fills each to its 48-byte step, so no
+cave moves.  (Path of Frost already never touches lava -- build_pathoffrost_nolava.py, 2026-09-24 --
+and Path of Sand's and Desiccate's mappings exclude it.)  These two caves are reached only from the
+Path abilities: the vanilla functions' sole callers are the outer-ring procs 0x5580DDA7/0x5580DE07.
+--apply recognises the earlier (no-lava) path caves as this script's own and rewrites them in place.
+
 Caves live at 0x55812100+ (verified zeros), clear of the transition cave at 0x55812000.
 Register-only + rel32 => position independent, which AoWEPACK requires.
 
@@ -66,6 +73,7 @@ DLL = os.path.join(GAME, "AoWEPACK.dpl")
 BACKUP = os.path.join(BACKUP_DIR, os.path.basename(DLL) + ".pre-spellguard")
 DLL_BASE = 0x55700000
 CHASM, SKY = 0x0B, 0x0E
+LAVA = 0x09                                      # Paths of Life/Decay leave it alone (2026-10-22)
 CAVE_BASE = 0x55812100
 
 # site VA -> (original 5 bytes, label)
@@ -129,8 +137,12 @@ def main():
             pop ebp
             ret 4
         """
-    def path_cave(newterrain):
-        """PathOfLife/Decay: same shape as the storms but with the level-0 gate."""
+    def path_cave(newterrain, lava=True):
+        """PathOfLife/Decay: same shape as the storms but with the level-0 gate, and (lava=True,
+        2026-10-22) lava left alone.  lava=False is the earlier cave, recognised for a re-tune."""
+        lava_src = f"""
+            cmp ax, {LAVA}
+            je _skip""" if lava else ""
         return f"""
             push ebp
             mov ebp, esp
@@ -142,7 +154,7 @@ def main():
             cmp ax, {CHASM}
             je _skip
             cmp ax, {SKY}
-            je _skip
+            je _skip{lava_src}
             cmp byte ptr [edx + 0x12], 0
             jne _skip
             mov byte ptr [ecx], {newterrain}
@@ -188,10 +200,13 @@ def main():
         ("pathlife",  0x557801A4, path_cave(1)),
         ("pathdecay", 0x557801C4, path_cave(5)),
     ]
-    caves, addr = [], CAVE_BASE
+    prior_src = {"pathlife": path_cave(1, lava=False), "pathdecay": path_cave(5, lava=False)}
+    caves, addr, prior = [], CAVE_BASE, {}
     for name, site, src in srcs:
         code = bytes(ks.asm(src, addr)[0])
         caves.append((name, site, addr, code))
+        if name in prior_src:
+            prior[name] = bytes(ks.asm(prior_src[name], addr)[0])
         addr += (len(code) + 15) & ~15               # 16-byte spacing
     total = addr - CAVE_BASE
 
@@ -213,6 +228,10 @@ def main():
         cur_cave = bytes(data[c_off:c_off+len(code)])
         if cur == redir and cur_cave == code:
             done += 1; continue
+        old = prior.get(name)
+        if cur == redir and old and cur_cave[:len(old)] == old and not cur_cave[len(old):].strip(b"\x00"):
+            writes.append((s_off, redir, c_off, code, SITES[site][1] + " (re-tune: lava)", cur))
+            continue
         if cur != orig:
             print(f"ABORT: {SITES[site][1]} site bytes unexpected: {cur.hex()} "
                   f"(want {orig.hex()})")

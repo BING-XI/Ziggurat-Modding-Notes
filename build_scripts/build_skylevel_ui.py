@@ -1,161 +1,113 @@
-"""Firmament and Abyss map levels, v4 -- the AoWz.exe (UI) half.
+r"""World Map level strip, v5 -- the AoWz.exe (UI) half of the Firmament and Abyss map levels.
 
-A 4th map level is stored at index 3 and DISPLAYED ABOVE Surface, captioned "Firmament".
-(The *terrain* on it is still called Sky -- only the level strip's caption is Firmament.)
-Since v4 (2026-09-27) a 5th is stored at index 4 and DISPLAYED BELOW Depths, captioned
-"Abyss".  Nothing about storage changes here; this script only remaps the World Map level
-strip's slot<->level correspondence in the four exe sites that assume `slot == level`.
+The World Map window's level strip (`TSWindow.ScannerTab`, a `TAOWTabPanel`) is a fixed grid of
+two rows of three cells (owner ruling 2026-09-27, built 2026-10-21):
 
-    display order (5 levels):             slot 0 1 2 3 4 -> level 3 0 1 2 4    ("Firmament | Surface | Caverns | Depths | Abyss")
-    display order (4 levels):             slot 0 1 2 3   -> level 3 0 1 2      ("Firmament | Surface | Caverns | Depths")
-    display order (3 levels or fewer):    identity                             ("Surface | Caverns | Depths")
+        Surface  | Firmament | Faery          cell 0 1 2  ->  level 0 3 5
+        Caverns  | Depths    | Abyss          cell 3 4 5  ->  level 1 2 4
 
-v4 LAYOUT (supersedes the v1-v3 table below, which is kept because the script still recognises
-those builds and re-tunes them in place): the two tables are five dwords each, so
-    0x0062A000  ORDER[5]   = 3, 0, 1, 2, 4        0x0062A030  "Firmament" record (18 B)
-    0x0062A018  RORDER[5]  = 1, 2, 3, 0, 4        0x0062A048  "Abyss" record (14 B)
-    0x0062A060  code: cave_caps 235 B (adds "Abyss" when count > 4), cave_tabsel, cave_setidx,
-                cave_lvlup, cave_lvldn -- 580 of 1024 B.  Every `cmp edx,3 / ja` table guard is
-                `cmp edx,4`.  The five hook sites are unchanged; only their rel32s moved.
-
-The DLL half (level count, generation, serialisation, terrain) lives in
-`build_maplevel4.py` and is NOT touched here.  This script writes only to the canonical mod
-exes `Ziggurat/AoWz.exe` (names from `zigexe.py`).
-⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
-
-Level count is read live, so a 3-level map keeps exactly three tabs and vanilla behaviour:
-
-    &TheMap  = [0x0045DF7C]            (an import slot holding the address of AoWEPACK's global)
-    TheMap   = [[0x0045DF7C]]
-    count    = [[TheMap + 0x10] + 0x14]      (+0x10 = TMapContainer, +0x14 = level count)
-
-Inside the caption handler `ebx = [0x0045A1C0]` (&TSWindow) and `esi = [0x0045DF7C]`
-(&TheMap) are already loaded by the function prologue at 0x00454D2C, so cave_caps reuses
-them exactly as the vanilla block does.
+A cell is BLANK (the empty tab button, no caption, not clickable) unless its level exists on the
+map, is not switched off in the map's level mask ([TAoWHSMap+0x41C], build_maplevel4.py v4) and has at least one hex
+explored by the seated player.  The level being viewed is always drawn.  Faery (level 5) does not
+exist yet, so its cell is always blank.  PgUp / PgDn walk Firmament 3 / Surface 0 / Caverns 1 /
+Depths 2 / Abyss 4 and skip blank levels.  Storage is untouched: this script only maps cells and
+keys onto level indices.  The DLL half is build_maplevel4.py.
 
 --------------------------------------------------------------------------------------
-THE FOUR SITES  (all addresses AoWz.exe, image base 0x400000, byte-verified 2026-09-06;
-                 same build as vanilla AoW.exe, so the addresses are unchanged by the rename)
+THE FIVE HOOK SITES  (AoWz.exe, image base 0x400000; same build as vanilla AoW.exe)
 --------------------------------------------------------------------------------------
-
-1. Caption fill -- inside the function at 0x00454D2C (the nearest published export is
-   `TGeneral.ManagerDebugMessage @0x004548F4`, which is a different, smaller routine).
-
-   hook 0x00454FED, 11 bytes:
-       before  8b 80 14 01 00 00   mov  eax, [eax+0x114]     ; ScannerTab.Strings
-               8b 10               mov  edx, [eax]
-               ff 52 40            call [edx+0x40]           ; TStrings.Clear
-       after   e9 <rel32 cave_caps>  90 90 90 90 90 90
-   Cave does Clear, then Add("Firmament") when count > 3, then the three vanilla Adds, then
-   `jmp 0x0045508F` (the vanilla `SetIndex(0)` tail, left untouched).
-
-   ⚠ FAILED APPROACH -- do NOT hook at 0x00454FF8.  That is the natural-looking site (the
-   start of the first Add block) but a 5-byte E9 there covers 0x00454FFC, which carries a
-   type-3 base relocation (the `0x45a0c0` dword of `mov eax,[0x45a0c0]`).  A rebased load
-   would apply the fixup on top of the jump.  0x00454FED..0x00454FF7 carries no relocation
-   at all -- verified against the .reloc directory, which holds exactly one entry in
-   0x00454FE0..0x00455000, at 0x00454FFC.
-
-   The dead vanilla block 0x00454FF8..0x0045508E is left in place so its three relocations (RVA 0x54FFC, 0x55032, 0x55068)
-   stay valid.  Verified unreachable: zero external branches into it, zero absolute dwords
-   anywhere in the image pointing into it.
-
-2. `TSWindow.ScannerTabChange @0x00451BC8` -- the three-way slot dispatch.
-   On entry to the hook eax = TSWindow, edx = slot (from [[TSWindow+0x4C]+0x118]).
-
-   hook 0x00451BDC, 5 bytes:
-       before  83 ea 01            sub  edx, 1
-               72 07               jb   0x00451BE8
-       after   e9 <rel32 cave_tabsel>
-   Cave bounds-checks the slot against the live level count, maps slot->level, invalidates
-   the scanner cache (`[Scanner+0x17C] = -1`, Scanner = [TSWindow+0x5C]), then calls
-   `THSMap.ViewLevel` (VMT +0xB8) with edx = level, and `jmp 0x00451C4C` (the function's
-   `ret`).  All three vanilla arms (0x00451BE8/0x00451C08/0x00451C2B) become dead code; they
-   are left in place.
-
-   ⚠ THE WHITELIST IS LOAD-BEARING (v1 defect, fixed 2026-09-06).  Vanilla's
-   `sub edx,1 / jb / je / dec edx / je / jmp 0x451C4C` is not just a dispatch, it is a
-   whitelist: *any* index other than 0/1/2 falls through to the bare `ret`, and the cache
-   invalidation lives INSIDE each accepted arm, so a rejected index does nothing whatever.
-   v1 of this cave dropped that -- after the optional ORDER[] lookup it called ViewLevel
-   unconditionally.  `THSMap.ViewLevel @0x5560C1B0` rejects `edx >= count` but has NO
-   negative check, and a `TAOWTabPanel` with nothing selected reports index -1, so with
-   count > 3 the `cmp edx,3 / ja` guard sent -1 straight through to the view-level event.
-   v2 does `test edx,edx / js Tret` and `cmp edx,ecx / jge Tret` (ecx = count, already
-   loaded for the `>3` test) before anything else, and moves the invalidation after the
-   bounds check so an unreachable slot is a no-op exactly as in vanilla.
-
-3. `TMWindow.MapViewerSceneChanged @0x00450F8C` -- pressed-tab sync.
-   0x00451145 `e8 9a 20 fb ff` = `call 0x004031E4` (aowInt `TAOWTabPanel.SetIndex`),
-   eax = ScannerTab, edx = viewer level.  Only the rel32 is retargeted to cave_setidx,
-   which maps level->slot and tail-jumps to 0x004031E4.  4 bytes changed, nothing displaced.
-
-4. `TMWindow.MapWindowKeyDown @0x004512E4` -- PgUp / PgDn.
-   eax = [[0x0045B298]+0x48] (THSMapViewer), edx = [viewer+0x38] (current level).
-       0x004514BF  4a  dec edx  -> 90        + call rel32 at 0x004514C1 -> cave_lvlup
-       0x004514D5  42  inc edx  -> 90        + call rel32 at 0x004514D7 -> cave_lvldn
-   Both call `HSEngine.THSMapViewer.SetSceneL @0x00401E54`.  Each cave converts level->slot,
-   steps the SLOT by -1 / +1 clamped to [0, count-1], converts back to a level and tail-jumps
-   to SetSceneL with eax (the viewer) untouched.  The clamp also removes vanilla's
-   `SetSceneL(-1)` / `SetSceneL(count)` underflow/overflow at the ends of the strip.
+1. Caption fill, in the function at 0x00454D2C (ebx = &TSWindow, esi = &TheMap, ebp = its frame).
+   hook 0x00454FED, 11 B  `8b8014010000 8b10 ff5240` (Strings.Clear) -> `E9 cave_caps` + 6x90.
+   cave_caps gives the strip its own VMT (below), flags it for re-alignment ([tab+0x2D] = 0;
+   vanilla's tail clears +0x2E, so the next Setup runs SetSize -> ReAlign -> SetSize), fills the
+   six captions in cell order (Surface/Caverns/Depths through the vanilla LoadResString ->
+   TranslateRStr -> Add sequence, Firmament/Faery/Abyss as cave const strings), drops the
+   explored-levels cache, and `jmp 0x0045508F` (vanilla's SetIndex(0) tail).
+   /!\ Do not hook 0x00454FF8 instead: a 5-byte E9 there covers the .reloc entry at 0x00454FFC.
+   The dead vanilla block 0x00454FF8..0x0045508E keeps its three relocations; nothing reaches it.
+2. `TSWindow.ScannerTabChange @0x00451BC8`, hook 0x00451BDC, 5 B `83ea01 7207` -> `E9 cave_tabsel`.
+   edx = cell.  Cell outside 0..5, or its level >= the level count -> `jmp 0x00451C4C` (ret)
+   untouched; else [Scanner+0x17C] = -1 and THSMap.ViewLevel (VMT +0xB8).  The rejection is
+   load-bearing: vanilla's three-arm dispatch was also a whitelist, and ViewLevel has no lower
+   bound (a tab panel with nothing selected reports -1).
+3. `TMWindow.MapViewerSceneChanged`, call rel32 at 0x00451145 (-> aowInt TAOWTabPanel.SetIndex
+   thunk 0x004031E4) retargeted to cave_setidx: level -> cell (-1 above level 7).
+4./5. `MapWindowKeyDown` PgUp 0x004514BF `4a`+call / PgDn 0x004514D5 `42`+call (call SetSceneL
+   0x00401E54): `dec`/`inc` become `90`, the calls go to cave_lvlup / cave_lvldn, which step along
+   CHAIN to the next drawn level (or stay) and tail-jump to SetSceneL.
 
 --------------------------------------------------------------------------------------
-CAVE
+THE GRID -- a per-instance VMT, nothing in aowInt.dpl changes
 --------------------------------------------------------------------------------------
-0x0062A000..0x0062A3FF, in section `.hcol` (RVA 0x212000, file 0x20C200, characteristics
-0xE0000060 = read/write/execute).  File offset of the cave is 0x00224200.  Verified all
-zero before install and inside the section's 0x8E84-byte zero run starting at 0x0062417C.
-No other build script references any address in 0x0062xxxx below 0x00624250.
+TAOWTabPanel (aowInt.dpl, VMT 0x59817714 at the preferred base, InstanceSize 0x130) lays tabs out
+in one row; it is shared by six controls, so the class is left alone.  do_swap copies the
+instance's VMT (-0x40..+0xA4, 0xE4 B; +0xA4 is the class-name string) into cave B, makes the
+copy a subclass of the original (vmtSelfPtr -> copy; vmtParent -> G_PCELL -> original VMT, the
+D3 indirect parent cell) and points three slots at cave code:
+    +0x30 SetSize        original, then [tab+0x80] *= 2: the control's rect covers two rows, so
+                         ReAlign (ahBottom: y = parentH - BottomOffset - height) grows it upward
+                         and the vanilla MouseUp/MouseMove bounds checks cover both rows.
+    +0x80 Draw           calls the original Draw once per cell with x +0x84, y +0x88,
+                         width +0x7C, height +0x80, captions +0x114 and pressed index +0x118
+                         set to that cell, then restores them.  A blank cell is drawn unpressed
+                         with the font +0x8C nil: Draw tests the font and skips the caption, so
+                         the cell is the empty button (owner 2026-10-21: no bare background).  The captions are a fake
+                         one-entry TStrings (FAKE: VMT +0x14 Count = 1, +0x0C Get forwards to the
+                         real list's Get with the cell index), so the original's own geometry,
+                         images, fonts and pressed state draw each cell.  The last column takes
+                         the remainder of width div 3.
+    +0x84 CheckMouseDown inherited (TAOWControl, through the parent VMT's +0x84), the vanilla
+                         bounds test, cell = row*3 + col from both coordinates, SetIndex only
+                         for a drawn cell, then the OnMouseDown event (ScannerTabMouseDown) as
+                         vanilla.  A click on a blank cell is consumed and does nothing.
+The original methods are reached through G_ORIG, read from the live instance, so aowInt's load
+address does not matter.  The swap is guarded on InstanceSize 0x130 and the class name.  All
+three methods are only ever reached through the VMT (byte scan of aowInt.dpl and AoWz.exe:
+no direct call or absolute reference outside the VMT).
 
-    0x0062A000  ORDER[4]   slot  -> level   = 3, 0, 1, 2
-    0x0062A010  RORDER[4]  level -> slot    = 1, 2, 3, 0
-    0x0062A020  Delphi 3 const AnsiString caption: ff ff ff ff (refcount -1),
-                <length> 00 00 00, then the NUL-terminated chars at 0x0062A028.
-                v3 = "Firmament" (len 9, record 0x20..0x31); v1/v2 = "Sky" (len 3, 0x20..0x2B)
-    CODE_BASE   code blocks, packed in order and dword-aligned.  v3's longer caption record
-                pushed CODE_BASE from 0x0062A030 to 0x0062A040:
-
-                       v3 (2026-09-06)      v2 (superseded)      v1 (superseded)
-        cave_caps      0x0062A040  199 B    0x0062A030  199 B    0x0062A030  199 B
-        cave_tabsel    0x0062A108   72 B    0x0062A0F8   72 B    0x0062A0F8   64 B
-        cave_setidx    0x0062A150   36 B    0x0062A140   36 B    0x0062A138   36 B
-        cave_lvlup     0x0062A174   65 B    0x0062A164   65 B    0x0062A15C   65 B
-        cave_lvldn     0x0062A1B8   72 B    0x0062A1A8   72 B    0x0062A1A0   72 B
-        end            0x0062A200           0x0062A1F0           0x0062A1E8
-        used           512 of 1024 B        496 of 1024 B        488 of 1024 B
-
-    The blocks are assembled sequentially, so a layout shift moves every one of the five
-    replacement byte-runs with it (the E9 at 0x00454FED and 0x00451BDC, and the three
-    retargeted rel32s at 0x00451145, 0x004514C0 and 0x004514D6).  All five are derived from
-    the assembled layout, so an --apply over an installed v1 or v2 rewrites them along with
-    the cave.  The script keeps the v1 and v2 layouts only in order to RECOGNISE those
-    states (reported as "needs re-tune", never as "patched") and to accept them for
-    verify-before-write.  Re-tuning is an in-place cave rewrite; no backup is touched and
-    there is no revert-and-reapply step.
-
-Refcount -1 makes the literal a Delphi constant string: `TStrings.Add` assigns it through
-_LStrAsg, which skips the increment for a negative refcount, and _LStrClr skips the
-decrement, so it is never written and never freed.  Same idiom as build_vision9.py.
-There is no translated resource id for the 4th level (the exe's STRINGTABLE block
-65524/65525/65526 is full), hence an English cave literal.
-
-Exe caves may use absolute addresses -- the exe has the fixed base 0x400000.
-The cave contains no resolved filesystem path and no username.
-
-RNG: this feature makes no random draw of any kind.
+Drawn levels (vis_levels): exist ((1 << count) - 1), minus the mask byte [map+0x41C], AND
+(explored by the seated player OR the viewer's level [[[0x0045B298]+0x48]+0x38]).  Explored = any
+field of the level with bit (p-1) of [field+0x18] set (TAoWMapField.GetExplored), p = byte
+[map+0xA5]; fields at [level+0x2C], stride [level+0x28], count = level VMT +0x54 (the
+TAoWMapLevel.ResetFog walk); level = [[[container+8]+4]+L*4] (TMapContainer.GetMapLevel).  No
+seated player (p = 0 or > 32, e.g. 0xFF) -> no exploration filter.  Explored levels are cached in
+G_SEEN, keyed on (TheMap, p) and dropped by cave_caps; exploration is monotone, so only unexplored
+levels are rescanned on a draw.
 
 --------------------------------------------------------------------------------------
+FORM DATA (TSWindow DFM, RCDATA at file 0x001C4F48; each value rewritten in place, same type)
+--------------------------------------------------------------------------------------
+    Scanner.Alignment.BottomOffset   file 0x1C61F4  vaInt8   32 -> 47   (map ends above row 1)
+    ScannerWindow.MinHeight          file 0x1C527A  vaInt16 216 -> 231  (minimum map size kept)
+    ScannerWindow.WinHeight          file 0x1C52B8  vaInt16 216 -> 231
+A row is 15 px: the strip's design WinTop is 182 in a 216 px window with BottomOffset 19.
+
+--------------------------------------------------------------------------------------
+CAVES (`.hcol`, RVA 0x212000, file 0x20C200, read/write/execute; absolute addressing, fixed base)
+--------------------------------------------------------------------------------------
+    A 0x0062A000..0x0062A3FF  tables CELL2LVL[6], LVL2CELL[8], CHAIN[5]; const AnsiStrings
+                              (refcount -1, never freed) Firmament / Faery / Abyss; cave_caps,
+                              cave_tabsel, cave_setidx, cave_lvlup, cave_lvldn.
+    B 0x0062B600..0x0062BBFF  globals G_ORIG / G_PCELL / G_MAP / G_PLR / G_SEEN, FAKE + its VMT,
+                              the VMT copy (written at run time; zero on disk), the class-name
+                              guard, then fs_get, fs_count, vis_levels, cell_mask, my_setsize,
+                              my_draw, my_mdown, do_swap.
+Every cross-block reference is backward, so each block assembles in one pass.
+
+v4 (one row, Firmament | Surface | Caverns | Depths | Abyss) and the first v5 build (blank cells
+left undrawn, 2026-10-21) are recognised by their cave hashes and are rewritten in place by --apply.
+
+RNG: none.  No resolved filesystem path, no username.
+
 USAGE
---------------------------------------------------------------------------------------
-    python build_skylevel_ui.py            dry run: verify the current state of the exe
-    python build_skylevel_ui.py --apply    patch the exe (backup to <game>\\backups\\)
-    python build_skylevel_ui.py --undo     surgical restore: the 11 displaced bytes, the
-                                           5 displaced bytes, 4a / 42, the three rel32s,
-                                           and zero the 0x400-byte cave.  Touches no backup.
-    python build_skylevel_ui.py --dis      capstone-disassemble every cave block
+    python build_skylevel_ui.py            dry run: report the state of AoWz.exe
+    python build_skylevel_ui.py --apply    install v5 (from unpatched or v4)
+    python build_skylevel_ui.py --undo     surgical: the five sites, the three form values, both
+                                           caves zeroed.  Touches no backup.
+    python build_skylevel_ui.py --dis      disassemble the caves
 """
 
-import os, sys, struct, shutil
+import os, sys, struct, hashlib
 
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -169,8 +121,6 @@ import zigexe                                      # mod binary names
 
 TARGETS = [os.path.join(GAME, n) for n in zigexe.EXES]   # AoWz.exe
 
-BACKUP_DIR = os.path.join(GAME, "backups")
-
 
 def require(cond, msg):
     if not cond:
@@ -178,7 +128,8 @@ def require(cond, msg):
 
 
 # ---------------------------------------------------------------- engine addresses
-MAPSLOT   = 0x0045DF7C     # holds &TheMap (AoWEPACK global, reached via an import slot)
+MAPSLOT   = 0x0045DF7C     # holds &TheMap (AoWEPACK global, via an import slot)
+VIEWSLOT  = 0x0045B298     # global: [ +0x48] = THSMapViewer, [viewer+0x38] = viewed level
 RS_SURF   = 0x0045A0C0     # PResStringRec slots for Surface / Caverns / Depths
 RS_CAV    = 0x0045A288
 RS_DEP    = 0x0045A3F8
@@ -190,67 +141,70 @@ SETSCENEL = 0x00401E54     # HSEPack THSMapViewer.SetSceneL(eax = self, edx = le
 RET_CAPS  = 0x0045508F     # resume: the vanilla SetIndex(0) tail
 RET_TAB   = 0x00451C4C     # resume: ScannerTabChange's ret
 
+MASK_OFF  = 0x41C          # TAoWHSMap: disabled-levels mask byte (build_maplevel4.py v4)
+SEAT_OFF  = 0xA5           # TAoWHSMap: seated player
+
+# TAOWTabPanel instance / VMT
+T_X, T_Y, T_W, T_H = 0x84, 0x88, 0x7C, 0x80
+T_PARENT, T_STR, T_SEL, T_HIT = 0x10C, 0x114, 0x118, 0x78
+T_ALIGNED = 0x2D
+T_FONT = 0x8C                              # AOWFont; Draw skips the caption when nil
+V_SETSIZE, V_DRAW, V_MDOWN = 0x30, 0x80, 0x84
+VMT_LO, VMT_HI = -0x40, 0xA4               # copied span of the class VMT
+TABPANEL_INSTSIZE = 0x130
+
+# ---------------------------------------------------------------- the grid
+CELL2LVL = (0, 3, 5, 1, 2, 4)             # Surface Firmament Faery / Caverns Depths Abyss
+LVL2CELL = tuple(CELL2LVL.index(l) if l in CELL2LVL else -1 for l in range(8))
+CHAIN    = (3, 0, 1, 2, 4)                # PgUp <- -> PgDn
+CAPTIONS = {1: b"Firmament", 2: b"Faery", 5: b"Abyss"}   # cells with a cave literal
+
 # ---------------------------------------------------------------- hook sites
-H_CAPS    = 0x00454FED
-H_CAPS_N  = 11
+H_CAPS, H_CAPS_N = 0x00454FED, 11
 ORIG_CAPS = bytes.fromhex("8b8014010000" "8b10" "ff5240")
+H_TAB, H_TAB_N = 0x00451BDC, 5
+ORIG_TAB = bytes.fromhex("83ea01" "7207")
+C_SETIDX = 0x00451145
+C_UP_B, C_UP_C = 0x004514BF, 0x004514C0
+C_DN_B, C_DN_C = 0x004514D5, 0x004514D6
 
-H_TAB     = 0x00451BDC
-H_TAB_N   = 5
-ORIG_TAB  = bytes.fromhex("83ea01" "7207")
+# ---------------------------------------------------------------- form data (file offsets)
+DFM_SITES = [  # (label, file offset of the value-type byte, original bytes, new bytes)
+    ("Scanner.BottomOffset 32->47",  0x1C61F3, bytes.fromhex("0220"),   bytes.fromhex("022f")),
+    ("ScannerWindow.MinHeight 216->231", 0x1C5279, bytes.fromhex("03d800"), bytes.fromhex("03e700")),
+    ("ScannerWindow.WinHeight 216->231", 0x1C52B7, bytes.fromhex("03d800"), bytes.fromhex("03e700")),
+]
+DFM_NAMES = {0x1C61F3: b"\x16Alignment.BottomOffset", 0x1C5279: b"\x09MinHeight",
+             0x1C52B7: b"\x09WinHeight"}
 
-C_SETIDX  = 0x00451145     # call rel32 -> SETIDX
-C_UP_B    = 0x004514BF     # `dec edx` byte
-C_UP_C    = 0x004514C0     # call rel32 -> SETSCENEL
-C_DN_B    = 0x004514D5     # `inc edx` byte
-C_DN_C    = 0x004514D6     # call rel32 -> SETSCENEL
+# ---------------------------------------------------------------- cave A layout
+CAVE_A, CAVE_A_N = 0x0062A000, 0x400
+A_CELL2LVL = CAVE_A + 0x00              # 6 dwords
+A_LVL2CELL = CAVE_A + 0x18              # 8 dwords
+A_CHAIN    = CAVE_A + 0x38              # 5 dwords
+A_STR      = {1: CAVE_A + 0x4C, 2: CAVE_A + 0x60, 5: CAVE_A + 0x70}   # caption records
+A_CODE     = CAVE_A + 0x80
 
-# ---------------------------------------------------------------- cave layout
-CAVE       = 0x0062A000
-CAVE_BLOCK = 0x400
+# ---------------------------------------------------------------- cave B layout
+CAVE_B, CAVE_B_N = 0x0062B600, 0x600
+G_ORIG   = CAVE_B + 0x00                # original TAOWTabPanel VMT (run time)
+G_PCELL  = CAVE_B + 0x04                # parent cell of the copy -> original VMT (run time)
+G_MAP    = CAVE_B + 0x08                # explored-levels cache key: TheMap
+G_PLR    = CAVE_B + 0x0C                #                            seated player
+G_SEEN   = CAVE_B + 0x10                # explored-levels bitmask
+FAKE     = CAVE_B + 0x14                # +0 VMT (static), +4 real TStrings, +8 cell
+FAKE_VMT = CAVE_B + 0x20                # 0x18 B: +0x0C Get, +0x14 Count
+CLONE    = CAVE_B + 0x40                # VMT copy, 0xE4 B (run time)
+CLONE_VMT = CLONE - VMT_LO
+NAME     = CAVE_B + 0x130               # "TAOWTabPanel" -- the swap guard
+B_CODE   = CAVE_B + 0x140
 
-
-class Layout:
-    """One build's data layout.  `caps` = [(record VA, text)]: the Firmament caption, then
-    (v4) the Abyss caption.  `maxidx` = the highest index the ORDER/RORDER tables hold."""
-    def __init__(self, name, order, rorder, order_vals, rorder_vals, caps, code_base,
-                 tabsel="v2"):
-        self.name = name
-        self.order, self.rorder = order, rorder
-        self.order_vals, self.rorder_vals = order_vals, rorder_vals
-        self.caps = caps
-        self.code_base = code_base
-        self.maxidx = len(order_vals) - 1
-        self.tabsel = tabsel
-        require(len(order_vals) == len(rorder_vals), "%s: table lengths differ" % name)
-        require(order + 4 * len(order_vals) <= rorder, "%s: ORDER overruns RORDER" % name)
-        end = rorder + 4 * len(rorder_vals)
-        for rec, text in caps:
-            require(rec >= end, "%s: caption record 0x%08X overlaps the data before it"
-                    % (name, rec))
-            end = rec + 8 + len(text) + 1
-        require(end <= code_base, "%s: caption records overrun the code base" % name)
-
-    def cap_ptr(self, i):
-        return self.caps[i][0] + 8          # the Delphi string pointer: the first char
-
-
-# v4 (2026-09-27): five levels, "Abyss" after Depths.  Tables grow to 5 dwords, so RORDER and
-# both captions move and the code base moves 0x0062A040 -> 0x0062A060.
-L4 = Layout("v4", CAVE + 0x00, CAVE + 0x18, (3, 0, 1, 2, 4), (1, 2, 3, 0, 4),
-            [(CAVE + 0x30, b"Firmament"), (CAVE + 0x48, b"Abyss")], CAVE + 0x60)
-# superseded -- kept ONLY to recognise an installed build and re-tune it in place
-L3 = Layout("v3", CAVE + 0x00, CAVE + 0x10, (3, 0, 1, 2), (1, 2, 3, 0),
-            [(CAVE + 0x20, b"Firmament")], CAVE + 0x40)
-L2 = Layout("v2", CAVE + 0x00, CAVE + 0x10, (3, 0, 1, 2), (1, 2, 3, 0),
-            [(CAVE + 0x20, b"Sky")], CAVE + 0x30)
-L1 = Layout("v1", CAVE + 0x00, CAVE + 0x10, (3, 0, 1, 2), (1, 2, 3, 0),
-            [(CAVE + 0x20, b"Sky")], CAVE + 0x30, tabsel="v1")
-
-# the current build's tables, for reporting
-ORDER, RORDER = L4.order, L4.rorder
-ORDER_VALS, RORDER_VALS = L4.order_vals, L4.rorder_vals
-CAPTIONS = [t for _r, t in L4.caps]
+V4_CAVE_SHA = "638a5984c455600b09cc2e91a76b94acfe5e9df7433341f47470f64535fa7171"
+V5A_CAVE_SHA = ("604c50daf249778f6a4dd46af17dc559a7e45c16197768fc28a129a01e1eea28",   # cave A
+                "a3952d353ff307a883f35f1dded6f0f2ac63068024f3bfe6425afbf3a0c0724d")   # cave B
+V4_SITES = [bytes.fromhex("e96e501d00909090909090"), bytes.fromhex("e96b851d00"),
+            bytes.fromhex("e84a901d00"), bytes.fromhex("90e8f38c1d00"),
+            bytes.fromhex("90e8218d1d00")]
 
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
 cs = Cs(CS_ARCH_X86, CS_MODE_32)
@@ -261,7 +215,6 @@ def rel32(src_end, dst):
 
 
 def call_rel(at, dst):
-    """Bytes of `call dst` placed at `at`."""
     return b"\xE8" + rel32(at + 5, dst)
 
 
@@ -269,17 +222,424 @@ def jmp_rel(at, dst):
     return b"\xE9" + rel32(at + 5, dst)
 
 
-# ---------------------------------------------------------------- cave source
-def _tab_read_count(reg):
-    """Assembly that leaves the level count in `reg`."""
-    return f"""
-        mov  {reg}, dword ptr [{MAPSLOT:#x}]
-        mov  {reg}, dword ptr [{reg}]
-        mov  {reg}, dword ptr [{reg}+0x10]
-        mov  {reg}, dword ptr [{reg}+0x14]
+# ---------------------------------------------------------------- cave B source
+def src_fs_get():
+    return """
+        /* fake TStrings.Get: eax = FAKE, ecx = @result -> real.Get(cell, @result) */
+        push ebx
+        mov  ebx, dword ptr [eax+4]
+        mov  edx, dword ptr [eax+8]
+        mov  eax, ebx
+        mov  ebx, dword ptr [ebx]
+        call dword ptr [ebx+0xC]
+        pop  ebx
+        ret
     """
 
 
+def src_fs_count():
+    return """
+        mov  eax, 1
+        ret
+    """
+
+
+def src_vis_levels():
+    return f"""
+        /* eax = bitmask of the levels to draw; keeps ebx esi edi ebp */
+        push ebx
+        push esi
+        push edi
+        push ebp
+        xor  ebp, ebp
+        mov  ebx, dword ptr [{MAPSLOT:#x}]
+        mov  ebx, dword ptr [ebx]
+        test ebx, ebx
+        jz   Vdone
+        mov  esi, dword ptr [ebx+0x10]               /* TMapContainer */
+        test esi, esi
+        jz   Vdone
+        mov  ecx, dword ptr [esi+0x14]               /* level count */
+        cmp  ecx, 8
+        jbe  Vc
+        mov  ecx, 8
+    Vc:
+        mov  ebp, 1
+        shl  ebp, cl
+        dec  ebp                                     /* levels that exist */
+        movzx eax, byte ptr [ebx+{MASK_OFF:#x}]
+        not  eax
+        and  ebp, eax                                /* ... and are switched on */
+        movzx edi, byte ptr [ebx+{SEAT_OFF:#x}]      /* seated player */
+        cmp  ebx, dword ptr [{G_MAP:#x}]
+        jne  Vreset
+        cmp  edi, dword ptr [{G_PLR:#x}]
+        je   Vkeyed
+    Vreset:
+        mov  dword ptr [{G_MAP:#x}], ebx
+        mov  dword ptr [{G_PLR:#x}], edi
+        mov  dword ptr [{G_SEEN:#x}], 0
+    Vkeyed:
+        lea  eax, [edi-1]
+        cmp  eax, 31
+        ja   Vdone                                   /* nobody seated: no exploration filter */
+        xor  eax, eax
+        push eax                                     /* [esp] = L */
+    Vlevel:
+        mov  ecx, dword ptr [esp]
+        bt   ebp, ecx
+        jnc  Vnext
+        bt   dword ptr [{G_SEEN:#x}], ecx
+        jc   Vnext
+        mov  eax, dword ptr [esi+8]
+        mov  eax, dword ptr [eax+4]
+        mov  eax, dword ptr [eax+ecx*4]              /* TAoWMapLevel L */
+        test eax, eax
+        jz   Vnext
+        push eax
+        mov  edx, dword ptr [eax]
+        call dword ptr [edx+0x54]                    /* field count */
+        pop  edx
+        test eax, eax
+        jle  Vnext
+        mov  ecx, eax
+        push ebx
+        mov  ebx, dword ptr [edx+0x28]               /* field stride */
+        mov  edx, dword ptr [edx+0x2C]               /* first field */
+        lea  eax, [edi-1]                            /* explored bit of the seated player */
+    Vscan:
+        bt   dword ptr [edx+0x18], eax
+        jc   Vfound
+        add  edx, ebx
+        dec  ecx
+        jnz  Vscan
+        pop  ebx
+        jmp  Vnext
+    Vfound:
+        pop  ebx
+        mov  ecx, dword ptr [esp]
+        bts  dword ptr [{G_SEEN:#x}], ecx
+    Vnext:
+        inc  dword ptr [esp]
+        cmp  dword ptr [esp], 8
+        jb   Vlevel
+        pop  eax
+        mov  eax, dword ptr [{G_SEEN:#x}]
+        mov  ecx, dword ptr [{VIEWSLOT:#x}]
+        test ecx, ecx
+        jz   Vcur
+        mov  ecx, dword ptr [ecx+0x48]               /* THSMapViewer */
+        test ecx, ecx
+        jz   Vcur
+        mov  ecx, dword ptr [ecx+0x38]               /* the viewed level is always drawn */
+        cmp  ecx, 7
+        ja   Vcur
+        bts  eax, ecx
+    Vcur:
+        and  ebp, eax
+    Vdone:
+        mov  eax, ebp
+        pop  ebp
+        pop  edi
+        pop  esi
+        pop  ebx
+        ret
+    """
+
+
+def src_cell_mask(a):
+    return f"""
+        /* eax = bitmask of the cells to draw */
+        push ebx
+        call {a['vis_levels']:#x}
+        mov  ebx, eax
+        xor  eax, eax
+        xor  ecx, ecx
+    Cm:
+        mov  edx, dword ptr [ecx*4+{A_CELL2LVL:#x}]
+        bt   ebx, edx
+        jnc  Cn
+        bts  eax, ecx
+    Cn:
+        inc  ecx
+        cmp  ecx, 6
+        jb   Cm
+        pop  ebx
+        ret
+    """
+
+
+def src_my_setsize():
+    return f"""
+        push ebx
+        mov  ebx, eax
+        mov  ecx, dword ptr [{G_ORIG:#x}]
+        call dword ptr [ecx+{V_SETSIZE:#x}]
+        shl  dword ptr [ebx+{T_H:#x}], 1             /* two rows */
+        pop  ebx
+        ret
+    """
+
+
+def src_my_draw(a):
+    return f"""
+        /* eax = self, edx = draw descriptor */
+        push ebp
+        mov  ebp, esp
+        sub  esp, 0x30
+        push ebx
+        push esi
+        push edi
+        mov  ebx, eax
+        mov  dword ptr [ebp-0x04], edx
+        mov  eax, dword ptr [ebx+{T_X:#x}]
+        mov  dword ptr [ebp-0x08], eax
+        mov  eax, dword ptr [ebx+{T_Y:#x}]
+        mov  dword ptr [ebp-0x0C], eax
+        mov  eax, dword ptr [ebx+{T_W:#x}]
+        mov  dword ptr [ebp-0x10], eax
+        mov  eax, dword ptr [ebx+{T_H:#x}]
+        mov  dword ptr [ebp-0x14], eax
+        mov  eax, dword ptr [ebx+{T_STR:#x}]
+        mov  dword ptr [ebp-0x18], eax
+        mov  eax, dword ptr [ebx+{T_SEL:#x}]
+        mov  dword ptr [ebp-0x1C], eax
+        mov  eax, dword ptr [ebx+{T_FONT:#x}]
+        mov  dword ptr [ebp-0x2C], eax
+        call {a['cell_mask']:#x}
+        mov  dword ptr [ebp-0x20], eax               /* cells with a level */
+        mov  eax, dword ptr [ebp-0x10]
+        cdq
+        mov  ecx, 3
+        idiv ecx
+        mov  dword ptr [ebp-0x24], eax               /* cell width */
+        mov  eax, dword ptr [ebp-0x14]
+        sar  eax, 1
+        mov  dword ptr [ebp-0x28], eax               /* row height */
+        mov  dword ptr [ebx+{T_H:#x}], eax
+        mov  eax, dword ptr [ebp-0x18]
+        mov  dword ptr [{FAKE + 4:#x}], eax
+        mov  dword ptr [ebx+{T_STR:#x}], {FAKE:#x}
+        xor  edi, edi
+    Dcell:
+        mov  eax, edi
+        xor  edx, edx
+        mov  ecx, 3
+        div  ecx                                     /* eax = row, edx = column */
+        imul eax, dword ptr [ebp-0x28]
+        add  eax, dword ptr [ebp-0x0C]
+        mov  dword ptr [ebx+{T_Y:#x}], eax
+        mov  eax, edx
+        imul eax, dword ptr [ebp-0x24]
+        add  eax, dword ptr [ebp-0x08]
+        mov  dword ptr [ebx+{T_X:#x}], eax
+        mov  eax, dword ptr [ebp-0x24]
+        cmp  edx, 2
+        jne  Dwid
+        mov  eax, dword ptr [ebp-0x10]               /* last column takes the remainder */
+        sub  eax, dword ptr [ebp-0x24]
+        sub  eax, dword ptr [ebp-0x24]
+    Dwid:
+        mov  dword ptr [ebx+{T_W:#x}], eax
+        mov  dword ptr [{FAKE + 8:#x}], edi
+        mov  eax, dword ptr [ebp-0x2C]
+        or   ecx, -1                                 /* not pressed */
+        bt   dword ptr [ebp-0x20], edi
+        jc   Dlvl
+        xor  eax, eax                                /* blank: no font, so Draw skips the caption */
+        jmp  Dset
+    Dlvl:
+        cmp  edi, dword ptr [ebp-0x1C]
+        jne  Dset
+        xor  ecx, ecx                                /* pressed */
+    Dset:
+        mov  dword ptr [ebx+{T_FONT:#x}], eax
+        mov  dword ptr [ebx+{T_SEL:#x}], ecx
+        mov  edx, dword ptr [ebp-0x04]
+        mov  eax, ebx
+        mov  ecx, dword ptr [{G_ORIG:#x}]
+        call dword ptr [ecx+{V_DRAW:#x}]             /* the original Draw, one cell */
+    Dnext:
+        inc  edi
+        cmp  edi, 6
+        jb   Dcell
+        mov  eax, dword ptr [ebp-0x08]
+        mov  dword ptr [ebx+{T_X:#x}], eax
+        mov  eax, dword ptr [ebp-0x0C]
+        mov  dword ptr [ebx+{T_Y:#x}], eax
+        mov  eax, dword ptr [ebp-0x10]
+        mov  dword ptr [ebx+{T_W:#x}], eax
+        mov  eax, dword ptr [ebp-0x14]
+        mov  dword ptr [ebx+{T_H:#x}], eax
+        mov  eax, dword ptr [ebp-0x18]
+        mov  dword ptr [ebx+{T_STR:#x}], eax
+        mov  eax, dword ptr [ebp-0x1C]
+        mov  dword ptr [ebx+{T_SEL:#x}], eax
+        mov  eax, dword ptr [ebp-0x2C]
+        mov  dword ptr [ebx+{T_FONT:#x}], eax
+        pop  edi
+        pop  esi
+        pop  ebx
+        mov  esp, ebp
+        pop  ebp
+        ret
+    """
+
+
+def src_my_mdown(a):
+    return f"""
+        /* eax = self, dl = button, cl = shift, [ebp+0xC] = X, [ebp+8] = Y; ret 8 */
+        push ebp
+        mov  ebp, esp
+        push ecx
+        push ebx
+        push esi
+        push edi
+        mov  byte ptr [ebp-2], cl
+        mov  byte ptr [ebp-1], dl
+        mov  ebx, eax
+        mov  esi, dword ptr [ebp+0xC]
+        push esi
+        push dword ptr [ebp+8]
+        mov  cl, byte ptr [ebp-2]
+        mov  dl, byte ptr [ebp-1]
+        mov  eax, dword ptr [{G_ORIG:#x}]
+        mov  eax, dword ptr [eax-0x18]               /* parent cell */
+        mov  edi, dword ptr [eax]                    /* TAOWControl VMT */
+        mov  eax, ebx
+        call dword ptr [edi+{V_MDOWN:#x}]            /* inherited CheckMouseDown */
+        xor  eax, eax
+        mov  dword ptr [ebx+{T_HIT:#x}], eax
+        mov  eax, dword ptr [ebx+{T_PARENT:#x}]
+        mov  edx, dword ptr [eax+0x84]
+        add  edx, dword ptr [ebx+{T_X:#x}]
+        mov  ecx, esi
+        sub  ecx, edx                                /* dx */
+        js   Mout
+        cmp  ecx, dword ptr [ebx+{T_W:#x}]
+        jge  Mout
+        mov  edx, dword ptr [eax+0x88]
+        add  edx, dword ptr [ebx+{T_Y:#x}]
+        mov  edi, dword ptr [ebp+8]
+        sub  edi, edx                                /* dy */
+        js   Mout
+        cmp  edi, dword ptr [ebx+{T_H:#x}]
+        jge  Mout
+        mov  dword ptr [ebx+{T_HIT:#x}], 0xffffffff
+        cmp  byte ptr [ebp-1], 0
+        jne  Mevent
+        push ecx
+        mov  eax, dword ptr [ebx+{T_W:#x}]
+        cdq
+        mov  ecx, 3
+        idiv ecx
+        mov  ecx, eax                                /* cell width */
+        pop  eax
+        test ecx, ecx
+        jle  Mevent
+        cdq
+        idiv ecx                                     /* column */
+        cmp  eax, 2
+        jle  Mc
+        mov  eax, 2
+    Mc:
+        push eax
+        mov  ecx, dword ptr [ebx+{T_H:#x}]
+        sar  ecx, 1                                  /* row height */
+        xor  eax, eax
+        test ecx, ecx
+        jle  Mr
+        mov  eax, edi
+        cdq
+        idiv ecx                                     /* row */
+        cmp  eax, 1
+        jle  Mr
+        mov  eax, 1
+    Mr:
+        lea  eax, [eax+eax*2]
+        pop  edx
+        add  eax, edx
+        mov  edi, eax                                /* cell */
+        call {a['cell_mask']:#x}
+        bt   eax, edi
+        jnc  Mevent                                  /* blank cell: consumed, no selection */
+        mov  edx, edi
+        mov  eax, ebx
+        call {SETIDX:#x}
+    Mevent:
+        cmp  word ptr [ebx+0x46], 0
+        je   Mout
+        mov  al, byte ptr [ebp-2]
+        push eax
+        push esi
+        push dword ptr [ebp+8]
+        mov  cl, byte ptr [ebp-1]
+        mov  edx, ebx
+        mov  eax, dword ptr [ebx+0x48]
+        call dword ptr [ebx+0x44]                    /* OnMouseDown */
+    Mout:
+        pop  edi
+        pop  esi
+        pop  ebx
+        pop  ecx
+        pop  ebp
+        ret  8
+    """
+
+
+def src_do_swap(a):
+    return f"""
+        /* eax = the strip; give it the grid VMT once */
+        push ebx
+        push esi
+        push edi
+        mov  ebx, eax
+        test ebx, ebx
+        jz   Sret
+        mov  esi, dword ptr [ebx]
+        cmp  esi, {CLONE_VMT:#x}
+        je   Sret
+        cmp  dword ptr [esi-0x1C], {TABPANEL_INSTSIZE:#x}
+        jne  Sret
+        mov  eax, dword ptr [esi-0x20]               /* class name */
+        cmp  byte ptr [eax], 12
+        jne  Sret
+        mov  edx, dword ptr [eax+1]
+        cmp  edx, dword ptr [{NAME:#x}]
+        jne  Sret
+        mov  edx, dword ptr [eax+5]
+        cmp  edx, dword ptr [{NAME + 4:#x}]
+        jne  Sret
+        mov  edx, dword ptr [eax+9]
+        cmp  edx, dword ptr [{NAME + 8:#x}]
+        jne  Sret
+        mov  dword ptr [{G_ORIG:#x}], esi
+        mov  dword ptr [{G_PCELL:#x}], esi
+        lea  esi, [esi{VMT_LO:+#x}]
+        mov  edi, {CLONE:#x}
+        mov  ecx, {(VMT_HI - VMT_LO) // 4:#x}
+    Scopy:
+        mov  eax, dword ptr [esi]
+        mov  dword ptr [edi], eax
+        add  esi, 4
+        add  edi, 4
+        dec  ecx
+        jnz  Scopy
+        mov  dword ptr [{CLONE_VMT - 0x40:#x}], {CLONE_VMT:#x}
+        mov  dword ptr [{CLONE_VMT - 0x18:#x}], {G_PCELL:#x}
+        mov  dword ptr [{CLONE_VMT + V_SETSIZE:#x}], {a['my_setsize']:#x}
+        mov  dword ptr [{CLONE_VMT + V_DRAW:#x}], {a['my_draw']:#x}
+        mov  dword ptr [{CLONE_VMT + V_MDOWN:#x}], {a['my_mdown']:#x}
+        mov  dword ptr [ebx], {CLONE_VMT:#x}
+    Sret:
+        pop  edi
+        pop  esi
+        pop  ebx
+        ret
+    """
+
+
+# ---------------------------------------------------------------- cave A source
 def _add_resource(slot):
     """Mirror of one vanilla LoadResString/TranslateRStr/Add block, verbatim."""
     return f"""
@@ -298,251 +658,183 @@ def _add_resource(slot):
     """
 
 
-def _add_literal(cap_ptr):
-    """TStrings.Add of a const AnsiString living in the cave."""
+def _add_literal(cell):
     return f"""
-        mov  edx, {cap_ptr:#x}               /* the const AnsiString caption */
+        mov  edx, {A_STR[cell] + 8:#x}
         mov  eax, dword ptr [ebx]
         mov  eax, dword ptr [eax+0x4c]
         mov  eax, dword ptr [eax+0x114]
         mov  ecx, dword ptr [eax]
-        call dword ptr [ecx+0x34]            /* TStrings.Add */
+        call dword ptr [ecx+0x34]                    /* TStrings.Add */
     """
 
 
-def src_caps(lay):
-    abyss = "" if len(lay.caps) < 2 else f"""
-        mov  eax, dword ptr [esi]
-        mov  eax, dword ptr [eax+0x10]
-        cmp  dword ptr [eax+0x14], 4
-        jle  Ldone
-        {_add_literal(lay.cap_ptr(1))}
-"""
+def src_caps(b):
     return f"""
-        /* entry: eax = ScannerTab, ebx = &TSWindow, esi = &TheMap, ebp = caller frame */
+        /* eax = ScannerTab, ebx = &TSWindow, esi = &TheMap, ebp = the caller's frame */
+        call {b['do_swap']:#x}
+        mov  eax, dword ptr [ebx]
+        mov  eax, dword ptr [eax+0x4c]
+        mov  byte ptr [eax+{T_ALIGNED:#x}], 0        /* re-align: the height doubles */
         mov  eax, dword ptr [eax+0x114]
         mov  edx, dword ptr [eax]
-        call dword ptr [edx+0x40]            /* TStrings.Clear */
-
-        mov  eax, dword ptr [esi]
-        mov  eax, dword ptr [eax+0x10]
-        cmp  dword ptr [eax+0x14], 3
-        jle  Lsurface
-        {_add_literal(lay.cap_ptr(0))}
-Lsurface:
+        call dword ptr [edx+0x40]                    /* TStrings.Clear */
         {_add_resource(RS_SURF)}
-
-        mov  eax, dword ptr [esi]
-        mov  eax, dword ptr [eax+0x10]
-        cmp  dword ptr [eax+0x14], 1
-        jle  Ldone
+        {_add_literal(1)}
+        {_add_literal(2)}
         {_add_resource(RS_CAV)}
-
-        mov  eax, dword ptr [esi]
-        mov  eax, dword ptr [eax+0x10]
-        cmp  dword ptr [eax+0x14], 2
-        jle  Ldone
         {_add_resource(RS_DEP)}
-{abyss}
-Ldone:
+        {_add_literal(5)}
+        mov  dword ptr [{G_MAP:#x}], 0               /* drop the explored-levels cache */
         jmp  {RET_CAPS:#x}
-"""
+    """
 
 
-def src_tabsel(lay):
+def src_tabsel():
     return f"""
-        /* entry: eax = TSWindow, edx = slot */
-        {_tab_read_count('ecx')}
-        test edx, edx
-        js   Tret                                       /* vanilla's whitelist: an index   */
-        cmp  edx, ecx                                   /* outside [0,count) does NOTHING, */
-        jge  Tret                                       /* not even a cache invalidation.  */
-        cmp  ecx, 3
-        jle  Tgo
-        cmp  edx, {lay.maxidx}
-        ja   Tgo
-        mov  edx, dword ptr [edx*4 + {lay.order:#x}]
-Tgo:
-        mov  ecx, dword ptr [eax+0x5c]                  /* TScanner */
-        mov  dword ptr [ecx+0x17c], 0xffffffff          /* invalidate the surface cache */
-        mov  eax, dword ptr [{MAPSLOT:#x}]
-        mov  eax, dword ptr [eax]
-        mov  ecx, dword ptr [eax]
-        call dword ptr [ecx+0xb8]                       /* THSMap.ViewLevel(edx) */
-Tret:
-        jmp  {RET_TAB:#x}
-"""
-
-
-# v1, superseded 2026-09-06 -- no slot whitelist, so a tab index of -1 reached ViewLevel.
-# Kept ONLY so the script can identify an installed v1 cave and re-tune it in place.
-def src_tabsel_v1(lay):
-    return f"""
+        /* eax = TSWindow, edx = cell */
+        cmp  edx, 5
+        ja   Tret
+        mov  edx, dword ptr [edx*4+{A_CELL2LVL:#x}]
+        mov  ecx, dword ptr [{MAPSLOT:#x}]
+        mov  ecx, dword ptr [ecx]
+        mov  ecx, dword ptr [ecx+0x10]
+        cmp  edx, dword ptr [ecx+0x14]
+        jge  Tret
         mov  ecx, dword ptr [eax+0x5c]
-        mov  dword ptr [ecx+0x17c], 0xffffffff
-        {_tab_read_count('ecx')}
-        cmp  ecx, 3
-        jle  Tgo
-        cmp  edx, 3
-        ja   Tgo
-        mov  edx, dword ptr [edx*4 + {lay.order:#x}]
-Tgo:
+        mov  dword ptr [ecx+0x17c], 0xffffffff       /* invalidate the scanner surface */
         mov  eax, dword ptr [{MAPSLOT:#x}]
         mov  eax, dword ptr [eax]
         mov  ecx, dword ptr [eax]
-        call dword ptr [ecx+0xb8]
+        call dword ptr [ecx+0xb8]                    /* THSMap.ViewLevel(edx) */
+    Tret:
         jmp  {RET_TAB:#x}
-"""
+    """
 
 
-def src_setidx(lay):
+def src_setidx():
     return f"""
-        /* entry: eax = ScannerTab, edx = level; ecx is scratch */
-        {_tab_read_count('ecx')}
-        cmp  ecx, 3
-        jle  Sout
-        cmp  edx, {lay.maxidx}
-        ja   Sout
-        mov  edx, dword ptr [edx*4 + {lay.rorder:#x}]
-Sout:
+        /* eax = ScannerTab, edx = level */
+        cmp  edx, 7
+        ja   Sneg
+        mov  edx, dword ptr [edx*4+{A_LVL2CELL:#x}]
         jmp  {SETIDX:#x}
-"""
+    Sneg:
+        or   edx, -1
+        jmp  {SETIDX:#x}
+    """
 
 
-def _src_step(lay, name, up):
-    """PgUp / PgDn: level -> slot, step the slot, clamp, slot -> level."""
+def src_step(b, name, up):
     step = f"""
-        cmp  edx, 0
-        jg   {name}dec
-        xor  edx, edx
-        jmp  {name}clamped
-{name}dec:
-        dec  edx
-{name}clamped:
+        dec  eax
+        js   {name}out
     """ if up else f"""
-        inc  edx
-        lea  eax, [ecx-1]                               /* count-1 (eax is saved) */
-        cmp  edx, eax
-        jle  {name}hi
-        mov  edx, eax
-{name}hi:
-        cmp  edx, 0
-        jge  {name}clamped
-        xor  edx, edx
-{name}clamped:
+        inc  eax
+        cmp  eax, {len(CHAIN)}
+        jae  {name}out
     """
     return f"""
-        /* entry: eax = THSMapViewer, edx = current level */
+        /* eax = THSMapViewer, edx = viewed level */
         push eax
-        {_tab_read_count('ecx')}
-        cmp  ecx, 3
-        jle  {name}slot
-        cmp  edx, {lay.maxidx}
-        ja   {name}slot
-        mov  edx, dword ptr [edx*4 + {lay.rorder:#x}]   /* level -> slot */
-{name}slot:
+        push ebx
+        push edx
+        call {b['vis_levels']:#x}
+        mov  ecx, eax
+        pop  edx
+        xor  eax, eax
+    {name}find:
+        cmp  edx, dword ptr [eax*4+{A_CHAIN:#x}]
+        je   {name}step
+        inc  eax
+        cmp  eax, {len(CHAIN)}
+        jb   {name}find
+        jmp  {name}out
+    {name}step:
         {step}
-        cmp  ecx, 3
-        jle  {name}out
-        cmp  edx, {lay.maxidx}
-        ja   {name}out
-        mov  edx, dword ptr [edx*4 + {lay.order:#x}]    /* slot -> level */
-{name}out:
+        mov  ebx, dword ptr [eax*4+{A_CHAIN:#x}]
+        bt   ecx, ebx
+        jnc  {name}step
+        mov  edx, ebx
+    {name}out:
+        pop  ebx
         pop  eax
         jmp  {SETSCENEL:#x}
-"""
-
-
-def _blocks(lay):
-    tab = src_tabsel_v1(lay) if lay.tabsel == "v1" else src_tabsel(lay)
-    return [("cave_caps",   src_caps(lay)),
-            ("cave_tabsel", tab),
-            ("cave_setidx", src_setidx(lay)),
-            ("cave_lvlup",  _src_step(lay, "U", True)),
-            ("cave_lvldn",  _src_step(lay, "D", False))]
-
-
-BLOCK_NAMES = ["cave_caps", "cave_tabsel", "cave_setidx", "cave_lvlup", "cave_lvldn"]
+    """
 
 
 # ---------------------------------------------------------------- assemble
-def build_cave(lay):
-    """Assemble every block sequentially from the layout's code base.  No forward references
-    exist between blocks, so one pass is exact."""
-    addrs, blobs, va = {}, {}, lay.code_base
-    for name, src in _blocks(lay):
-        b = bytes(ks.asm(src, va)[0])
-        addrs[name] = va
-        blobs[name] = b
-        va += len(b)
-        va = (va + 3) & ~3                       # keep the next block dword-aligned
-    require(va - CAVE <= CAVE_BLOCK,
-            "cave content is %d B, larger than the %d B reserved block" % (va - CAVE, CAVE_BLOCK))
-
-    blob = bytearray(CAVE_BLOCK)
-    for i, v in enumerate(lay.order_vals):
-        struct.pack_into("<I", blob, (lay.order - CAVE) + i * 4, v)
-    for i, v in enumerate(lay.rorder_vals):
-        struct.pack_into("<I", blob, (lay.rorder - CAVE) + i * 4, v)
-    for rec, text in lay.caps:
-        struct.pack_into("<iI", blob, rec - CAVE, -1, len(text))
-        o = rec - CAVE + 8
-        blob[o:o + len(text) + 1] = text + b"\x00"
-    for name in addrs:
-        o = addrs[name] - CAVE
-        blob[o:o + len(blobs[name])] = blobs[name]
-    return bytes(blob), addrs, blobs, va - CAVE
+def _assemble(blocks, base, limit, label):
+    addrs, parts, va = {}, {}, base
+    for name, srcf in blocks:
+        src = srcf(addrs) if srcf.__code__.co_argcount else srcf()
+        enc = bytes(ks.asm(src, va)[0])
+        addrs[name], parts[name] = va, enc
+        va = (va + len(enc) + 3) & ~3
+    require(va <= limit, "%s overruns its block (%08X > %08X)" % (label, va, limit))
+    return addrs, parts, va
 
 
-CAVE_BLOB, CAVE_ADDR, CAVE_PARTS, CAVE_USED = build_cave(L4)
-V3_BLOB,   V3_ADDR,   _V3_PARTS, V3_USED    = build_cave(L3)
-V2_BLOB,   V2_ADDR,   _V2_PARTS, V2_USED    = build_cave(L2)
-V1_BLOB,   V1_ADDR,   _V1_PARTS, V1_USED    = build_cave(L1)
+B_ADDR, B_PARTS, B_END = _assemble(
+    [("fs_get", src_fs_get), ("fs_count", src_fs_count), ("vis_levels", src_vis_levels),
+     ("cell_mask", src_cell_mask), ("my_setsize", src_my_setsize), ("my_draw", src_my_draw),
+     ("my_mdown", src_my_mdown), ("do_swap", src_do_swap)],
+    B_CODE, CAVE_B + CAVE_B_N, "cave B")
 
-# The growth zone: everything an older build could have left beyond the v4 body must be zero,
-# so overwriting the cave in place cannot leave stale bytes behind the new one.
-require(max(V1_USED, V2_USED, V3_USED) <= CAVE_USED,
-        "a superseded cave body is longer than v4 -- in-place rewrite unsafe")
-require(all(set(b[CAVE_USED:]) <= {0} for b in (CAVE_BLOB, V3_BLOB, V2_BLOB, V1_BLOB)),
-        "cave tail beyond the v4 body is not zero")
+A_ADDR, A_PARTS, A_END = _assemble(
+    [("cave_caps", lambda: src_caps(B_ADDR)), ("cave_tabsel", src_tabsel),
+     ("cave_setidx", src_setidx), ("cave_lvlup", lambda: src_step(B_ADDR, "U", True)),
+     ("cave_lvldn", lambda: src_step(B_ADDR, "D", False))],
+    A_CODE, CAVE_A + CAVE_A_N, "cave A")
 
+
+def _blob(base, size, parts, addrs):
+    blob = bytearray(size)
+    for name, enc in parts.items():
+        o = addrs[name] - base
+        blob[o:o + len(enc)] = enc
+    return blob
+
+
+A_BLOB = _blob(CAVE_A, CAVE_A_N, A_PARTS, A_ADDR)
+for i, v in enumerate(CELL2LVL):
+    struct.pack_into("<i", A_BLOB, A_CELL2LVL - CAVE_A + 4 * i, v)
+for i, v in enumerate(LVL2CELL):
+    struct.pack_into("<i", A_BLOB, A_LVL2CELL - CAVE_A + 4 * i, v)
+for i, v in enumerate(CHAIN):
+    struct.pack_into("<i", A_BLOB, A_CHAIN - CAVE_A + 4 * i, v)
+_end = A_CHAIN + 4 * len(CHAIN)
+for cell, text in CAPTIONS.items():
+    rec = A_STR[cell]
+    require(rec >= _end, "caption record %08X overlaps the data before it" % rec)
+    struct.pack_into("<iI", A_BLOB, rec - CAVE_A, -1, len(text))
+    A_BLOB[rec - CAVE_A + 8:rec - CAVE_A + 9 + len(text)] = text + b"\0"
+    _end = rec + 9 + len(text)
+require(_end <= A_CODE, "caption records overrun the code base")
+A_BLOB = bytes(A_BLOB)
+
+B_BLOB = _blob(CAVE_B, CAVE_B_N, B_PARTS, B_ADDR)
+struct.pack_into("<I", B_BLOB, FAKE - CAVE_B, FAKE_VMT)
+struct.pack_into("<I", B_BLOB, FAKE_VMT + 0x0C - CAVE_B, B_ADDR["fs_get"])
+struct.pack_into("<I", B_BLOB, FAKE_VMT + 0x14 - CAVE_B, B_ADDR["fs_count"])
+B_BLOB[NAME - CAVE_B:NAME - CAVE_B + 12] = b"TAOWTabPanel"
+require(CLONE + (VMT_HI - VMT_LO) <= NAME, "the VMT copy overruns the name guard")
+require(not any(B_BLOB[CLONE - CAVE_B:CLONE - CAVE_B + (VMT_HI - VMT_LO)]), "VMT copy area not zero")
+require(FAKE_VMT + 0x18 <= CLONE, "FAKE VMT overruns the copy area")
+B_BLOB = bytes(B_BLOB)
 
 # ---------------------------------------------------------------- patch table
-ORIG_SETIDX = call_rel(C_SETIDX, SETIDX)
-ORIG_UP     = b"\x4A" + call_rel(C_UP_C, SETSCENEL)
-ORIG_DN     = b"\x42" + call_rel(C_DN_C, SETSCENEL)
-
-
-def _new_bytes(addrs):
-    """The five replacement byte-runs implied by one assembled cave layout."""
-    return [jmp_rel(H_CAPS, addrs["cave_caps"]) + b"\x90" * (H_CAPS_N - 5),
-            jmp_rel(H_TAB, addrs["cave_tabsel"]),
-            call_rel(C_SETIDX, addrs["cave_setidx"]),
-            b"\x90" + call_rel(C_UP_C, addrs["cave_lvlup"]),
-            b"\x90" + call_rel(C_DN_C, addrs["cave_lvldn"])]
-
-
-NEW_V4 = _new_bytes(CAVE_ADDR)
-NEW_V3 = _new_bytes(V3_ADDR)
-NEW_V2 = _new_bytes(V2_ADDR)
-NEW_V1 = _new_bytes(V1_ADDR)
-
-require(len(ORIG_CAPS) == H_CAPS_N and len(NEW_V4[0]) == H_CAPS_N, "caption patch length")
-require(len(ORIG_TAB) == H_TAB_N and len(NEW_V4[1]) == H_TAB_N, "tabsel patch length")
-
-# (label, VA, original bytes, {version: bytes}) -- "v4" is the build this script writes
-SITES = []
-for _i, (_label, _va, _orig) in enumerate([
-        ("caption fill  0x%08X" % H_CAPS,   H_CAPS,   ORIG_CAPS),
-        ("tab change    0x%08X" % H_TAB,    H_TAB,    ORIG_TAB),
-        ("SetIndex call 0x%08X" % C_SETIDX, C_SETIDX, ORIG_SETIDX),
-        ("PgUp  dec+call0x%08X" % C_UP_B,   C_UP_B,   ORIG_UP),
-        ("PgDn  inc+call0x%08X" % C_DN_B,   C_DN_B,   ORIG_DN)]):
-    SITES.append((_label, _va, _orig,
-                  {"v4": NEW_V4[_i], "v3": NEW_V3[_i], "v2": NEW_V2[_i], "v1": NEW_V1[_i]}))
-
-CAVES = {"v4": CAVE_BLOB, "v3": V3_BLOB, "v2": V2_BLOB, "v1": V1_BLOB}
-KNOWN_CAVES = tuple(CAVES.values()) + (b"\x00" * CAVE_BLOCK,)
+ORIG_SITES = [ORIG_CAPS, ORIG_TAB, call_rel(C_SETIDX, SETIDX),
+              b"\x4A" + call_rel(C_UP_C, SETSCENEL), b"\x42" + call_rel(C_DN_C, SETSCENEL)]
+NEW_SITES = [jmp_rel(H_CAPS, A_ADDR["cave_caps"]) + b"\x90" * (H_CAPS_N - 5),
+             jmp_rel(H_TAB, A_ADDR["cave_tabsel"]),
+             call_rel(C_SETIDX, A_ADDR["cave_setidx"]),
+             b"\x90" + call_rel(C_UP_C, A_ADDR["cave_lvlup"]),
+             b"\x90" + call_rel(C_DN_C, A_ADDR["cave_lvldn"])]
+SITE_VAS = [H_CAPS, H_TAB, C_SETIDX, C_UP_B, C_DN_B]
+SITE_LABELS = ["caption fill", "tab change", "SetIndex call", "PgUp", "PgDn"]
+for o, n, v4 in zip(ORIG_SITES, NEW_SITES, V4_SITES):
+    require(len(o) == len(n) == len(v4), "site length mismatch")
 
 
 # ---------------------------------------------------------------- file helpers
@@ -571,168 +863,121 @@ class Image:
             f.write(self.data)
 
 
-STATE_TEXT = {
-    "orig":       "unpatched",
-    "patched":    "applied (v4 -- %s)" % " + ".join(t.decode() for t in CAPTIONS),
-    "patched-v3": "applied (v3 -- 'Firmament', no Abyss) -- needs re-tune, run --apply",
-    "patched-v2": "applied (v2 -- caption 'Sky') -- needs re-tune, run --apply",
-    "patched-v1": "applied (v1 -- 'Sky', NO SLOT WHITELIST) -- needs re-tune, run --apply",
-    "partial":    "half-written / mixed -- run --apply to normalise",
-    "unknown":    "unrecognised bytes",
-}
-
-
 def state(img):
-    """'orig', 'patched' (v4), 'patched-v3' / '-v2' / '-v1', 'partial' or 'unknown'."""
-    bad = []
-    all_as = {k: True for k in ("orig", "v4", "v3", "v2", "v1")}
-    for label, va, o, news in SITES:
+    """('orig' | 'v4' | 'v5' | 'mixed', problems)"""
+    probs = []
+    sites = []
+    for lab, va, o, n, v4 in zip(SITE_LABELS, SITE_VAS, ORIG_SITES, NEW_SITES, V4_SITES):
         cur = img.read(va, len(o))
-        if cur != o:
-            all_as["orig"] = False
-        for k, b in news.items():
-            if cur != b:
-                all_as[k] = False
-        if cur != o and cur not in news.values():
-            bad.append("%s: %s" % (label, cur.hex(" ")))
-    cave = img.read(CAVE, CAVE_BLOCK)
-    cave_zero = cave == b"\x00" * CAVE_BLOCK
-    cave_ours = cave == CAVE_BLOB
-    if bad:
-        return "unknown", bad, cave_zero, cave_ours
-    if all_as["orig"] and cave_zero:
-        return "orig", [], cave_zero, cave_ours
-    if all_as["v4"] and cave_ours:
-        return "patched", [], cave_zero, cave_ours
-    for k in ("v3", "v2", "v1"):
-        if all_as[k] and cave == CAVES[k]:
-            return "patched-" + k, [], cave_zero, cave_ours
-    return "partial", [], cave_zero, cave_ours
+        # a set: v4 and v5 assemble cave_lvldn at the same address, so PgDn matches both
+        sites.append({t for t, b in (("orig", o), ("v5", n), ("v4", v4)) if cur == b})
+        if not sites[-1]:
+            probs.append("%s @%08X: %s" % (lab, va, cur.hex(" ")))
+    dfm = []
+    for lab, fo, o, n in DFM_SITES:
+        nm = DFM_NAMES[fo]
+        require(bytes(img.data[fo - len(nm):fo]) == nm, "%s: property name not where expected" % lab)
+        cur = bytes(img.data[fo:fo + len(o)])
+        dfm.append("orig" if cur == o else "v5" if cur == n else None)
+        if dfm[-1] is None:
+            probs.append("%s @file %X: %s" % (lab, fo, cur.hex(" ")))
+    a = img.read(CAVE_A, CAVE_A_N)
+    b = img.read(CAVE_B, CAVE_B_N)
+    ha, hb = hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest()
+    ca = ("zero" if not any(a) else "v5" if a == A_BLOB else "v4" if ha == V4_CAVE_SHA else
+          "v5a" if ha == V5A_CAVE_SHA[0] else None)
+    cb = ("zero" if not any(b) else "v5" if b == B_BLOB else
+          "v5a" if hb == V5A_CAVE_SHA[1] else None)
+    if ca is None:
+        probs.append("cave A %08X holds bytes this script did not write" % CAVE_A)
+    if cb is None:
+        probs.append("cave B %08X holds bytes this script did not write" % CAVE_B)
+    if probs:
+        return "unknown", probs
+    def all_sites(tag):
+        return all(tag in s for s in sites)
+    if all_sites("orig") and set(dfm) == {"orig"} and ca == "zero" and cb == "zero":
+        return "orig", []
+    if all_sites("v4") and set(dfm) == {"orig"} and ca == "v4" and cb == "zero":
+        return "v4", []
+    if all_sites("v5") and set(dfm) == {"v5"} and ca == "v5" and cb == "v5":
+        return "v5", []
+    if all_sites("v5") and set(dfm) == {"v5"} and ca == "v5a" and cb == "v5a":
+        return "v5a", []
+    return "mixed", []
 
 
-# ---------------------------------------------------------------- reporting
+STATE_TEXT = {"orig": "unpatched", "v4": "v4 (one row) -- --apply rewrites it in place",
+              "v5a": "first v5 build (blank cells undrawn) -- --apply rewrites it in place",
+              "v5": "applied (v5 -- two-row grid)", "mixed": "half-written -- run --apply",
+              "unknown": "unrecognised bytes"}
+
+
 def show_state():
     for path in TARGETS:
         img = Image(path)
-        st, bad, cz, co = state(img)
-        print("%-14s  %-10s %s   (cave zero=%s  cave==v4=%s)"
-              % (os.path.basename(path), st, STATE_TEXT.get(st, ""), cz, co))
-        for label, va, o, news in SITES:
-            cur = img.read(va, len(o))
-            tags = (["ORIG"] if cur == o else []) + [k for k, b in news.items() if cur == b]
-            print("    %-24s %-9s %s" % (label, "=".join(tags) or "?????", cur.hex(" ")))
-        for b in bad:
-            print("    !! " + b)
+        st, probs = state(img)
+        print("%-10s %s" % (os.path.basename(path), STATE_TEXT[st]))
+        for lab, va, o in zip(SITE_LABELS, SITE_VAS, ORIG_SITES):
+            print("    %-14s %08X  %s" % (lab, va, img.read(va, len(o)).hex(" ")))
+        for lab, fo, o, n in DFM_SITES:
+            print("    %-34s file %X  %s" % (lab, fo, bytes(img.data[fo:fo + len(o)]).hex(" ")))
+        for p in probs:
+            print("    !! " + p)
 
 
 def disassemble():
-    print("cave 0x%08X..0x%08X, %d of %d bytes used\n" % (CAVE, CAVE + CAVE_BLOCK - 1,
-                                                          CAVE_USED, CAVE_BLOCK))
-    print("  ORDER  slot->level @0x%08X = %s" % (ORDER, list(ORDER_VALS)))
-    print("  RORDER level->slot @0x%08X = %s" % (RORDER, list(RORDER_VALS)))
-    for i, (rec, text) in enumerate(L4.caps):
-        print("  caption %r @0x%08X  refcnt=%d len=%d  ptr=0x%08X"
-              % (text.decode(), rec, struct.unpack_from("<i", CAVE_BLOB, rec - CAVE)[0],
-                 struct.unpack_from("<I", CAVE_BLOB, rec - CAVE + 4)[0], L4.cap_ptr(i)))
-    print()
-    for name in BLOCK_NAMES:
-        va, b = CAVE_ADDR[name], CAVE_PARTS[name]
-        print("---- %s @0x%08X (%d B) ----" % (name, va, len(b)))
-        for i in cs.disasm(b, va):
-            print("  %08X  %-22s %s %s" % (i.address, i.bytes.hex(" "), i.mnemonic, i.op_str))
-        print()
-    print("---- displaced-site replacements ----")
-    for label, va, o, news in SITES:
-        print("  %-24s  %s  ->  %s" % (label, o.hex(" "), news["v4"].hex(" ")))
-    print("\n---- superseded layouts (recognised, never written) ----")
-    for name in BLOCK_NAMES:
-        print("  %-12s v3 @0x%08X   v2 @0x%08X   v1 @0x%08X"
-              % (name, V3_ADDR[name], V2_ADDR[name], V1_ADDR[name]))
-    print("  v3 %d B / v2 %d B / v1 %d B of %d B used" % (V3_USED, V2_USED, V1_USED, CAVE_BLOCK))
-
-
-# ---------------------------------------------------------------- apply / undo
-def backup(img):
-    """Mint a .pre-skylevelui snapshot ONLY from a file positively proved unpatched."""
-    st, bad, cz, co = state(img)
-    if st != "orig":
-        print("    no backup taken (%s is not in the original state: %s)"
-              % (os.path.basename(img.path), st))
-        return
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    dst = os.path.join(BACKUP_DIR, os.path.basename(img.path) + ".pre-skylevelui")
-    if os.path.exists(dst):
-        print("    backup already exists: %s" % dst)
-        return
-    shutil.copyfile(img.path, dst)
-    print("    backup -> %s" % dst)
+    for label, base, parts, addrs in (("A", CAVE_A, A_PARTS, A_ADDR), ("B", CAVE_B, B_PARTS, B_ADDR)):
+        for name, enc in parts.items():
+            print("---- cave %s  %s @%08X (%d B) ----" % (label, name, addrs[name], len(enc)))
+            n = 0
+            for i in cs.disasm(enc, addrs[name]):
+                print("  %08X  %-22s %s %s" % (i.address, i.bytes.hex(" "), i.mnemonic, i.op_str))
+                n += i.size
+            require(n == len(enc), "%s does not disassemble cleanly" % name)
+            print()
+    print("cave A used %d of %d B, cave B used %d of %d B"
+          % (A_END - CAVE_A, CAVE_A_N, B_END - CAVE_B, CAVE_B_N))
 
 
 def apply_all(undo=False):
     for path in TARGETS:
         img = Image(path)
-        st, bad, cz, co = state(img)
-        require(not bad, "%s: unrecognised bytes -- %s" % (os.path.basename(path), "; ".join(bad)))
-        print("%s: %s" % (os.path.basename(path), st))
-
-        if undo:
-            if st == "orig":
-                print("    already unpatched, nothing to do")
-                continue
-            require(st in ("patched", "patched-v3", "patched-v2", "patched-v1", "partial"),
-                    "%s: refusing to undo from state %r" % (path, st))
-            cur_cave = img.read(CAVE, CAVE_BLOCK)
-            require(cur_cave in KNOWN_CAVES,
-                    "%s: cave 0x%08X holds bytes this script did not write -- refusing to zero it"
-                    % (path, CAVE))
-            for label, va, o, news in SITES:
-                img.write(va, o)
-            img.write(CAVE, b"\x00" * CAVE_BLOCK)
-        else:
-            if st == "patched":
-                print("    already patched, nothing to do")
-                continue
-            if st.startswith("patched-"):
-                print("    %s installed -- rewriting the cave in place (no backup touched)"
-                      % st.split("-")[1])
-            backup(img)
-            cur_cave = img.read(CAVE, CAVE_BLOCK)
-            require(cur_cave in KNOWN_CAVES,
-                    "%s: cave 0x%08X is not zero and is not one of our own builds -- refusing"
-                    % (path, CAVE))
-            require(set(cur_cave[CAVE_USED:]) <= {0},
-                    "%s: the zone the v4 cave grows into (0x%08X..0x%08X) is not zero"
-                    % (path, CAVE + CAVE_USED, CAVE + CAVE_BLOCK - 1))
-            for label, va, o, news in SITES:
-                cur = img.read(va, len(o))
-                require(cur == o or cur in news.values(),
-                        "%s @%08X: verify-before-write failed" % (path, va))
-                img.write(va, news["v4"])
-            img.write(CAVE, CAVE_BLOB)
-
+        st, probs = state(img)
+        require(not probs, "%s: %s" % (os.path.basename(path), "; ".join(probs)))
+        print("%s: %s" % (os.path.basename(path), STATE_TEXT[st]))
+        if (undo and st == "orig") or (not undo and st == "v5"):
+            print("    nothing to do")
+            continue
+        for va, o, n in zip(SITE_VAS, ORIG_SITES, NEW_SITES):
+            img.write(va, o if undo else n)
+        for lab, fo, o, n in DFM_SITES:
+            img.data[fo:fo + len(o)] = o if undo else n
+        img.write(CAVE_A, b"\0" * CAVE_A_N if undo else A_BLOB)
+        img.write(CAVE_B, b"\0" * CAVE_B_N if undo else B_BLOB)
         img.save()
-        print("    written")
-
+        back = Image(path)
+        want = "orig" if undo else "v5"
+        require(state(back)[0] == want, "%s: did not read back as %s" % (path, want))
+        print("    written, reads back as %s" % want)
     print()
     show_state()
 
 
 def main():
     args = sys.argv[1:]
-    print("Firmament + Abyss map levels -- UI half (%s), v4" % ", ".join(zigexe.EXES))
-    print("cave 0x%08X (%d/%d B used)  order=%s  captions=%s\n"
-          % (CAVE, CAVE_USED, CAVE_BLOCK, list(ORDER_VALS), [t.decode() for t in CAPTIONS]))
-    if "--dis" in args or "--show" in args:
+    print("World Map level strip v5 (%s): cave A %08X %d/%d B, cave B %08X %d/%d B\n"
+          % (", ".join(zigexe.EXES), CAVE_A, A_END - CAVE_A, CAVE_A_N,
+             CAVE_B, B_END - CAVE_B, CAVE_B_N))
+    if "--dis" in args:
         disassemble()
-        return
-    if "--undo" in args:
+    elif "--undo" in args:
         apply_all(undo=True)
-        return
-    if "--apply" in args:
+    elif "--apply" in args:
         apply_all(undo=False)
-        return
-    show_state()
-    print("\n(dry run -- nothing written; use --apply)")
+    else:
+        show_state()
+        print("\n(dry run -- nothing written; use --apply)")
 
 
 if __name__ == "__main__":

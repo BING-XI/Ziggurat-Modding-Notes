@@ -2,30 +2,33 @@
 r"""
 AoW1 mod -- "Fire heals Fire units", with a "+N" heal number in the Party-Damage popup.
 
-Fire damage HEALS unit resource-index 0xE2 (226, Fire Elemental) and 0xE4 (228,
-Fire Sprite), for all STRATEGIC / role fire: Firestorm, map-hex fires, Fire
-Barrier (all flow through TAbstractUnit.ExecuteDamageRole @0x55781AC4).
-Tactical-combat fire (fireball/breath) is a separate path, out of scope.
+Fire damage HEALS a unit holding Living Flame -- the renamed Fire Halo enchantment 0xA3, or the
+passive 0x52 that Fire Elemental (226), Fire Sprite (228) and Salamander (58) carry (v3,
+2026-10-22; until then the test was resource index 226/228) -- for all STRATEGIC / role fire:
+Firestorm, map-hex fires, Fire Barrier (all flow through TAbstractUnit.ExecuteDamageRole
+@0x55781AC4). Battle fire is build_livingflame.py's (TCombatObject.ExecuteDamageRole).
+RNG: unchanged in kind -- the heal draws through the host's own roller (ExecuteDamageRole_500)
+for a fire-immune holder, where vanilla drew nothing; v3 only widens WHICH units take that draw.
 
 Touches TWO binaries, both inside `Ziggurat\` (exe names from `zigexe.py`):
   AoWEPACK.dpl    : 3 caves + 3 redirects
   AoWz.exe        : 1 five-byte patch
 ⚠ The exe half is LIVE as soon as it is written: `Ziggurat/AoWz.exe` runs from `Ziggurat/`. (Until 2026-09-09 this needed a second `build_overlay.py --apply` step; that script is retired.)
 
-cave_mapfire_gate additionally makes MAP-HEX FIRE / FIRE BARRIER heal 226/228:
+cave_mapfire_gate additionally makes MAP-HEX FIRE / FIRE BARRIER heal Living Flame holders:
 TArmy.TriggerFireDamage pre-gates its loop on fire-immunity and skips
 ExecuteDamageRole for immune units, so without this the map-fire path never
-reached cave_fireheal. The gate cave reroutes ONLY 226/228 into the damage path
+reached cave_fireheal. The gate cave reroutes ONLY Living Flame holders into the damage path
 (other fire-immune units keep showing "immune").
 
 MECHANISM
-  Heal: cave_fireheal redirects ExecuteDamageRole. For 226/228 hit by fire
-  (param4==0x0001) it returns the NEGATED damage roll; every fire caller does
+  Heal: cave_fireheal redirects ExecuteDamageRole. For a Living Flame holder hit by
+  fire (param4==0x0001) it returns the NEGATED damage roll; every fire caller does
   `SetHP(HP - dmg)`, so a negative dmg heals (HP-(-x)=HP+x), and the storm
   `if(0<dmg)` secondary-effect guard is skipped. SetHitPoints (TUnit) clamps to
-  [0,max]. Identity read position-independently: unit+0x40->resource, +4->list,
-  call [list.vtable+0x84] == UnitResourceIndex; null-guarded; heroes/others get a
-  non-226/228 index and fall through.
+  [0,max]. Identity (v3): the unit's item-aware ability query, VMT +0x148, for 0xA3
+  then 0x52. (v1/v2 read unit+0x40->resource, +4->list, call [list.vtable+0x84] ==
+  UnitResourceIndex 226/228; those bodies stay accepted prior states.)
 
   Display: the callers log `dmg` (now negative) into the event-log byte list the
   Party-Damage popup renders. The popup (TArmyEventDlg in AoWz.exe) draws each
@@ -101,7 +104,7 @@ INTTOSTR    = 0x5570158C; LSTRCAT3 = 0x55701190
 CAVE_A = 0x5580DA20                                      # cave_fireheal
 # cave_plusnum placed after cave_A (both in verified zero space)
 
-# ---- cave_fireheal (returns -roll for 226/228 hit by fire) ----
+# ---- cave_fireheal (returns -roll for a Living Flame holder hit by fire; v1/v2: 226/228) ----
 #
 # v2 (2026-08-29, user ruling): **keep the damage roll, drop the ATK-vs-DEF to-hit roll.**
 # v1 replicated ExecuteDamageRole's non-immune branch verbatim, so the HEAL inherited the engine's
@@ -124,7 +127,50 @@ HEAL_TAKES_TOHIT_ROLL = False
 NOMISS_MARGIN = 8
 
 
-def _caveA_src(tohit):
+# v3 (2026-10-22, owner's Living Flame design): the HEALED UNITS are no longer resource indices
+# 226/228 but any unit holding Living Flame -- Fire Halo's enchantment 0xA3 (renamed Living Flame)
+# or the passive 0x52 that Fire Elemental, Fire Sprite and Salamander carry (build_livingflame.py,
+# which also heals in battle). Tested through the item-aware ability query, VMT +0x148, with
+# EAX = the unit -- so a hero under the spell heals too. The index test is kept only as an
+# accepted prior body. Both new bodies fit the runs the old ones were written in.
+FIRE_AURA, LIVING_FLAME = 0xA3, 0x52
+IDENTITY_BY_ABILITY = True
+
+
+def _ident_index():
+    return f"""
+    mov edx, [eax+0x40]
+    test edx, edx
+    jz _restore
+    mov ecx, [edx+4]
+    mov eax, ecx
+    mov ecx, [ecx]
+    call dword ptr [ecx+0x84]
+    cmp eax, {ID_ELEM}
+    je _heal
+    cmp eax, {ID_SPRT}
+    jne _restore
+"""
+
+
+def _ident_ability():
+    # [esp] = the unit (pushed last); ECX/EDX are on the stack, so the query may clobber them
+    return f"""
+    mov ecx, [eax]
+    mov edx, {FIRE_AURA}
+    call dword ptr [ecx+0x148]
+    test al, al
+    jnz _heal
+    mov eax, [esp]
+    mov ecx, [eax]
+    mov edx, {LIVING_FLAME}
+    call dword ptr [ecx+0x148]
+    test al, al
+    jz _restore
+"""
+
+
+def _caveA_src(tohit, by_ability=False):
     heal_v1 = f"""
     pop eax
     pop ecx
@@ -160,17 +206,7 @@ _neg:
     push edx
     push ecx
     push eax
-    mov edx, [eax+0x40]
-    test edx, edx
-    jz _restore
-    mov ecx, [edx+4]
-    mov eax, ecx
-    mov ecx, [ecx]
-    call dword ptr [ecx+0x84]
-    cmp eax, {ID_ELEM}
-    je _heal
-    cmp eax, {ID_SPRT}
-    jne _restore
+""" + (_ident_ability() if by_ability else _ident_index()) + """
 _heal:
 """ + (heal_v1 if tohit else heal_v2) + f"""
 _restore:
@@ -185,15 +221,16 @@ _orig:
 """
 
 
-_a1, _ = ks.asm(_caveA_src(True),  CAVE_A); _a1 = bytes(_a1)
-_a2, _ = ks.asm(_caveA_src(False), CAVE_A); _a2 = bytes(_a2)
-_want, _other = (_a1, _a2) if HEAL_TAKES_TOHIT_ROLL else (_a2, _a1)
-# Pad the shorter body to the longer so the WRITTEN RUN is always the same length: CAVE_B/CAVE_C are
-# derived from len(caveA), so a shrinking cave would silently relocate them (and re-tuning would
-# leave the tail of the previous body lying in the gap).
-_runlen = max(len(_a1), len(_a2))
-caveA       = _want  + b"\x00" * (_runlen - len(_want))
-caveA_prior = [_other + b"\x00" * (_runlen - len(_other))]
+_bodies = {(t, b): bytes(ks.asm(_caveA_src(t, b), CAVE_A)[0]) for t in (True, False) for b in (False, True)}
+_want = _bodies[(HEAL_TAKES_TOHIT_ROLL, IDENTITY_BY_ABILITY)]
+# Pad every body to ONE written run: CAVE_B/CAVE_C are derived from len(caveA), so a cave that
+# changed length would silently relocate them (and re-tuning would leave the tail of the previous
+# body lying in the gap). The run is the v1/v2 run (89 B); the ability bodies must fit inside it.
+_runlen = max(len(_bodies[(True, False)]), len(_bodies[(False, False)]))
+assert len(_want) <= _runlen, "the chosen body outgrew cave_fireheal's run"   # (v1 + ability test does)
+caveA       = _want + b"\x00" * (_runlen - len(_want))
+caveA_prior = [b + b"\x00" * (_runlen - len(b)) for k, b in _bodies.items()
+               if b != _want and len(b) <= _runlen]
 
 CAVE_B = (CAVE_A + len(caveA) + 0xF) & ~0xF             # 16-align after cave_A
 
@@ -238,11 +275,11 @@ assert i_ph != -1, "lea placeholder not found"
 codeB[i_ph+2:i_ph+6] = struct.pack("<i", imm)
 caveB = bytes(codeB) + PLUSLIT
 
-# ---- cave_mapfire_gate : make map-hex fire / Fire Barrier heal 226/228 too ---
+# ---- cave_mapfire_gate : make map-hex fire / Fire Barrier heal Living Flame holders too ---
 # TArmy.TriggerFireDamage @0x55790110 pre-gates its loop with
 #   if ((GetImmunityTypes & 1)==0) ExecuteDamageRole(...) else log(0,type9)
-# so fire-immune 226/228 never reach ExecuteDamageRole. This cave replaces that
-# gate: non-immune -> damage path; fire-immune -> damage path ONLY if 226/228
+# so fire-immune holders never reach ExecuteDamageRole. This cave replaces that
+# gate: non-immune -> damage path; fire-immune -> damage path ONLY for a holder
 # (else original "immune" branch). ESI=unit, AL=immunity bits at entry.
 TRIG_GATE   = 0x5579020C
 TRIG_ORIG   = b"\xa8\x01\x75\x70\x66"                    # test al,1 ; jne 0x55790280 ; (66 = MOV AX prefix)
@@ -270,10 +307,21 @@ CAVE_C = (CAVE_B + len(caveB) + 0xF) & ~0xF
 MAPFIRE_DAM, MAPFIRE_ATK = 6, 12      # 2026-08-26: doubled from 3 / 6
 PREV_MAPFIRE = [(3, 6)]               # every body this cave has legitimately held, oldest first
 
-def _caveC_src(dam, atk):
-    return f"""
-    test al, 1
-    jz _dmg
+def _caveC_src(dam, atk, by_ability=False):
+    ident = f"""
+    mov eax, esi
+    mov ecx, [eax]
+    mov edx, {FIRE_AURA}
+    call dword ptr [ecx+0x148]
+    test al, al
+    jnz _dmg
+    mov eax, esi
+    mov ecx, [eax]
+    mov edx, {LIVING_FLAME}
+    call dword ptr [ecx+0x148]
+    test al, al
+    jnz _dmg
+""" if by_ability else f"""
     mov eax, [esi+0x40]
     test eax, eax
     jz _immune
@@ -285,6 +333,11 @@ def _caveC_src(dam, atk):
     je _dmg
     cmp eax, {ID_SPRT}
     je _dmg
+"""
+    return f"""
+    test al, 1
+    jz _dmg
+""" + ident + f"""
 _immune:
     jmp 0x{TRIG_ELSE:X}
 _dmg:
@@ -297,14 +350,18 @@ _dmg:
     jmp 0x{TRIG_REJOIN:X}
 """
 
-caveC_src = _caveC_src(MAPFIRE_DAM, MAPFIRE_ATK)
+caveC_src = _caveC_src(MAPFIRE_DAM, MAPFIRE_ATK, IDENTITY_BY_ABILITY)
 caveC, _ = ks.asm(caveC_src, CAVE_C); caveC = bytes(caveC)
-# Bodies this cave may already hold, so a re-tune verifies instead of aborting.
-caveC_prior = []
-for _d, _a in PREV_MAPFIRE:
-    _b, _ = ks.asm(_caveC_src(_d, _a), CAVE_C); _b = bytes(_b)
-    assert len(_b) == len(caveC), "a prior cave body differs in length -- CAVE_C would move"
-    caveC_prior.append(_b)
+# Bodies this cave may already hold, so a re-tune verifies instead of aborting: every earlier
+# atk/dam pair with the index test, and the current pair with the other identity test. All are
+# written as ONE run, padded with zeros (the bytes after the shorter body are zero on disk), and
+# the run must stop short of the next owner's cave at 0x5580DB20.
+_c_all = [bytes(ks.asm(_caveC_src(_d, _a, _b), CAVE_C)[0])
+          for _d, _a in PREV_MAPFIRE + [(MAPFIRE_DAM, MAPFIRE_ATK)] for _b in (False, True)]
+_c_run = max(len(b) for b in _c_all)
+assert CAVE_C + _c_run <= 0x5580DB20, "cave_mapfire_gate would run into the cave at 0x5580DB20"
+caveC_prior = [b + b"\x00" * (_c_run - len(b)) for b in _c_all if b != caveC]
+caveC = caveC + b"\x00" * (_c_run - len(caveC))
 
 # ---- redirects ----
 redir_exec  = b"\xE9" + rel32(EXECDMGROLE, CAVE_A) + b"\x90"
@@ -317,7 +374,7 @@ dll_patches = [
      "cave_fireheal (heal %s a to-hit roll)" % ("takes" if HEAL_TAKES_TOHIT_ROLL else "SKIPS")),
     (CAVE_B,      bytes(len(caveB)), caveB,       "cave_plusnum (+N display)"),
     (CAVE_C,      [bytes(len(caveC))] + caveC_prior, caveC,
-     "cave_mapfire_gate (map fire heals 226/228; atk %d dam %d)" % (MAPFIRE_ATK, MAPFIRE_DAM)),
+     "cave_mapfire_gate (map fire heals Living Flame holders; atk %d dam %d)" % (MAPFIRE_ATK, MAPFIRE_DAM)),
     (EXECDMGROLE, EXEC_ORIG,         redir_exec,  "ExecuteDamageRole -> cave_fireheal"),
     (SHOWDMG_INJ, SHOWDMG_ORIG,      redir_showd, "ShowDamageIcon IntToStr -> cave_plusnum"),
     (TRIG_GATE,   TRIG_ORIG,         redir_trig,  "TriggerFireDamage immunity gate -> cave_mapfire_gate"),

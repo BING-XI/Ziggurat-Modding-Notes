@@ -38,12 +38,13 @@ features all had to learn about the engine underneath them.
 | Firmament map level (a 4th map level, index 3) | 🔨 APPLIED, UNTESTED (2026-09-06) — DLL half, v2; editor New-Map dialog and the map-gen tools still to do | `build_maplevel4.py` (v2), plus in-place re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6); UI half `build_skylevel_ui.py` | `AoWEPACK.dpl` (+ `AoWz.exe` for the UI half) |
 | Firmament ↔ Surface caves (placed on the Firmament, lower mouth on Surface) | 🔨 APPLIED, UNTESTED (2026-09-30) | `build_maplevel4.py` (v5) | `AoWEPACK.dpl` |
 | Firmament cities and structures use surface art | 🔨 APPLIED, UNTESTED (2026-10-01) | `build_firmament_structart.py` | `AoWEPACK.dpl` |
-| Abyss map level (a 5th map level, index 4, below Depths) + disabled levels / Map Levels popup | 🔨 APPLIED, UNTESTED (2026-09-27); editor half driven live, game strip rework not yet done | `build_maplevel4.py` (v3), plus in-place re-tunes of `build_skylevel_ui.py` (v4), `build_deved_levelnav.py` (v2, then `build_zigeditor.py`), `build_shipyard_income.py` (`MAX_LEVELS 5`) and `build_townquake_retune.py` | `AoWEPACK.dpl`, `AoWz.exe`, `AoWDevEd.exe` → `AoWzEd.exe` |
+| Abyss map level (a 5th map level, index 4, below Depths) + disabled levels / Map Levels popup | 🔨 APPLIED, UNTESTED (2026-09-27); editor half driven live; World Map strip grid built 2026-10-21 (`build_skylevel_ui.py` v5) | `build_maplevel4.py` (v3), plus in-place re-tunes of `build_skylevel_ui.py` (v5), `build_deved_levelnav.py` (v2, then `build_zigeditor.py`), `build_shipyard_income.py` (`MAX_LEVELS 5`) and `build_townquake_retune.py` | `AoWEPACK.dpl`, `AoWz.exe`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Registry isolation — own settings tree, so a Ziggurat install can sit beside vanilla | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_regiso.py` | `AoWEPACK.dpl`, `AoWSetup.exe` |
 | AoWSetup install-check `'.'` fallback (companion to the above) | ✅ CONFIRMED WORKING (2026-09-09) | `build_aowsetup_installcheck.py` | `AoWSetup.exe` |
 | Ziggurat exe icon — purple, mirrored | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_icon_purple.py` | `AoWz.exe` |
 | Overlay layout — Ziggurat runs entirely out of `Ziggurat\` over a vanilla root | 🔨 APPLIED, UNTESTED (2026-09-09) — launch-verified, not yet played | none (no patch needed; registry only) | `Ziggurat\AoWz.exe` + registry |
 | Ziggurat-oriented editor, purple hexes | 🔨 APPLIED, UNTESTED (2026-09-09) — launches, no map opened | `build_zigeditor.py` | `Ziggurat\AoWzEd.exe` |
+| Tactical line of sight / fog of war | 🔨 APPLIED (2026-10-23) | `build_tactical_los.py` | `AoWTCPCK.dpl` |
 
 ## ⚠⚠ Booby traps — read before running anything in this file
 
@@ -1828,98 +1829,9 @@ user-visible string says Firmament.
 250 B, eight hooks + the cap byte), plus in-place cave re-tunes of `build_shipyard_income.py` and
 `build_waterheal.py` (**v6**).
 
-### Firmament level, UI half — `build_skylevel_ui.py` 🔨 APPLIED, UNTESTED (2026-09-06)
+### Firmament level, UI half — `build_skylevel_ui.py`
 
-The four exe sites that assumed `slot == level` now go through a display-order table.
-Storage is unchanged: the Firmament is level index 3; only the strip's ordering moves.
-
-| levels on the map | slot 0 | 1 | 2 | 3 |
-|---|---|---|---|---|
-| more than 3 | 3 (Firmament) | 0 (Surface) | 1 (Caverns) | 2 (Depths) |
-| 3 or fewer | identity — vanilla behaviour, three tabs |
-
-Count is read live every time, from `[[[0x0045DF7C]] + 0x10] + 0x14` (`0x0045DF7C` is the
-import slot holding **&TheMap**, `+0x10` its `TMapContainer`, `+0x14` the level count), so a
-3-level map is untouched by this patch. Written to **`AoWz.exe`**, byte-identical.
-
-**Sites** (AoWz.exe VAs, base `0x400000`; all byte-verified against the live file before patching):
-
-| site | before | after |
-|---|---|---|
-| caption fill, hook `0x00454FED` (11 B) | `8b 80 14 01 00 00 8b 10 ff 52 40` (`mov eax,[eax+0x114]` / `mov edx,[eax]` / `call [edx+0x40]`) | `e9 4e 50 1d 00` + 6×`90` → `cave_caps` |
-| `TSWindow.ScannerTabChange @0x00451BC8`, hook `0x00451BDC` (5 B) | `83 ea 01 72 07` (`sub edx,1` / `jb 0x00451BE8`) | `e9 27 85 1d 00` → `cave_tabsel` |
-| `TMWindow.MapViewerSceneChanged`, `call` at `0x00451145` | `e8 9a 20 fb ff` (→ `TAOWTabPanel.SetIndex 0x004031E4`) | `e8 06 90 1d 00` → `cave_setidx` |
-| `MapWindowKeyDown`, `0x004514BF` | `4a e8 8f 09 fb ff` (`dec edx` / `call SetSceneL 0x00401E54`) | `90 e8 af 8c 1d 00` → `cave_lvlup` |
-| `MapWindowKeyDown`, `0x004514D5` | `42 e8 79 09 fb ff` (`inc edx` / `call SetSceneL`) | `90 e8 dd 8c 1d 00` → `cave_lvldn` |
-
-The containing function of the caption block is **`0x00454D2C`**, not the published export
-`TGeneral.ManagerDebugMessage @0x004548F4` (that is a separate, smaller routine). Its prologue loads
-`ebx = [0x0045A1C0]` (&TSWindow) and `esi = [0x0045DF7C]` (&TheMap) and never reloads either, so
-`cave_caps` reuses both exactly as the vanilla block does, along with the AnsiString temporaries
-`[ebp-0x14]` / `[ebp-0x10]` and the function's own finally block. Its string handling is a verbatim
-mirror of the vanilla `LoadResString` → `TranslateRStr` → `Add` sequence, three times over.
-
-**Cave `0x0062A000..0x0062A3FF`** — section `.hcol` (RVA `0x212000`, file `0x20C200`,
-characteristics `0xE0000060` = read/write/execute), file offset **`0x00224200`**. Verified all zero,
-and inside that section's `0x8E84`-byte zero run starting at `0x0062417C`. 580 of 1024 bytes used (**v4**, 2026-09-27, the Abyss; the v3 note below keeps the Firmament-only layout history).
-Absolute addressing throughout (exe, fixed base). No RNG draw of any kind; no resolved filesystem path.
-
-| offset | contents |
-|---|---|
-| `0x0062A000` | `ORDER[5]` slot→level = 3, 0, 1, 2, 4 |
-| `0x0062A018` | `RORDER[5]` level→slot = 1, 2, 3, 0, 4 |
-| `0x0062A030` | Delphi 3 const AnsiString "Firmament": `ff ff ff ff` (refcount −1), `09 00 00 00`, chars at `0x0062A038` |
-| `0x0062A048` | Delphi 3 const AnsiString "Abyss": `ff ff ff ff`, `05 00 00 00`, chars at `0x0062A050` |
-| `0x0062A060` | `cave_caps` (235 B) — Clear, `Add("Firmament")` when count > 3, the three vanilla resource Adds, `Add("Abyss")` when count > 4, `jmp 0x0045508F` |
-| `0x0062A14C` | `cave_tabsel` (72 B, since v2) — slot `< 0` or `≥ count` → `jmp 0x00451C4C` untouched (vanilla’s whitelist; a `TAOWTabPanel` with nothing selected reports −1 and `THSMap.ViewLevel` has no lower bound); else slot→level, `[Scanner+0x17C] = −1`, `call [vmt+0xB8]` (`THSMap.ViewLevel`), `jmp 0x00451C4C`. The no-arg run reports an installed v1–v3 as "needs re-tune", never as applied |
-| `0x0062A194` | `cave_setidx` (36 B) — level→slot, tail-`jmp 0x004031E4` |
-| `0x0062A1B8` | `cave_lvlup` (65 B) — level→slot, slot−1 clamped ≥ 0, slot→level, tail-`jmp 0x00401E54` |
-| `0x0062A1FC` | `cave_lvldn` (72 B) — level→slot, slot+1 clamped ≤ count−1, slot→level, tail-`jmp 0x00401E54` |
-
-Every table read is guarded `cmp edx,4 / ja` (v1–v3: `3`). v4 hook bytes: caption `e9 6e 50 1d 00`+6×`90`,
-tab `e9 6b 85 1d 00`, SetIndex `e8 4a 90 1d 00`, PgUp `90 e8 f3 8c 1d 00`, PgDn `90 e8 21 8d 1d 00`.
-
-Refcount −1 makes the literal a Delphi constant string: `_LStrAsg` skips the increment on a negative
-refcount and `_LStrClr` skips the decrement, so it is never written and never freed. There is no
-translated resource id for "Sky" — AoW.exe's STRINGTABLE block (65524/65525/65526, `PResStringRec`s
-`0x00403414/1C/24`) is full — hence an English cave literal, in contrast to Surface/Caverns/Depths
-which still go through `TranslateRStr` against `Dict/ResStr.mld`.
-
-The PgUp/PgDn caves clamp the **slot** before the slot→level conversion, which is required because
-the `ORDER` table is not monotonic in level — `SetSceneL @0x5560EDD0` itself already clamps both
-ends, so the caves are not removing a vanilla clamp, they are adding one earlier in the pipeline
-that the level remap makes necessary.
-
-**Dead code left in place, deliberately.** The vanilla caption block `0x00454FF8..0x0045508E` keeps
-its three base relocations (`0x00454FFC`, `0x00455032`, `0x00455068`), and the three vanilla
-`ScannerTabChange` arms
-(`0x00451BE8` / `0x00451C08` / `0x00451C2B`) keep theirs. Verified unreachable: zero branches from
-outside into either region, and zero absolute dwords anywhere in the image pointing into them.
-
-**⚠ Do not hook the caption fill at `0x00454FF8`.** It is the obvious site — the head of the first
-`Add` block — but a 5-byte `E9` there covers `0x00454FFC`, which carries a type-3 base relocation
-(the `0x45a0c0` dword of `mov eax,[0x45a0c0]`); a rebased load would apply the fixup on top of the
-jump. `0x00454FED..0x00454FF7` carries no relocation at all: the `.reloc` directory holds exactly one
-entry in `0x00454FE0..0x00455000`, and it is `0x00454FFC`. `0x00451BDC..0x00451BE0`, `0x004514BF`,
-`0x004514D5` and all three retargeted rel32 operands are likewise relocation-free.
-
-**`--undo`** is surgical and touches no backup: it restores the 11 displaced bytes, the 5 displaced
-bytes, `4a`, `42`, all three rel32s, and zeroes the 1024-byte cave — refusing if the cave holds bytes
-the script did not write. Round-tripped 2026-09-06: the undone files are SHA-256-identical to
-`Ziggurat\backups\AoWz.exe.pre-skylevelui`.
-
-**In-game checklist (needs the user):**
-
-- [ ] On a 4-level map the World Map strip reads **Firmament | Surface | Caverns | Depths**, left to right.
-- [ ] On a 3-level map it still shows exactly three tabs, **Surface | Caverns | Depths**, and the
-      captions are the translated ones.
-- [ ] Clicking **Firmament** shows level 3; clicking Surface/Caverns/Depths shows 0/1/2.
-- [ ] The pressed tab follows a level change made by any other route (scrolling, a unit selection,
-      PgUp/PgDn) — not just by clicking.
-- [ ] **PgUp** from Surface goes to the Firmament; **PgDn** from the Firmament returns to Surface.
-- [ ] **PgUp** while on the Firmament does nothing; **PgDn** while on Depths does nothing.
-- [ ] On a 3-level map PgUp/PgDn still walk Surface ↔ Caverns ↔ Depths and stop at the ends.
-- [ ] Both `AoWz.exe` still launch.
+The World Map level strip and PgUp/PgDn: see "World Map level strip v5" under the Abyss map level.
 
 ---
 
@@ -1930,52 +1842,6 @@ The whole vanilla ceiling was one immediate byte; every other layer is count-dri
 gate. User rulings: the 6-hex border ring stays, earth elementals do not heal there, **air
 elementals do**, and storm spells and Bird's View follow the global-target ruling. **Towers can be
 built on it**, as they can on every level — the tower gate is dead on this install (below).
-
-### UI half, v3 — the caption is "Firmament"
-
-`build_skylevel_ui.py` v3 (`AoWz.exe`). Status `🔨 APPLIED, UNTESTED
-(2026-09-06)`. The level strip's 4th tab now reads **Firmament**. The *terrain* on that
-level is still called **Sky** — only the World Map tab caption changed.
-
-The caption is a Delphi 3 constant AnsiString in the cave (`refcount = -1`, then the length,
-then NUL-terminated characters). Growing "Sky" (3) to "Firmament" (9) grew the record from
-12 to 18 bytes, so the code base moved `0x0062A030 → 0x0062A040` and every one of the five
-replacement byte-runs moved with it — the script derives all five from the assembled layout,
-so this was a plain in-place cave rewrite with no revert step and no backup touched.
-
-    cave 0x0062A000..0x0062A3FF (section .hcol, file offset 0x00224200), 512 of 1024 B used
-
-    0x0062A000  ORDER[4]   slot  -> level  = 3, 0, 1, 2
-    0x0062A010  RORDER[4]  level -> slot   = 1, 2, 3, 0
-    0x0062A020  ff ff ff ff  09 00 00 00  "Firmament\0"     (record 0x20..0x31)
-    0x0062A040  cave_caps    199 B     (was 0x0062A030 in v1/v2)
-    0x0062A108  cave_tabsel   72 B
-    0x0062A150  cave_setidx   36 B
-    0x0062A174  cave_lvlup    65 B
-    0x0062A1B8  cave_lvldn    72 B     end 0x0062A200
-
-The five sites are unchanged from v2; only their rel32s moved:
-
-| site | v2 bytes | v3 bytes |
-|---|---|---|
-| caption fill `0x00454FED` (11 B) | `e9 3e 50 1d 00` + 6× `90` | `e9 4e 50 1d 00` + 6× `90` |
-| tab change `0x00451BDC` (5 B) | `e9 17 85 1d 00` | `e9 27 85 1d 00` |
-| SetIndex call `0x00451145` (5 B) | `e8 f6 8f 1d 00` | `e8 06 90 1d 00` |
-| PgUp `0x004514BF` (6 B) | `90 e8 9f 8c 1d 00` | `90 e8 af 8c 1d 00` |
-| PgDn `0x004514D5` (6 B) | `90 e8 cd 8c 1d 00` | `90 e8 dd 8c 1d 00` |
-
-`cave_caps`'s only content change is `mov edx, 0x62a028` now pointing at `'F'` of
-"Firmament" instead of `'S'` of "Sky" — the pointer VA is the same because the record header
-is still at `0x0062A020`.
-
-**v3 recognises three installed states.** `--apply` accepts `orig`, `v1`, `v2` or `v3` at
-every site and rewrites the cave in place; the report calls v1 and v2 "needs re-tune", never
-"patched". `--undo` restores the five original byte-runs and zeroes the 0x400-byte cave, and
-refuses if the cave holds bytes none of the three builds would have written.
-
-Hashes: `AoWz.exe` `6cac62eb…b096b` (v2) → `70eb5570…a924c` (v3). A full
-`--undo` / `--apply` round trip was run and reproduced the pre-feature backups exactly
-(`3cde90f2…` / `c3cd753f…`).
 
 ### Editor Level Up / Level Down follow the display order
 
@@ -2108,33 +1974,23 @@ not the last section — refusing"), which now fails because `.nmg` follows it, 
 rather than corrupting anything — but that assert is the only thing standing between a
 timerres re-apply and the loss of both `.nmg` and this cave. Do not weaken it.
 
-#### In-game checklist — UI caption + editor level navigation
+#### In-game checklist — editor level navigation
 
 Nothing below can be checked without launching the binaries.
 
-**Game (`AoWz.exe`):**
-1. Open a map with 4 levels. The World Map level strip reads
-   **Firmament | Surface | Caverns | Depths**, in that order, left to right.
-2. Click each of the four tabs: the view goes to Firmament / Surface / Caverns / Depths
-   respectively, and the pressed tab matches the level shown.
-3. PgUp from Surface → Firmament; PgDn from Firmament → Surface. PgUp on Firmament and PgDn
-   on Depths do nothing (no blank level, no crash).
-4. Open a 3-level map: exactly three tabs, **Surface | Caverns | Depths**, and PgUp/PgDn
-   behave as they always did.
-
 **Editor (`AoWDevEd.exe`):**
-5. Load a 3-level map. Level Up / Level Down step Surface ↔ Caverns ↔ Depths as before, and
+1. Load a 3-level map. Level Up / Level Down step Surface ↔ Caverns ↔ Depths as before, and
    stop at both ends. The terrain palette page still flips to the underground set below
    Surface.
-6. Add Level to make it 4. **Level Up from Surface goes to Firmament**, not to Depths.
-7. **Level Down from Firmament goes to Surface.**
-8. Level Up on Firmament does nothing; Level Down on Depths does nothing.
-9. On Firmament the palette shows the **surface** page, not the underground one.
-10. The status-bar level readout still updates on every step (it prints the stored level
+2. Add Level to make it 4. **Level Up from Surface goes to Firmament**, not to Depths.
+3. **Level Down from Firmament goes to Surface.**
+4. Level Up on Firmament does nothing; Level Down on Depths does nothing.
+5. On Firmament the palette shows the **surface** page, not the underground one.
+6. The status-bar level readout still updates on every step (it prints the stored level
     number, so Firmament reads 3 — expected, not a defect).
 
 **`AoWEd.exe`** — patched in lockstep and never yet exercised at all. If it is used, repeat
-5–9 there. If it is not used, say so and the AoWEd half can simply be `--undo`ne.
+1–5 there. If it is not used, say so and the AoWEd half can simply be `--undo`ne.
 
 ⭐⭐ Both editor caves and the game cave run only from user actions, not at package init, so
 no launch-only failure mode is expected — but nothing here has been run once.
@@ -2447,9 +2303,10 @@ Slot index == level index, assumed in four places:
 | `MapWindowKeyDown` `0x004514BC`/`0x004514D5` | `dec`/`inc` |
 
 `TAOWTabPanel.Draw @0x59817CEC` loops `0..Count−1`, `tabw = width div Count`; `CheckMouseDown
-@0x5981812C` derives the slot from X only. **Structurally horizontal**, and shared by six instances
-in AoW.exe (`ScannerTab`, both `HeaderTab`s, `SoundTab`, `UnitTab`, `TArmyInfoDlg.Tab1`) — a vertical
-rewrite in `aowInt.dpl` must be a PIC cave gated on a per-instance sentinel.
+@0x5981812C` derives the slot from X only. The class is shared by six instances in AoW.exe
+(`ScannerTab`, both `HeaderTab`s, `SoundTab`, `UnitTab`, `TArmyInfoDlg.Tab1`), so the two-row grid
+("World Map level strip v5") gives `ScannerTab` alone a copy of the class VMT instead of changing
+the class.
 
 Captions are AoW.exe's own STRINGTABLE (file `0x74094`, ids 65524/65525/65526; `PResStringRec`s
 `0x00403414/1C/24`, reached via gvar slots `0x0045A0C0/0x0045A288/0x0045A3F8`), translated by
@@ -2459,14 +2316,6 @@ literal.
 
 `TScanner` holds **one** level pointer (`+0x15C`, `SetLevel @0x597025F8`) and one cached surface pair
 (`+0x174/+0x178`, validity `+0x17C`); no per-level cache, nothing sized 3. `MapDrawSteps = 5`.
-
-**Column layout (user's wish, not built).** Cheapest concrete shape: widen the left margin —
-`Scanner.LeftOffset 30→78`, `BottomOffset 32→12`, `ScannerWindow.MinWidth 200→248`, three
-`TAOWCheckBox` radio-style buttons `awLeft/ahTop`, `LeftOffset 4`, `WinTop 32/56/80`, 70 wide,
-`ScannerTab` retired; map becomes 131×172. That is the `08-editor.md` §9.1 relocation dance on
-`TSWindow` (field 12→15, method 9→12, InstanceSize `0x74→0x80`, RCDATA block relocated; class table
-needs no new slot, `TAOWCheckBox` is already referenced) plus a cave of three click handlers calling
-`ViewLevel`.
 
 **Firmament level (user's design: displayed above Surface).** The display order has to become a table
 (`slot → level`, reverse lookup for the pressed state, `prev[]/next[]` for PgUp/PgDn) in all four
@@ -2575,7 +2424,7 @@ the re-applied DLL is SHA-256-identical to the pre-undo one (`1fb61a7c…`). `bu
 
 | script | change |
 |---|---|
-| `build_skylevel_ui.py` **v4** | World Map strip reads **Firmament \| Surface \| Caverns \| Depths \| Abyss** on a 5-level map: 5-entry tables, an "Abyss" const-string record, `Add("Abyss")` when count > 4, every table guard `cmp edx,4`. Layout in the UI-half table above. AoWz still differ in one byte; round trip bit-identical |
+| `build_skylevel_ui.py` | v4 put the Abyss at the end of the one-row strip; superseded 2026-10-21 by the v5 grid ("World Map level strip v5" below) |
 | `build_deved_levelnav.py` **v2** | Level Down from Depths reaches the Abyss; both palette flips become "surface page for 0 or 3" (v1's "1 or 2 is underground" would have given the Abyss the surface palette). Then `build_zigeditor.py --apply` rebuilt `AoWzEd.exe`; its `.tres` window matches `AoWDevEd.exe`'s |
 | `build_shipyard_income.py` | `MAX_LEVELS 4 → 8`. The limit is the size of a per-level table (width, height, label offset), not the coordinate system; a map with more levels than rows fails entry's sanity guard and earns **no water income at all**. 8 is above the editor's own z ≤ 7 ceiling, so it no longer follows the cap byte. BSS header `0xA8` B, window grown `0x80 → 0x100` (`0x558FAB00..0x558FABFF`, next claim `0x558FAC00`). `--sim` 57/57 |
 | `build_townquake_retune.py` | "underground" was `level 1 or 2`; now `level ∉ {0, 3}`. `cave_walls` 89 → 92 B, `cave_atk` stays at `0x5584D75C`, so the hook bytes did not move. Same single synced `map.Random(10)` (`rng_audit --owners`: `ok`) |
@@ -2646,13 +2495,7 @@ was the one `level ± 1` site outside the Cave unit (owner: no other mechanic do
 unchanged. Checklist: from Depths a warp lands on Caverns or the Abyss, from the Abyss on Depths,
 from Surface on Caverns or the Firmament, and never on a switched-off level.
 
-**Not yet done (phase 3):** the game's World Map strip as two fixed rows
-(Surface · Firmament · (Faery) / Caverns · Depths · Abyss) with blank cells for disabled levels
-and for levels the local player has not yet explored (bit `[map+0xA5]` of `[field+0x18]`), and
-PgUp/PgDn skipping them. Until then the strip still shows every stored level, placeholders
-included. `TAOWTabPanel` (aowInt) lays tabs out in one row by X only: a two-row mode means
-patching both arms of `Draw @0x59817CEC` and `CheckMouseDown @0x5981812C`, gated to the World Map
-instance.
+The game's World Map strip shows a blank cell for a switched-off level since `build_skylevel_ui.py` v5 ("World Map level strip v5" below).
 
 Checklist for this part:
 1. Options > Map Levels on an old map shows its levels ticked; OK with no change does nothing.
@@ -2664,6 +2507,39 @@ Checklist for this part:
 5. Flying from a Surface Chasm with Caverns off goes down to Depths; the prompt names Depths.
 6. New Map with Caverns off and Abyss on: the blank map opens with Surface, Depths and Abyss.
 7. Save, reload, and play the map: the disabled levels stay disabled.
+
+### World Map level strip v5 — two fixed rows (`build_skylevel_ui.py`, 2026-10-21)
+
+Owner ruling 2026-09-27, built 2026-10-21. `AoWz.exe` only; the DLL and `aowInt.dpl` are untouched.
+
+| | column 0 | column 1 | column 2 |
+|---|---|---|---|
+| row 0 | Surface (0) | Firmament (3) | Faery (5, no such level yet) |
+| row 1 | Caverns (1) | Depths (2) | Abyss (4) |
+
+- **Blank cell** = the empty tab button with no caption, not selectable (a click on it is consumed;
+  owner 2026-10-21: no bare background). A cell carries its level when the level exists, is not set in the mask `[map+0x41C]`, and either has a hex explored by the
+  seated player (bit `p−1` of `[field+0x18]`, `p = [map+0xA5]`) or is the level being viewed. No
+  seated player (`0xFF`) drops the exploration filter. Explored levels are cached per (map, player)
+  and the cache is dropped on every map setup (the caption-fill function).
+- **PgUp / PgDn** walk Firmament 3 → Surface 0 → Caverns 1 → Depths 2 → Abyss 4 and skip blank
+  levels; with nothing drawn in that direction they stay.
+- **Mechanism.** `TAOWTabPanel` is one class for six controls, so the strip instance gets its own
+  copy of the class VMT (`do_swap`, run from the caption fill): a subclass of the original (parent
+  cell → the original VMT) with SetSize (`+0x30`, height doubled so ReAlign grows the rect upward),
+  Draw (`+0x80`, the original Draw called once per cell with the instance's geometry, captions
+  and pressed index set to that cell; a blank cell gets a nil font, so Draw skips its caption) and CheckMouseDown (`+0x84`, cell from both
+  coordinates) replaced. The originals are reached through the live instance's VMT, so aowInt's
+  load address does not matter. The captions list holds all six names in cell order; Draw sees a
+  fake one-entry TStrings that forwards `Get` to the real list.
+- **Form data**: the map's `BottomOffset` 32 → 47 (a row is 15 px), the window's `MinHeight` and
+  `WinHeight` 216 → 231 so the smallest map is the size it was.
+- Addresses, caves and the `--undo` are in the script's docstring. Round trip 2026-10-21: undo
+  matches the vanilla root `AoW.exe` at all five sites and in the form data; re-apply is
+  byte-identical (`42f23aea…`). Seen working in the game by the owner 2026-10-21.
+
+Unproven (static checks only): that "Firmament" fits a cell at the minimum window width (48 px), and
+that a World Map window size saved by an earlier session is clamped up to the new minimum height.
 
 ### Firmament ↔ Surface caves — `build_maplevel4.py` v5 (2026-09-30)
 
@@ -2719,24 +2595,190 @@ tests, both now treating level 3 as surface. Three in-place rewrites, no cave:
 4. **Delete** a Depths↔Abyss cave from either end in the editor: both mouths go. Delete a
    Surface↔Caverns one: both mouths go, as before.
 5. Save the 5-level map, reload it, and check the Depths↔Abyss cave still links.
-6. **Game, World Map strip:** reads **Firmament | Surface | Caverns | Depths | Abyss**. Clicking each
-   tab shows that level. PgDn from Depths reaches the Abyss, PgUp from the Abyss returns to Depths,
-   and PgDn on the Abyss does nothing. Also check whether "Firmament" still fits a fifth-width tab
-   (145 px at the minimum window width, so 29 px a tab). If not, widen the window.
-7. **Walk through the cave both ways.** Entering on Depths puts the army on the Abyss, and the view
+6. **Walk through the cave both ways.** Entering on Depths puts the army on the Abyss, and the view
    follows. Entering the Abyss mouth returns it to Depths. The prompt, movement cost and scouting at
    the far end behave as on any other cave.
-8. **Pathfinding through it:** order an army on Surface to a hex on the Abyss. The path routes
+7. **Pathfinding through it:** order an army on Surface to a hex on the Abyss. The path routes
    through the caves (Surface→Caverns→Depths→Abyss) and the move completes. Give an AI player a
    reason to go down, and it does.
-9. **Abyss rules:** a unit without Night Vision sees half its radius; a global / storm / Bird's View
+8. **Abyss rules:** a unit without Night Vision sees half its radius; a global / storm / Bird's View
    spell is refused; a ranged unit without Night Vision takes the −4; an earth elemental heals per
    hex and an air elemental does not.
-10. **Shipyard income** with water on all five levels: each level's sea is counted separately.
-11. **Town Quake** on a city in the Abyss behaves as underground (walls 90% wood / 60% stone, ATK 18
+9. **Shipyard income** with water on all five levels: each level's sea is counted separately.
+10. **Town Quake** on a city in the Abyss behaves as underground (walls 90% wood / 60% stone, ATK 18
     without stone walls). A Firmament city does not.
-12. **Regression, 3-level map:** caves, PgUp/PgDn, the strip and Level Up/Down behave exactly as
+11. **Regression, 3-level map:** caves and Level Up/Down behave exactly as
     before.
+
+## Tactical line of sight and fog of war — `build_tactical_los.py` (2026-10-23)
+
+Applied 2026-10-23 to `Ziggurat/AoWTCPCK.dpl`; launch-tested. The script's docstring holds every
+address; `--emulate` runs the caves themselves under unicorn on a fake combat map and on four real
+walled templates (71 checks), `--test` checks the line-walk model. Revert: `--undo`
+(surgical).
+
+### Rules (owner's rulings, 2026-10-23)
+
+- **Combat sight is triple the strategic sight:** 3 × (3 + Vision level). **Inside an exploration
+  site without Night Vision it is then halved, rounded down** (owner, 2026-10-25): 9 → 4 for most
+  units. The engine's getter halves first (`TCombatUnit.GetVisibilityRange @0x55724AD0`), so
+  `csight` re-reads the base through the Vision level query and adds half of it.
+- **Every tactical combat** starts unexplored. A unit explores every hex within its combat sight
+  **+ 8** that it has a clear line to when it moves or is activated, and every unit does so at once
+  when a wall, gate or building drops to 0 hit points; explored stays explored.
+- **Walls, gates, houses and other structures are explored whole.** Each spans several hexes (a wall
+  4, a gate 7, as children of every hex they cover); exploring one hex of one explores all of it, and
+  overlapping objects chain, so a connected wall ring is known once any face of it is.
+- **Battles in the world** (not exploration sites): at the start each player also explores everything
+  a flood fill from its units reaches without crossing rock, a wall it may not see past, or the off-map
+  border, plus the blockers it touches. Attackers outside a city's walls therefore see the field but
+  not the streets; defenders, whose flood passes their walls, see both.
+- A hex is **seen** while one of the seated player's **own** units has it within combat sight and a
+  clear line. Allied armies share no vision.
+- An explored hex nobody sees shows its terrain under the fog shade and keeps its **decorations**:
+  walls and gates in any state, trees, rocks, houses, corpses, blood, ooze, fire, dropped items
+  (`DECOR` in the script). Units, unit shadows and effects are not drawn there, and hover, clicks and
+  the camera ignore it. Unexplored hexes stay black.
+- **Move orders** (owner, 2026-10-25): a move may target any explored hex, seen or not; its route is
+  planned as if units the player cannot see were not there. A plain move stops when its next hex is
+  occupied (vanilla's own rule), and also as soon as the moving unit sees an occupied hex further
+  along its route (within its combat sight, clear line). Melee and touch moves keep vanilla's rule
+  only, since their route ends at the unit they attack.
+- **Rock blocks sight and exploration everywhere:** lair rock (every isometric combat hex, which also
+  covers the cave-entrance map) and the "Wall" single hexes of site maps.
+- **Obstacles block sight everywhere, exploration only inside exploration sites** (owner, 2026-10-24):
+  houses and the Inn, Mine and Sacred Stones while they have hit points; combat obstacles (site cave
+  walls and pillars, the sides of bridge maps); Tree, Dead Tree, Pine Tree, Willow Tree, Rock. In a
+  world battle a unit explores past them, so the terrain behind is known, but the fog still hides what
+  stands there. The first blocking hex is itself seen. Lists in the script (`BLOCK_*`, resolved to
+  guids from `Release/comb_res.pfs` at build time — re-`--apply` after renaming or adding those
+  resources).
+- **City walls and gates block one way** while they have hit points: a unit inside the walls sees out
+  over them, a unit outside does not see in. Inside = reached from the map centre without crossing a
+  wall, gate or the border, or cut off from the border by walls and gates, or a wall or gate hex
+  itself; fixed once per battle from the template. A player with any unit inside floods over the walls
+  at battle start.
+
+### How the engine does it
+
+- `TAoWCombatMap` (`AoWTCPCK.dpl`, global `[0x46C064]`) is a `TAbstractAoWHSMap`: fog flag
+  `[map+0xC8]`, exploration flag `[map+0xC9]`, seated player `[map+0xA5]`. Vanilla
+  `TRndTacHsm.RandomMap` turned exploration on only for an exploration site (`TCombat+0x40 == 1`) and
+  forced fog off.
+- Per hex: `[field+0x18]` explored bits (bit `player−1`), `[field+0x1A]` fog counter for the seated
+  player only (the local view). HSEngine field: `+8` child array, `+0xD` child count, `+0xE` static
+  child count, `+0x10`/`+0x11` x/y.
+- With exploration on, AoWEPACK's `UpdateStaticScene`/`UpdateDynamicScene` copy only explored hexes'
+  objects into the scene, and `DrawFog` paints unexplored black and counter-0 hexes with the shade.
+  Vanilla hid units on unexplored hexes by not drawing them, not by painting over them.
+- `TTacticalCombatUnitHS.MapFieldMsgProc` message `0x110C` (the combat overview) already skips units on
+  counter-0 hexes when fog is on.
+- Resources: a combat object's resource is `[obj+8]`, its guid `[res+0xC]` (`TEResource` tag 1);
+  `TCityWall`/`TCombatStructure` hit points `[obj+0x20]`, 0 = destroyed. Multi-hex objects are
+  children of every covered hex (`TMultiHexMO.Connect`).
+
+### What the patch changes
+
+- **Move orders.** The five `GetExplored` calls of the move order (`ExecuteMoveSelection`: group,
+  single unit, movement ability) and the cursor (`UpdateMoveCursor`) go to `xpl` (explored, not
+  seen). The cursor's unit lookup `0x41F7B7` joins the `hover` sites, so a hidden unit shows a move
+  cursor, not an attack cursor. Routes come from `CalculateMovePath` (selection VMT +8, reached
+  only through the VMT, group plans included); `calcwrap` sets a planning flag around it, and
+  `TTacticalCombatUnitHS`'s `CanMoveOn` (+0xD0) and `CanMoveOver` (+0xD4) treat an occupant as
+  absent when that flag is set, the mover is the seated player's and the occupant's hex is not
+  seen. Routes travel inside the move tokens, so planning against one machine's fog is safe.
+  `TCombatMoveTE.DefaultMove` already ends a move when the next step's hex is occupied
+  (`TAoWMapField.GetPlayer` at `0x408E5A` ≠ `0xFF`); `stepchk` takes that call and also ends a
+  plain move on the first occupied hex further along the route that the mover can see.
+
+- Both flags on in every combat (two in-place bytes in `RandomMap`).
+- `fogon` takes `RandomMap`'s `SetFogEnabled` call (`0x424FD5`, `call [ecx+0x100]`), after the template
+  and its walls are loaded and before any unit is placed, and builds the inside map: bit `0x01` of
+  `[field+0x1B]` (unused on combat maps), kept all battle. Walls and gates are marked, a flood from the
+  centre stopped by them and the border, a flood from the border stopped by them; inside = reached by
+  the first, missed by the second, or a wall or gate hex.
+- `startflood` takes `TTacticalCombat.Execute`'s `call SetSeatedCombatPlayer` (`0x429940`), after
+  `RandomMap` has placed the map, its decorations and every unit. Outside exploration sites it marks
+  the solid hexes and the standing walls and gates and, per player with a live unit, floods from that
+  player's units (scratch bits `0x02`/`0x08`/`0x10` of `[field+0x1B]`, relaxed forward and backward
+  until nothing changes; cleared after, `0x01` kept), passing walls and gates if one of the player's
+  units stands inside, and explores the result. Runs once per battle on every machine.
+- `wallhp` takes the `mov eax,[ebp-8]; mov edx,[ebp-4]` ahead of the hit-point write in
+  `TCityWall.SetHitPoints` (`0x405C12`, walls and gates) and `TCombatStructure.SetHitPoints`
+  (`0x432A4A`, houses and the other buildings). On a drop from > 0 to 0 it writes the 0 early and runs
+  `explore` for every live unit. A destroyed wall already stopped blocking the line test (the setter
+  clamps hit points at 0); without this, the hexes behind a breach were seen but stayed black until a
+  unit moved or was activated, because only then did anything explore.
+- `wclose` runs after every `explore` and after the battle-start flood: it unions the explored bits
+  of players 1..12 across neighbouring hexes that hold the same wall, gate, house or structure object.
+  Before it, only a wall's outer face was explored and the rest drew black (seen live on `TFort000`,
+  2026-10-24). Bits 12–15 of `[field+0x18]` are not player bits (set on scattered hexes in a live
+  battle; vanilla's border hexagon zeroes 12–31) and are never carried.
+- **`[map+0x30]` must never be set inside `ShowScene`.** It means "static scene invalid";
+  `ShowScene` runs `UpdateStaticScene` and `UpdateDynamicScene` (our `uds`) and then
+  `DrawStaticHS`, which raises "Static scene is invalid, call UpdateStaticScene!" if the flag is set.
+  `fog_update` (inside `uds`) set it on a seat change, so every battle opened with that error
+  (caught with `veh_capture.py --attach --census`); it now calls `UpdateStaticScene` itself.
+  `explore`, `wallhp` and the battle-start flood run outside `ShowScene` and still set the flag.
+- `explore` replaces `ExploreArea` at its two callers. It no longer passes through the shared
+  `TAoWMapLevel.ExploreArea`, so neither the sight+2 hand edit nor `build_los_terrain.py`'s terrain 7/8
+  filter applies in combat any more.
+- `uds` replaces `TAoWCombatMap`'s `UpdateDynamicScene` (VMT cell), after recounting the fog when
+  anything changed: a seen hex adds every dynamic object (HSEngine `CopyDynamicVisibleHS`), an
+  explored hex nobody sees adds only the dynamic objects whose VMT is a decoration class, an unexplored
+  hex adds nothing. A field's children split into static (`[0, [field+0xE])`) and dynamic; walls,
+  trees and corpses are dynamic, which is why vanilla's explored-only copy lost them in fog.
+- The ten `GetExplored` calls: the nine input/camera ones answer "explored and seen" (and treat a nil
+  hex as 0 — `DefaultMove`'s could pass nil, which the real routine dereferences); the AI's one
+  (`TCAI.EvalBattle 0x4183B7`) keeps vanilla semantics inside a site and answers 1 elsewhere, so open
+  battles play as before for the AI. A visibility test there parks every AI unit the human cannot see.
+  When the AI plays for the seated player — `build_unit_ai.py`'s Space or vanilla's Auto checkbox,
+  i.e. `[TCombatData+0x31]` (the combat player EvalBattle moves) `== [map+0xEC]` — a unit enters the
+  AI's lists only if its own hex is seen, so auto-played units know only the enemies their player
+  sees. The test reads EvalBattle's ring index at `[ebp-0xC]` (0 = the unit's own hex).
+- The five unit-on-hex lookups of local input (`MouseMoveEvent` hover, four in `MouseDownEvent`) find
+  nothing on an unseen hex.
+- **MP:** synchronised parts are the flags, the battle-start flood, `explore` and `wallhp` (TE code, synchronised inputs only); the
+  counter, drawing and input are per machine. The inside map is computed from the template on every
+  machine. A watching non-participant (seat `0xFF`) sees everything.
+  The tactical AI stays omniscient. No random draws.
+
+### Consequences the rules imply
+
+- **Sieges:** defenders inside see the field over their walls; attackers outside see into the
+  streets only through a fallen section or gate. An attacker standing on a wall or gate hex (a breach,
+  a fallen gate) counts as inside and sees out over the rest.
+- **Exploration sites:** most units see 4 hexes and explore 12; Night Vision gives 9 and 17.
+  AI defenders wake as soon as the human has explored within 2 of them, so they arrive out of the fog.
+- **Open battles:** the terrain is known from the start; the enemy army is unseen unless a unit's
+  combat sight (9 without Vision) reaches it.
+- Decorations under fog are live: a corpse, a fire or a falling wall shows there as it happens.
+
+### Known leaks and unproven risk
+
+- `build_group_move_tc.py`'s cluster search skips hexes held by any unit, hidden ones included. The
+  AI playing your units (Space, Auto) paths with full knowledge. Sounds of hidden units play on
+  purpose (owner, 2026-10-23).
+- ⚠ `build_group_move_tc.py` owns `TTacticalCombatUnitHS` VMT `+0xD4`; `canover` now holds that slot
+  and chains to its `cave_unit`, so that script reports MIXED and refuses to apply or undo. Undo
+  `build_tactical_los.py` first; re-apply in the reverse order.
+- Combat-log lines name hidden units. Not filtered: four independent ring writers build their own
+  names (`build_combatlog_dll.py`'s worker, `build_effectroll.py`, `build_razorplate.py`, and
+  `build_combatlog_lib.py`'s `cl_emit` for seven more scripts), so there is no single place to drop
+  a line.
+- **Observers** (a third player watching a live-MP battle): the battle-start seat loop
+  (`TTacticalCombat.Execute` `0x429845`–`0x429940`) seats the first local human combat player and
+  `NewTurn` seats only local players, so an observer stays at seat `0xFF` and sees the whole battle
+  (kept by the owner, 2026-10-24).
+  Vanilla had no `0xFF` case, which is why Inioch's observers got a black site map (share9,
+  `exploration-site-fix.md`; his mod seats the observer's view on the explorer instead).
+- ⚠ Forward hazard: `aispot`'s site branch reads this machine's seat, as vanilla did. A Global
+  player's AI may run on every machine in live MP (Inioch's `lan-desync-investigation.md`), where that
+  would diverge. Unreachable while live-MP site searches auto-resolve (`TExplorationSite.Search`
+  raises the tactical dialog only with one human player or in PBEM); a patch that opens them must give
+  that branch a synchronised answer first.
+- Unproven: the per-frame cost on a full 65 × 59 map (blocker scan every frame, recount on change) and
+  that every multi-hex house blocks all its hexes. No in-game run.
 
 ## Open items
 

@@ -46,7 +46,7 @@ HOOKS
                    cave_addclick: the original handler (one ExpandAbility, through
                    build_deved_heroicchoice.py's three-ability cap when that is applied), then --
                    only if the set now holds the ability -- ExpandAbility (owner VMT +0x94) again
-                   until GetLevel passes the highest lower level (at most 8 calls, stopping when one
+                   until GetLevel passes the highest lower level (at most MAX_STEPS = 20 calls, stopping when one
                    makes no progress), then the four refreshes AddBtnClick ends with.  The DFM
                    binds OnClick by name through this table; nothing calls 0x00410690 directly.
                    The entry's .reloc stays valid: the new value is inside the image.
@@ -113,7 +113,7 @@ STRIKE = 0x15
 ORIG_CANADD = 0x004105B4                              # dialog VMT +0x94
 DLL_HSSET = 0x558FA044                                # AoWEPACK.dpl: the AoWHSSet variable,
 DLL_SE_VMT, DLL_RA_VMT = 0x5571E4D0, 0x5571FFA0       # TStrikeEnhancement- / TRoundAttackAbility
-MAX_STEPS = 8
+MAX_STEPS = 20                                        # Mirror Image has 20 levels
 
 HOOKS = {   # name: (va, original bytes as read off the binary)
     "F1": (0x00410375, bytes.fromhex("8b08ff91c4000000")),

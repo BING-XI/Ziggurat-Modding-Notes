@@ -76,6 +76,11 @@ Couplings.
     exits) and GetUnitIndexAIPriority at 0x5575BB37; no byte is shared.
   * Hurl Boulder's attack, shots and range are copied (damage is the owner's 11, Hurl Boulder's 13
     less two): the dry run flags drift in those three.
+  * build_combatlog_siege.py derives its SetHitPoints tables from the live TCityWall and
+    TCombatStructure MapFieldMsgProcs, through H1 and H3: its hid_id() recognises cave_hid by
+    shape (mov edx,[ebp-8] / mov edx,[edx+0xC] / cmp / je / mov edx,0x18 / ret) and reads the 0x18.
+    Reshaping cave_hid makes that script abort at import; update its HID_SHAPE with it.  Order is
+    free: its tables are the same with or without this script.
 
 Unproven, static checks cannot reach it: that the AI sieges with it, the wall damage on screen, and
 where the skull sits on its flight path (slot 0 centres it on the path, as Hurl Boulder's frames are).

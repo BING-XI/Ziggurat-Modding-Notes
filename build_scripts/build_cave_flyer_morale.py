@@ -2,8 +2,9 @@
 r"""
 build_cave_flyer_morale.py -- flying units lose morale underground: -5 on Caverns, -10 on Depths,
 -15 on the Abyss.  Units only; heroes and leaders are exempt, and so is any unit with Cave
-Crawling.  AoWEPACK.dpl.
+Crawling or Night Vision.  AoWEPACK.dpl.
 Owner request 2026-09-27 (heroes and Cave Crawling excluded the same day; re-tuned in place).
+Night Vision excluded 2026-10-21 (owner request; re-tuned in place, same hook and slot).
 
 THE SITE
     TAbstractUnit.GetUnitMoraleValue @0x5577EED8 (VMT +0x17C) builds the raw morale value:
@@ -18,9 +19,10 @@ THE SITE
         level = byte [esp+4]        (GetLocation's level out-param; GetField consumed its push)
         penalty = PENALTY[level]    (none on Surface 0 or Firmament 3)
         if penalty and not IsClass(self, THero) and self has Flying (id 1, VMT +0x148)
-                   and not Cave Crawling (id 4, VMT +0x148):
+                   and not Cave Crawling (id 4) and not Night Vision (id 0x27):
             esi -= penalty
-    and jumps to 0x5577EFA0.  The penalty lands before the vanilla [0,100] clamp.  0x5577EF9B is
+    and jumps to 0x5577EFA0.  The three ability queries share a local `_has` subroutine (EDX = id,
+    returns ZF clear when the ability is on) so the cave fits its 0x80 slot.  The penalty lands before the vanilla [0,100] clamp.  0x5577EF9B is
     itself a jump target (0x5577EF8E `ja`) and lands on the hook's first byte; nothing jumps into
     its interior (checked by the run helper).  Byte-identical to vanilla before this script.
 
@@ -31,8 +33,8 @@ WHO IT REACHES
     grown 0x48 -> 0x94 by the unit-spellcasting work.  TUnit and TAdjustableUnit (editor-customised
     units) take the penalty; TWallUnit cannot fly.  The early exits for unowned units, unit type 2
     and the map's no-morale flag return 50 before the site, as they do for the terrain pair.
-    Both abilities are queried item-aware (VMT +0x148), so an item or enchantment that grants
-    Flying brings the penalty, and one that grants Cave Crawling lifts it.
+    All three abilities are queried item-aware (VMT +0x148), so an item or enchantment that grants
+    Flying brings the penalty, and one that grants Cave Crawling or Night Vision lifts it.
 
 WHEN IT IS SEEN
     The value is cached at [unit+0x26] by UpdateMoraleValue (callers: TAbstractUnit.Changed,
@@ -63,6 +65,7 @@ THERO_CELL = 0x55711FAC         # holds the THero classref 0x55711FEC (rebased b
 THERO_VMT = 0x55711FEC
 FLYING = 1
 CAVE_CRAWLING = 4
+NIGHT_VISION = 0x27
 VMT_ABIL_ENABLED = 0x148
 
 PENALTY = {1: 5, 2: 10, 4: 15}  # map level index -> raw morale lost by a flyer
@@ -107,16 +110,13 @@ def build(va):
         test al, al
         jnz _skip
         mov edx, {FLYING}
-        mov eax, edi
-        mov ecx, dword ptr [eax]
-        call dword ptr [ecx + 0x{VMT_ABIL_ENABLED:X}]
-        test al, al
+        call _has
         jz _skip
         mov edx, {CAVE_CRAWLING}
-        mov eax, edi
-        mov ecx, dword ptr [eax]
-        call dword ptr [ecx + 0x{VMT_ABIL_ENABLED:X}]
-        test al, al
+        call _has
+        jnz _skip
+        mov edx, {NIGHT_VISION}
+        call _has
         jnz _skip
         pop ecx
         sub esi, ecx
@@ -125,6 +125,12 @@ def build(va):
         pop ecx
     _done:
         jmp 0x{RESUME:X}
+    _has:
+        mov eax, edi
+        mov ecx, dword ptr [eax]
+        call dword ptr [ecx + 0x{VMT_ABIL_ENABLED:X}]
+        test al, al
+        ret
     """, va)
     return body
 

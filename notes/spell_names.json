@@ -274,7 +274,8 @@
  },
  "50": {
   "class": "TFireAura",
-  "name": "Fire Halo",
+  "name": "Living Flame",
+  "note": "renamed from Fire Halo 2026-10-22 (build_resstr_names.py): fire heals the enchanted unit, build_livingflame.py",
   "spell_id": 40,
   "unit": "UnitSpells",
   "vanilla": "Fire Aura"
@@ -544,6 +545,38 @@
   "spell_id": 78,
   "unit": "SummonSpells",
   "vanilla": "Summon Mermaid"
+ },
+ "89": {
+  "class": "TStoneSkin",
+  "name": "Regeneration",
+  "note": "added by build_regen_spell.py 2026-10-22 -- a TStoneSkin instance granting the enchantment 0x53 (Water, tier 1)",
+  "spell_id": 79,
+  "unit": "UnitSpells",
+  "vanilla": null
+ },
+ "90": {
+  "class": "TDeathRay",
+  "name": "Taint the Flame",
+  "note": "added by build_deathfire_combat.py 2026-10-25 -- a TDeathRay instance (Death/Fire, tier 1)",
+  "spell_id": 80,
+  "unit": "CombatSpells",
+  "vanilla": null
+ },
+ "91": {
+  "class": "TFireBall",
+  "name": "Pillar of Banefire",
+  "note": "added by build_deathfire_combat.py 2026-10-25 -- a TFireBall instance (Death/Fire, tier 2)",
+  "spell_id": 81,
+  "unit": "CombatSpells",
+  "vanilla": null
+ },
+ "92": {
+  "class": "TDarkGift",
+  "name": "Enmity of Nine Hells",
+  "note": "added by build_demon_curse.py 2026-10-25 as Demon Curse, renamed the same day -- a TDarkGift instance granting the enchantment 0x5B (Death/Fire, tier 3)",
+  "spell_id": 82,
+  "unit": "UnitSpells",
+  "vanilla": null
  },
  "110": {
   "class": "TSolarFlare",

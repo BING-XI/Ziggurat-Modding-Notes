@@ -7,6 +7,12 @@ stepwise progression as the user's Desiccate spell (repurposed Rejuvenate, cave 
     Grass(1)->Steppe(4);  Snow(3)->Grass(1);  Steppe(4)->Desert(2);  Wasteland(5)->Desert(2);  Dirt(C)->Steppe(4)
 (read-once, no cascade -> each proc dries a hex ONE stage; Desert(2) is terminal). Footprint matches
 the other three Paths after the outer-ring mod: radius 2, inner disk 100% + 25% proc on the outer ring.
+LEVELS (owner, 2026-10-22): nothing on the cave levels -- Caverns 1, Depths 2, the Abyss 4 (the level
+of the hex being left); the surface and the Firmament keep it.  Vanilla gates Life/Decay to the
+surface only (0x55780421), but 0x557804B7 is reached past that gate, so cave_sanddispatch tests the
+level itself.  That grew it 16 bytes and moved cave_sandreg 0x5580E000 -> 0x5580E010; --apply
+recognises the earlier layout and rewrites the zone 0x5580DF00..0x5580E05F in place.  The owner
+launched the game after the move (2026-10-22): it starts.
 
 THIS SCRIPT HAS TWO INDEPENDENT HALVES (both position-independent caves, no new DLL):
 
@@ -193,11 +199,23 @@ proc_sand=make_proc(CAVE_PROC,CAVE_CB)
 # cave_sanddispatch: hooked from MovedTo @0x557804b7. Sand GetAbilityEnabled + radius-2 Flood via
 # proc_sand, then replay MOV EDX,0x6d and fall into the Frost check. PIC: proc_sand addr & the map
 # pointer are reached via an anchor (call/pop edi) + patched displacements.
-CAVE_DISP=(CAVE_PROC+len(proc_sand)+0xF)&~0xF
+# LEVEL GATE (owner, 2026-10-22): Path of Sand does nothing on the cave levels -- Caverns 1, Depths 2,
+# the Abyss 4 (`[field+0x12]`, the level of the hex being left; Firmament 3 and the surface 0 keep
+# it).  Vanilla gates Life/Decay to the surface only (0x55780421 `cmp byte [field+0x12],0`), and
+# 0x557804B7 is reached past that gate, so Sand needs its own test.  EAX/EDX are free here.
 # DIAGNOSTIC: with --diag, DROP the GetAbilityEnabled gate so the Sand terraform fires on EVERY
 # non-transported move (any unit, any faction). Used to isolate "cave works, ability-check is the
 # problem" (terrain dries for all units) vs "cave broken" (nothing changes). NOT for normal use.
 DIAG="--diag" in sys.argv
+ZONE=(0x5580DF00, 0x5580E060)        # this script's caves; build_path_transportgate.py starts at 0x5580E060
+LEVEL_GATE_SRC = """
+    mov eax, [ebp-4]
+    mov al, byte ptr [eax+0x12]
+    dec al
+    cmp al, 1
+    jbe _skip
+    cmp al, 3
+    je _skip"""
 _gate = "" if DIAG else f"""
     mov edx, {SAND_ID}
     mov eax, ebx
@@ -205,8 +223,15 @@ _gate = "" if DIAG else f"""
     call dword ptr [ecx+0x148]
     test al, al
     jz _skip"""
-disp_src=f"""{_gate}
-    call 0x{CAVE_DISP:X}
+
+
+def layout(icon, level_gate=True):
+    """-> {name: (va, bytes)} for cave_sanddispatch, cave_sandreg and the name literal, and the
+    Frost-registration hook bytes.  level_gate=False is the 2026-07..2026-10-21 layout, kept so a
+    re-tune recognises it and rewrites in place."""
+    disp_va=(CAVE_PROC+len(proc_sand)+0xF)&~0xF
+    disp_src=(LEVEL_GATE_SRC if level_gate else "") + _gate + f"""
+    call 0x{disp_va:X}
     pop edi
     mov eax, [ebp-4]
     movsx eax, byte ptr [eax+0x11]
@@ -230,18 +255,18 @@ _skip:
     mov edx, 0x6d
     jmp 0x{FROST_CONT:X}
 """
-cave_disp=patch(bytes(ks.asm(disp_src,CAVE_DISP)[0]),CAVE_DISP,0x5F,[(PH_PROC,CAVE_PROC),(PH_MAP,MAPPTR)])
-
-# cave_sandreg: hooked by repointing the Frost RegisterAbility call. Re-issue Frost's register (the
-# displaced call), then create + register Path of Sand. EAX=ctrl,EDX=frost_obj on entry; EBX=ctrl.
-CAVE_REG=(CAVE_DISP+len(cave_disp)+0xF)&~0xF
-def build_reg(icon):
-    src=f"""
+    disp=patch(bytes(ks.asm(disp_src,disp_va)[0]),disp_va,0x5F,[(PH_PROC,CAVE_PROC),(PH_MAP,MAPPTR)])
+    # cave_sandreg: hooked by repointing the Frost RegisterAbility call. Re-issue Frost's register
+    # (the displaced call), then create + register Path of Sand. EAX=ctrl,EDX=frost_obj on entry;
+    # EBX=ctrl.  Runs at PACKAGE INIT: a moved cave_sandreg is only proved by launching the exe.
+    reg_va=(disp_va+len(disp)+0xF)&~0xF
+    def reg_src(name_ph, ic):
+        return f"""
         call 0x{REGISTER_ABIL:X}
-        call 0x{CAVE_REG:X}
+        call 0x{reg_va:X}
         pop eax
-        lea edx, [eax + 0x{PH_NAME:X}]
-        mov ecx, 0x{icon:X}
+        lea edx, [eax + 0x{name_ph:X}]
+        mov ecx, 0x{ic:X}
         mov eax, 0x{SAND_ID:X}
         call 0x{CREATE_ENH:X}
         mov edx, eax
@@ -249,51 +274,57 @@ def build_reg(icon):
         call 0x{REGISTER_ABIL:X}
         ret
     """
-    return patch(bytes(ks.asm(src,CAVE_REG)[0]),CAVE_REG,0x58,[(PH_NAME,NAME_VA)])
-# name blob laid out right after cave_sandreg; ptr passed to LStrAsg = blob+8 (past refcount+length)
-_probe=bytes(ks.asm(f"call 0x{REGISTER_ABIL:X}\ncall 0x{CAVE_REG:X}\npop eax\nlea edx,[eax+0x{PH_NAME:X}]\nmov ecx,0x8000\nmov eax,0x{SAND_ID:X}\ncall 0x{CREATE_ENH:X}\nmov edx,eax\nmov eax,ebx\ncall 0x{REGISTER_ABIL:X}\nret",CAVE_REG)[0])
-NAME_BLOB_VA=(CAVE_REG+len(_probe)+0x3)&~0x3
-NAME_VA=NAME_BLOB_VA+8                                  # pointer handed to CreateEnhancementAbility
-_name=b"Path of Sand"
-name_blob=struct.pack("<iI",-1,len(_name))+_name+b"\x00"
+    probe=bytes(ks.asm(reg_src(PH_NAME, 0x8000),reg_va)[0])
+    blob_va=(reg_va+len(probe)+0x3)&~0x3
+    name_va=blob_va+8                                   # pointer handed to CreateEnhancementAbility
+    reg=patch(bytes(ks.asm(reg_src(PH_NAME, icon),reg_va)[0]),reg_va,0x58,[(PH_NAME,name_va)])
+    name=b"Path of Sand"
+    blob=struct.pack("<iI",-1,len(name))+name+b"\x00"
+    assert blob_va+len(blob) <= ZONE[1], "the caves overrun %08X" % ZONE[1]
+    return {"cave_sanddispatch": (disp_va, disp), "cave_sandreg": (reg_va, reg),
+            'name literal "Path of Sand"': (blob_va, blob),
+            "frostreg_hook": b"\xE8"+rel32(FROSTREG_INJ,reg_va), "disp_hook": b"\xE9"+rel32(DISP_INJ,disp_va),
+            "name_va": name_va}
+
+
+def zone_image(lay):
+    img=bytearray(ZONE[1]-ZONE[0])
+    for va,code in ((CAVE_CB,cave_cb),(CAVE_PROC,proc_sand))+tuple(
+            v for k,v in lay.items() if isinstance(v,tuple)):
+        img[va-ZONE[0]:va-ZONE[0]+len(code)]=code
+    return bytes(img)
+
 
 APPLY="--apply" in sys.argv
 def process(path,base,suffix=".pre-pathsand"):
-    global name_blob
     data=bytearray(open(path,"rb").read()); secs=load_sections(data); va2off=mkva2off(base)
     def rd(va,n): o=va2off(secs,va); return bytes(data[o:o+n])
     # dependency: outer-ring cave_stash must be applied (E9 jmp at MovedTo 0x5578041E)
     if rd(0x5578041E,1)!=b"\xE9":
         print("[x] outer-ring patch (build_path_outerring.py) not applied -- apply it first (Sand reuses its centre-stash)."); return False
     icon=struct.unpack("<H",rd(ICON_VA,2))[0]
-    cave_reg=build_reg(icon)
-    print(f"[i] icon word *({ICON_VA:08X}) = 0x{icon:04X}   SAND_ID = 0x{SAND_ID:02X}   name @ {NAME_VA:08X}")
-    patches=[
-        (CAVE_CB,   bytes(len(cave_cb)),   cave_cb,   "cave_sand_cb (Desiccate progression)"),
-        (CAVE_PROC, bytes(len(proc_sand)), proc_sand, "proc_sand (ring-gate: inner 100% / outer 25%)"),
-        (CAVE_DISP, bytes(len(cave_disp)), cave_disp, "cave_sanddispatch (MovedTo Sand branch, radius 2)"),
-        (CAVE_REG,  bytes(len(cave_reg)),  cave_reg,  "cave_sandreg (Frost re-register + create/register Sand)"),
-        (NAME_BLOB_VA, bytes(len(name_blob)), name_blob, 'name literal "Path of Sand"'),
-        (DISP_INJ,  DISP_ORIG, b"\xE9"+rel32(DISP_INJ,CAVE_DISP), "MovedTo 0x557804b7 -> cave_sanddispatch"),
-        (FROSTREG_INJ, FROSTREG_ORIG, b"\xE8"+rel32(FROSTREG_INJ,CAVE_REG), "Frost RegisterAbility call -> cave_sandreg"),
-    ]
-    for nm,va,cave in [("cave_sand_cb",CAVE_CB,cave_cb),("proc_sand",CAVE_PROC,proc_sand),
-                       ("cave_sanddispatch",CAVE_DISP,cave_disp),("cave_sandreg",CAVE_REG,cave_reg)]:
+    new=layout(icon, True); old=layout(icon, False)
+    print(f"[i] icon word *({ICON_VA:08X}) = 0x{icon:04X}   SAND_ID = 0x{SAND_ID:02X}   name @ {new['name_va']:08X}")
+    for nm,va,cave in [("cave_sand_cb",CAVE_CB,cave_cb),("proc_sand",CAVE_PROC,proc_sand)]+[
+            (k,)+v for k,v in new.items() if isinstance(v,tuple) and not k.startswith("name")]:
         print(f"{nm} @ {va:08X} ({len(cave)} B)")
         for ins in cs.disasm(cave,va): print(f"  {ins.address:08X} {ins.bytes.hex(' '):<24}{ins.mnemonic} {ins.op_str}")
-    if all(rd(va,len(new))==new for va,_o,new,_d in patches):
+    zone=rd(ZONE[0],ZONE[1]-ZONE[0]); want=zone_image(new)
+    disp=rd(DISP_INJ,5); freg=rd(FROSTREG_INJ,5)
+    if zone==want and disp==new["disp_hook"] and freg==new["frostreg_hook"]:
         print(f"[= ] {os.path.basename(path)}: already applied"); return True
-    ok=True
-    for va,orig,new,desc in patches:
-        cur=rd(va,len(new))
-        if cur!=orig and cur!=new: ok=False; print(f"[!] {va:08X} ({desc})\n     exp {orig.hex(' ')}\n     got {cur.hex(' ')}")
+    zs = "zero" if not any(zone) else "previous layout (no level gate)" if zone==zone_image(old) else None
+    ok = zs is not None and disp in (DISP_ORIG,new["disp_hook"]) and freg in (FROSTREG_ORIG,old["frostreg_hook"],new["frostreg_hook"])
+    print(f"[i] zone {ZONE[0]:08X}-{ZONE[1]:08X}: {zs or 'FOREIGN'};  MovedTo hook {disp.hex(' ')};  Frost reg hook {freg.hex(' ')}")
     if not ok: print("[x] mismatch -- not written"); return False
-    if not APPLY: print("[dry] originals verified"); return True
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    bp=os.path.join(BACKUP_DIR, os.path.basename(path)+suffix)
-    if not os.path.exists(bp): shutil.copy2(path,bp); print(f"[bak] {bp}")
-    for va,orig,new,desc in patches:
-        o=va2off(secs,va); data[o:o+len(new)]=new; print(f"[w ] {va:08X} {desc}")
+    if not APPLY: print("[dry] verified" + ("; --apply rewrites the zone in place" if zs!="zero" else "")); return True
+    if zs=="zero":
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        bp=os.path.join(BACKUP_DIR, os.path.basename(path)+suffix)
+        if not os.path.exists(bp): shutil.copy2(path,bp); print(f"[bak] {bp}")
+    for va,blob,desc in ((ZONE[0],want,"the zone"),(DISP_INJ,new["disp_hook"],"MovedTo 0x557804b7 -> cave_sanddispatch"),
+                         (FROSTREG_INJ,new["frostreg_hook"],"Frost RegisterAbility call -> cave_sandreg")):
+        o=va2off(secs,va); data[o:o+len(blob)]=blob; print(f"[w ] {va:08X} {desc}")
     try: open(path,"wb").write(data)
     except PermissionError: print("[x] LOCKED -- close AoW binaries"); return False
     return True

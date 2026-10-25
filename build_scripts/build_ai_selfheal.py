@@ -24,7 +24,8 @@ THE FIX
          value = MultDEV(DEV, pct, 1), pct = 50 hero/leader (build_ai_touch_herovalue.py) else 100
          [cai+0x2C] += 1;  CreateMove(type 1, self, self, 0, 0x2F, value, dest = own hex)
        then replays the Free and resumes at 0x41921A.
-    B  executor -- hook 0x41ACE4 (10 B) -> cave_exec.  One-node path, ability 0x2F, destination = the
+    B  executor -- hook 0x41ACE4 (10 B) -> cave_exec.  One-node path, ability 0x2F (or Rally 0xC2,
+       build_rally.py's own-hex proposal, since 2026-10-21), destination = the
        unit's own hex, movement >= 1 -> AbRangedTC(hs, x, y) (0x423860; the engine's own
        touch-without-moving path, used by AbTouchMoveTC for a one-node friendly touch), result to
        [ebp-0x31], resume at the post-execution tail 0x41ADD0.  Longer paths -> vanilla 0x41ACEE;
@@ -54,6 +55,7 @@ TOBJ_FREE, ISCLASS, GETABIL = 0x00401050, 0x00401058, 0x00402704
 DV2DEV, MULTDEV, CREATEMOVE, ABRANGEDTC = 0x00413664, 0x00414418, 0x004135B8, 0x00423860
 IAT_ABILCTL, IAT_THERO = 0x0046E8D0, 0x0046E914
 HEALING = 0x2F
+RALLY = 0xC2             # build_rally.py: its AI proposal is a one-node move on itself, executed here
 HERO_PCT = 0x32          # = the live byte at 0x4171F5 (build_ai_touch_herovalue.py)
 
 
@@ -186,7 +188,10 @@ def build_b(va):
         mov edx, dword ptr [ebp - 0x20]
         movsx eax, word ptr [edx + 6]
         cmp eax, {HEALING:#x}
+        je x_ok
+        cmp eax, {RALLY:#x}
         jne x_drop
+    x_ok:
         mov ecx, dword ptr [edx + 0x14]
         mov ecx, dword ptr [ecx + 0x1c]
         cmp dword ptr [ecx + 0x5c], 1

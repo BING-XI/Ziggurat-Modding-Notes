@@ -406,7 +406,7 @@ def literal(s):
 
 
 # --------------------------------------------------------------- cave_reg_abil
-def build_reg_abil(va, name_va):
+def build_reg_abil(va, name_va, zero_ecx=True):
     """Re-issue the displaced RegisterAbility, then build + register Embrittled (0xB2).
 
     On entry vanilla has just set EAX = the TAbilityControl and EDX = the ability it built
@@ -416,6 +416,12 @@ def build_reg_abil(va, name_va):
 
     Both runtime addresses are resolved from ONE anchor before any call, because the
     constructor clobbers every volatile register.
+
+    `xor ecx,ecx` before the constructor, as in cave_reg_spell: ECX is the constructor's owner
+    argument, which TEObject.Create stores. Until 2026-10-21 this cave left the class cell's
+    address there (Embrittled's [+4] = a code address); the owner callbacks it reaches today do
+    nothing, so nothing showed, but it is the second "Runtime error 216" cause Inioch hit with
+    his Slow clone (share9). `zero_ecx=False` reproduces that shipped layout for PRIOR_ZONES.
     """
     src = """
         call 0x%X
@@ -426,6 +432,7 @@ def build_reg_abil(va, name_va):
         push eax
         add  ecx, 0x%X
         mov  eax, dword ptr [ecx]
+        %s
         mov  dl, 1
         call 0x%X
         pop  edx
@@ -438,8 +445,8 @@ def build_reg_abil(va, name_va):
         mov  eax, ebx
         call 0x%X
         ret
-    """ % (REGISTER_ABIL, va, PH_ABNAME, PH_ABCLS, SLOWENCH_CREATE, LSTRASG,
-           ABILITY_ID, REGISTER_ABIL)
+    """ % (REGISTER_ABIL, va, PH_ABNAME, PH_ABCLS, "xor  ecx, ecx" if zero_ecx else "",
+           SLOWENCH_CREATE, LSTRASG, ABILITY_ID, REGISTER_ABIL)
     return fix_pic(asm(src, va), va, 0x59,                       # 0x59 = pop ecx
                    [(PH_ABNAME, name_va), (PH_ABCLS, SLOWENCH_CLSPTR)])
 
@@ -601,7 +608,7 @@ def build_dmg(va):
 
 
 # ------------------------------------------------------------------ cave zone
-def build_zone(name_ptr_bias=8, spell_name=None, abil_name=None):
+def build_zone(name_ptr_bias=8, spell_name=None, abil_name=None, abil_zero_ecx=True):
     """Lay every cave out back to back from CAVE, 16-byte aligned, and return
     (blob, [(label, va, code), ...]).
 
@@ -656,7 +663,8 @@ def build_zone(name_ptr_bias=8, spell_name=None, abil_name=None):
     spell_name = SPELL_NAME if spell_name is None else spell_name
     ab_name_va = place_data("abil name literal", literal(abil_name))
     sp_name_va = place_data("spell name literal", literal(spell_name))
-    place("cave_reg_abil", lambda va: build_reg_abil(va, ab_name_va + name_ptr_bias))
+    place("cave_reg_abil", lambda va: build_reg_abil(va, ab_name_va + name_ptr_bias,
+                                                     abil_zero_ecx))
     place("cave_reg_spell", lambda va: build_reg_spell(va, sp_name_va + name_ptr_bias))
     place("cave_createca", build_createca)
     place("cave_absel", build_absel)
@@ -701,10 +709,16 @@ ZONE, PARTS = build_zone()
 #                          read-only CODE section during DLL init, and the game died on launch
 #                          with "Runtime error 216 at 00003924". Never worked; no save can
 #                          contain spell 109 or ability 0xB2, so there is nothing to migrate.
+#   v3 (to 2026-10-21):    cave_reg_abil called the constructor with ECX = the class cell
+#                          (a garbage owner); fits the same 16-byte slot, no cave moved.
 PRIOR_ZONES = [
-    build_zone(name_ptr_bias=0, spell_name=b"Embrittlement")[0],   # v1: the header/+8 bug
-    build_zone(spell_name=b"Embrittlement")[0],                    # v2: correct, old name
+    build_zone(name_ptr_bias=0, spell_name=b"Embrittlement", abil_zero_ecx=False)[0],  # v1
+    build_zone(spell_name=b"Embrittlement", abil_zero_ecx=False)[0],                   # v2
+    build_zone(abil_zero_ecx=False)[0],                                                # v3
 ]
+assert all(l == "cave_reg_abil" or v == next(pv for pl, pv, _ in build_zone(abil_zero_ecx=False)[1]
+                                             if pl == l)
+           for l, v, _ in PARTS), "a cave moved: the hooks into it would read as foreign"
 
 CAVE_REG_ABIL  = next(v for l, v, _ in PARTS if l == "cave_reg_abil")
 CAVE_REG_SPELL = next(v for l, v, _ in PARTS if l == "cave_reg_spell")

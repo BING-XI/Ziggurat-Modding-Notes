@@ -17,17 +17,27 @@ WHAT IT IS
     (build_banejavelin_pfs.py) clones the black-javelin frames ARROW.ILB 300-323 and COMBAT.ILB
     hit icon 123 from record 68, and Shoot Bolt's sounds from record 67.
 
-WHY THREE HOOKS AND A BYTE
+WHY FOUR HOOKS AND A BYTE
     Everything else about a ranged attack goes through the ability object (TRangedAttackAbility VMT
     0x5571E8D4: GetAttackRA/GetDamageRA/GetRangeRA/GetDamageTypesRA, CreateRangedAttackCA,
     fcExecuteCombatCommand) or through the AbilTypes category byte, so both combat systems take a
     new id as they take Shoot Bolt.  A census of every module (re_tools/idladder.py, abquery.py and
-    an immediate scan, 2026-10-19) finds Shoot Bolt's id compared in exactly three places:
+    an immediate scan, 2026-10-19) finds Shoot Bolt's id compared in three places, and a fourth
+    tests it by subtraction:
       AoWTCPCK  AoWTC.MakeAbilPath 0x004271EC      0x2C/0x2D/0x39/0x3A/0x7B -> arc 20, step 50.
                                                    Any other id gets arc 50.
       AoWTCPCK  TCAI.CheckUnit 0x004175B0          ranged ids -> EvalPath(checkUnits 0).  Any other
                                                    id is never scored, so the AI would not shoot.
       AoWEPACK  GetUnitIndexAIPriority 0x5575BB26  +100 recruit priority for 0x39 or 0x3A.
+      AoWTCPCK  projectile tick 0x00429FC1         the tick advances the path index once
+                                                   (0x00429ED5); `add eax,-0x2c / sub eax,2 / jb ...`
+                                                   gives 0x2C/0x2D/0x39/0x3A/0x7B (and 0x34 when
+                                                   [+0x18]=0x75) a second step.  Any other id flies
+                                                   at half speed.  Missed by the 2026-10-19 census:
+                                                   idladder's sweep loses alignment before
+                                                   0x00429FBB, so the head is never decoded.  Found
+                                                   in Inioch's share9 (his javelin, "slow and
+                                                   crooked"); hook S since 2026-10-21.
     Plus AbilTypes: the relocated table (build_abiltypes_relocate.py) holds category 0 for ids
     170..255, and 0 deselects the ability on click (0x0041EC74) and hides it from the AI.  Shoot
     Bolt's category is 1.
@@ -51,12 +61,16 @@ HOOKS (vanilla bytes asserted, no .reloc under any)
     C  0x004694FE  AbilTypes[0xBE] 00 -> 01                   Shoot Bolt's category
     M  0x0042725C  jmp 0x4275EC (default arc) -> jmp cave_arc   0xBE -> 0x4272D1 (arc 20)
     I  0x00417619  jae 0x4176FB (6 B) -> jmp cave_ai + nop      0xBE -> 0x41761F (EvalPath 0)
+    S  0x00429FC1  add eax,-0x2c / sub eax,2 (6 B) -> jmp cave_step + nop
+                                                  0xBE -> 0x429FDB (second step); any other id
+                                                  replays both and rejoins at the `jb` 0x429FC7
 
 Slots: AoWEPACK 0x5589F800-0x5589FBFF exclusive; AoWTCPCK 0x0043B640-0x0043B6FF exclusive.  PIC:
 rel32 and one call/pop anchor; no absolute address.
 
 RNG: none.  No draw is added or moved; a shot runs vanilla's ranged path (P2 COMBAT RAW in manual
-combat, auto-resolve's own) exactly as Shoot Bolt's does.
+combat, auto-resolve's own) exactly as Shoot Bolt's does.  Hook S changes only how far the drawn
+projectile moves per tick.
 
 Couplings.
   * Ceilings: LADDER 0xBF in build_abilityid_ceilings.py and build_tcablist_ceiling.py, or the AI
@@ -118,6 +132,8 @@ C_SITE = ABILTYPES + ABIL_ID
 M_SITE, M_LOW, M_DEFAULT = 0x0042725C, 0x004272D1, 0x004275EC
 I_SITE, I_EVAL, I_SKIP = 0x00417619, 0x0041761F, 0x004176FB
 I_VAN = bytes.fromhex("0f83dc000000")               # jae 0x4176FB
+S_SITE, S_TWO, S_REJOIN = 0x00429FC1, 0x00429FDB, 0x00429FC7
+S_VAN = bytes.fromhex("83c0d483e802")               # add eax,-0x2c / sub eax,2
 
 E_SLOT = (0x5589F800, 0x5589FC00)
 T_SLOT = (0x0043B640, 0x0043B700)
@@ -208,6 +224,18 @@ def build_ai(va):
     """, va)
 
 
+def build_step(va):
+    """The projectile tick's second-step switch; EAX = the ability id ([EBP-8]+0x14).  The replayed
+    `sub` leaves the flags the `jb` at S_REJOIN reads."""
+    return asm(f"""
+        cmp  eax, {ABIL_ID:#x}
+        je   {S_TWO:#x}
+        add  eax, -0x2c
+        sub  eax, 2
+        jmp  {S_REJOIN:#x}
+    """, va)
+
+
 def layout(slot, specs):
     caves, va = [], slot[0]
     for name, fn in specs:
@@ -218,16 +246,19 @@ def layout(slot, specs):
 
 
 E_AT, E_CAVES = layout(E_SLOT, [("cave_reg", build_reg), ("cave_aipri", build_aipri)])
-T_AT, T_CAVES = layout(T_SLOT, [("cave_arc", build_arc), ("cave_ai", build_ai)])
+T_AT, T_CAVES = layout(T_SLOT, [("cave_arc", build_arc), ("cave_ai", build_ai),
+                                ("cave_step", build_step)])
 
 E_HOOKS = [(R_SITE, call_to(R_SITE, REGISTER), call_to(R_SITE, E_AT["cave_reg"])),
            (A_SITE, A_VAN, jmp_to(A_SITE, E_AT["cave_aipri"], len(A_VAN)))]
 E_INTERIOR = [(A_SITE, A_SITE + len(A_VAN), 0x5575B9D0, 0x5575BC99)]
 T_HOOKS = [(C_SITE, b"\x00", bytes([CATEGORY])),
            (M_SITE, jmp_to(M_SITE, M_DEFAULT, 5), jmp_to(M_SITE, T_AT["cave_arc"], 5)),
-           (I_SITE, I_VAN, jmp_to(I_SITE, T_AT["cave_ai"], len(I_VAN)))]
+           (I_SITE, I_VAN, jmp_to(I_SITE, T_AT["cave_ai"], len(I_VAN))),
+           (S_SITE, S_VAN, jmp_to(S_SITE, T_AT["cave_step"], len(S_VAN)))]
 T_INTERIOR = [(M_SITE, M_SITE + 5, 0x004271EC, 0x00427626),
-              (I_SITE, I_SITE + len(I_VAN), 0x004152A8, 0x00418170)]
+              (I_SITE, I_SITE + len(I_VAN), 0x004152A8, 0x00418170),
+              (S_SITE, S_SITE + len(S_VAN), 0x00429E78, 0x0042E4C4)]
 
 
 def module(path, base):

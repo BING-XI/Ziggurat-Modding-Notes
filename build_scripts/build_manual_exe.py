@@ -58,6 +58,8 @@ def _bundled_data():
         (os.path.join(MR, "build_scripts", "herodlg_cats.py"), "build_scripts"),
         (os.path.join(MR, "build_scripts", "heroskill_races.py"), "build_scripts"),
         (os.path.join(MR, "build_scripts", "heroskill_races.json"), "build_scripts"),
+        # the display face (FONT_PATH in the builder); without it headings fall back to Georgia
+        (os.path.join(MR, "Graphic_resources", "fonts"), os.path.join("Graphic_resources", "fonts")),
     ]
     out = []
     for src, dst in items:

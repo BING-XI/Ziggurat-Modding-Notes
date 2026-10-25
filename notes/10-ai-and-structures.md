@@ -25,7 +25,7 @@ at length below because it exists nowhere else; the build script itself only sho
 | Tactical AI: hero/leader touch moves (Healing, Turn Undead, Dominate…) valued ×50, was ×1 — §10.1 | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_ai_touch_herovalue.py` | `AoWTCPCK.dpl` |
 | Tactical AI: harmless wall crushers (rams, drills) valued −100 % after a wall breach — §10.2 | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_ai_ram_breach.py` | `AoWTCPCK.dpl` |
 | Tactical AI: archers no longer forfeit a shot to walk to a marginally clearer hex — §10.3 | 🔨 APPLIED, UNTESTED (2026-09-24) | `build_ai_ranged_walkvalue.py` | `AoWTCPCK.dpl` |
-| AI paths to and searches exploration sites | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_ai_sitesearch.py` | `AoWEPACK.dpl` |
+| AI paths to and searches exploration sites | 🔨 APPLIED, UNTESTED (2026-09-03); re-tuned 2026-10-21 (all-kinds strength, leader rule, site recruit) | `build_ai_sitesearch.py` | `AoWEPACK.dpl` |
 | AI heroes pick up / upgrade-swap ground items; items become AI targets | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_ai_itemloot.py` | `AoWEPACK.dpl` |
 | AI item pickup, empty equip slots only (superseded) | ✅ CONFIRMED WORKING (2026-07-21) — superseded, `--undo`'d 2026-09-02, must stay inert | `build_ai_itempickup.py` | `AoWEPACK.dpl` |
 | Items as AI targets, group-blind priority (v1) | 🛑 REVERTED (2026-07-22) — caused AI loitering next to unusable loot; superseded by `cave_target` | `build_ai_itemtarget.py` | `AoWEPACK.dpl` |
@@ -325,8 +325,8 @@ working. `pristine_check()` asserts the seven `+0x1C4` stubs stay vanilla.
 `cave_execai` (`0x55834000`, 199 B): called with `EAX` = structure, `DL` = AI player index, `ECX` =
 pass number (1 or 2, matching the only real vanilla implementor, `TAltar.ExecuteAI`). Gate:
 `TExplorationSite.CanSearch@0x557C1E1C` (loot remains **and** this player's army is standing on the
-site, via `FindOwnedChild(field, TArmyHS)`); strength gate `3·S_army ≥ 2·S_def` (≥ 1.5×, undefended
-always mints); then mints the search TE **verbatim from the engine's own no-dialog branch** of
+site, via `FindOwnedChild(field, TArmyHS)`); strength gate `3·S_army ≥ 2·S_def` (≥ ⅔×; no defenders
+always mints), or, when the player's leader is in that army, leader HP ≥ 75 % and `S_army ≥ 2·S_def`; then mints the search TE **verbatim from the engine's own no-dialog branch** of
 `TExplorationSite.Search` — `CreateTE`→`SetupTE`→`TE[+0x18]=0` (search)→`TE[+0x20]=1` (auto-resolve)
 →submit via the token control→release. **Copying the engine's own token mint is what makes this
 MP-safe**: the token serialises through the same stream vanilla uses, and `ExecuteSearch` revalidates
@@ -336,11 +336,14 @@ through `CanSearch` on every peer independently.
 then a strength ladder gated on `[ctx+2]==0` (normal mode) and `[ctx+0]!=0` (no neutral raiders):
 
 ```
-S_def = TUnitList.GetStrength(site+0x34, 0)
-S_grp = TAIGroupControl.GetStrengthMax([msg+0x10], 1)
+S_def = TUnitList.GetStrengthMax(site+0x34, dtAll 0x3FF), at least 1 if the roster holds a unit
+S_grp = [gc+0x50]   (UpdateGroupChanges: the same per-unit GetStrengthMax(unit, dtAll) sum)
 
     S_def == 0          ->  100   free loot, city-tier draw
-    2*S_grp <  3*S_def  ->  nothing at all   (no straggler gathering)
+    group holds the asking player's leader:
+        leader HP < 75 %, or S_grp < 1.75*S_def  ->  nothing
+    any other group, 2*S_grp < 3*S_def  ->  15, and the site's tag sets the target's
+                                          required strength (site recruit, below)
     S_grp   >= 10*S_def ->  100
     S_grp   >=  5*S_def ->   75
     S_grp   >=  3*S_def ->   45
@@ -350,12 +353,43 @@ S_grp = TAIGroupControl.GetStrengthMax([msg+0x10], 1)
 
 ⚠ **`[rec+8]`/`[rec+0xC]` are the AI's gold/mana cost fields — never written here**, or the AI's
 economics get corrupted through `MakeTargetExpense`. ⚠ **The ladder is a pure ratio, scale-free —
-never rescale it for the 5%/doubled-stat conversion.** Both sides read the same engine metric
-(`TUnitList.GetStrength`), so Ziggurat's stat doubling moves them together.
+never rescale it for the 5%/doubled-stat conversion.** Both sides read the same engine metric, so
+Ziggurat's stat doubling moves them together.
+
+⚠⚠ **`GetStrength`'s argument is a damage KIND, not a flag.** `TAbstractUnit.GetStrength(dl)` reads
+`byte [unit+0x28+dl]`, one band per damage kind, and kind 0 is Fire; a band is non-zero only for the
+kinds a unit's strikes carry. Until 2026-10-21 every call here passed kind 0, so a roster without fire
+attacks read as undefended (priority 100 for every group, a search with no gate) and a fire-defended
+site was never advertised. Use `GetStrengthMax` with `dtAll` (`0x3FF`) for "how strong". Found through
+Inioch's share9 (his "suicide site raids").
+
+**The leader rule and site recruit (2026-10-21, from Inioch's share9).**
+- **Leader.** Attraction judges the whole group, but the search judges the one army on the site, so
+  a strong group could send its leader's stack ahead to search alone. Both caves now look for the
+  player's leader (`[player+0xD4]`) among their units: a group holding him is drawn only at ≥ 1.75×
+  with his HP ≥ 75 % (VMT `+0xE0` over `+0xD0`); the army holding him searches only at ≥ 2× with the
+  same HP.
+- **Site recruit.** The engine gathers forces for a target it cannot take alone:
+  `TAIGroupTargetSelector.Process 0x5573D2C0` compares `[t+0x40]` × its superiority
+  (`GetRequiredBattleFieldStrength 0x5573CAC4`) with `[gc+0x50]` and calls its cooperation, recruitment
+  and production controls. A site's defenders are not a map army, so `[t+0x40]` never saw them. Now:
+  - `cave_msgproc` tags (group, the field's `GetXYL`) with S_def;
+  - a hook in `TargetFoundEvent` (`0x5573A20C`) raises `[t+0x40]` to the tag of the finder's group;
+  - a hook in `TAIGroupTargetFinder.Activate` (`0x5573A30C`) drops that group's old tags.
+
+  The table is keyed by group because the selector buffers its finds
+  (`ProcessBufferedTargets 0x55742F6C`) and a search spans several `Process` calls, so searches
+  overlap. It holds 64 entries, 776 B from `System.@GetMem` on first use; its pointer is BSS
+  `0x558FAF1C`. It is process-local: the AI is an unsynchronised context whose decisions reach
+  the peers as tokens.
+- **Unproven, static checks cannot reach it:** that the AI now gathers a force for a site it cannot
+  take alone (the engine's recruitment decides, and a priority-15 target after the selector's travel
+  penalty may still lose to other targets), and how often a leader stack is held back.
 
 Neither cave draws from either RNG generator — the search's own rolls happen later, inside
 `ExecuteSearch`, on the engine's existing synchronised stream — confirmed by `rng_audit.py --owners`
-showing no site for this feature. Cave zone `0x55834000..0x55835FFF` (8 KB), exclusive, verified
+showing no site for this feature. Caves A `0x55834000`, B `0x55834400`, C `0x55834800` (helpers,
+tags, the finder hook caves). Cave zone `0x55834000..0x55835FFF` (8 KB), exclusive, verified
 all-zero in both the live DLL and the pristine backup, no `build_scripts/*.py` reference inside
 `0x55834000..0x5583FFFF`.
 

@@ -18,11 +18,28 @@ this file records what came out of them rather than re-deriving them.
 
 | feature | status | owning script | binary |
 |---|---|---|---|
-| AI paths to and searches exploration sites | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_scripts/build_ai_sitesearch.py` | `AoWEPACK.dpl` |
+| AI paths to and searches exploration sites | 🔨 APPLIED, UNTESTED (2026-09-03); re-tuned 2026-10-21 (all-kinds strength, leader rule, site recruit) | `build_scripts/build_ai_sitesearch.py` | `AoWEPACK.dpl` |
 | AI heroes pick up / equip / upgrade-swap items; items become group-aware AI targets | 🔨 APPLIED, UNTESTED (2026-09-03) | `build_scripts/build_ai_itemloot.py` | `AoWEPACK.dpl` |
 | Crash capture via VEH injection (diagnostic tool, not a patch) | n/a — tool, not on the ladder | `re_tools/veh_capture.py` | n/a |
 | Registry isolation — own settings tree (`…\Age of Wonders Z`) | 🔨 APPLIED, UNTESTED (2026-09-09) | `build_scripts/build_regiso.py` | `AoWEPACK.dpl`, `AoWSetup.exe` |
 | AoWSetup install-check `'.'` fallback (his 2026-08-13 fix) | ✅ CONFIRMED WORKING (2026-09-09) | `build_scripts/build_aowsetup_installcheck.py` | `AoWSetup.exe` |
+
+**share9** (2026-10-21, AoWx 1.37.420) is catalogued in `Inioch/Inioch_Share9_Catalogue.md`. Fixed
+the same day from it, all applied:
+- three of his fixes ported to our tree:
+  - side-switched units placed off a full winner's hex (`build_overflow_army.py`);
+  - the Commanded Undead ankh on the manual-combat battlefield (`build_ankh_battlefield.py`, his
+    finding that the battlefield draws from a fixed id list);
+  - global enchantments' active bit restored after a load (`build_globalench_active.py`);
+  - the spellbook's cast-now test on the charged cost (`build_spellbook_castpage.py`, `AoWz.exe`);
+- five defects of ours his notes exposed:
+  - Bane Javelin's projectile step (`build_banejavelin.py` hook S);
+  - Town Quake's level read (`build_townquake_retune.py`);
+  - High Prayer's and Bloodlust's stale stat cache (`build_blessing_cache.py`);
+  - the Embrittled constructor's owner (`build_embrittle.py` v4);
+  - `update.ps1`'s missing-digest and downgrade holes;
+- the AI site-search strength fix, with his leader rule and site recruit adapted to our caves
+  (`build_ai_sitesearch.py` re-tune; `10-ai-and-structures.md` §1.4).
 
 Everything else this file discusses is third-party reference material, an open cataloguing gap, or a
 standing constraint on future work — not a patch of ours, so none of it carries a status-ladder tag.
@@ -347,7 +364,7 @@ having been checked against this rule after the fact:
 
 | script | hook point | why it's already safe |
 |---|---|---|
-| `build_reformingflesh.py` | `TNewCombatRoundCA.Execute`'s own per-object dispatch loop, `0x5572A3BC` | flat +5, no RNG — inside the recorded action |
+| `build_reformingflesh.py` | `TNewCombatRoundCA.Execute`'s own per-object dispatch loop, `0x5572A3BC` | flat +4, no RNG — inside the recorded action |
 | `build_lifesteal_roundattack.py`, `build_assassin.py` | inside the `TStrikeCA.Execute` region, `0x5576678C`–`0x557668E7` / `0x557665E4`+ | inside the recorded action |
 | `build_firefeed.py` | the strategic `ExecuteDamageRole` / `TriggerFireDamage` path | not fast combat at all — exempt by construction |
 

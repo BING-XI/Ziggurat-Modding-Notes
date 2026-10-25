@@ -730,11 +730,13 @@ by user ruling. **Ziggurat's arrangement is not vanilla's, and the difference de
 ### Flyers lose morale underground (`build_cave_flyer_morale.py`, 2026-09-27)
 
 Raw morale value −5 on Caverns (level 1), −10 on Depths (2), −15 on the Abyss (4), for a unit with
-Flying (id 1, item-aware `VMT+0x148`) and without Cave Crawling (id 4, same query). **Units only**: heroes are filtered by `IsClass(THero)`, and
+Flying (id 1, item-aware `VMT+0x148`) and without Cave Crawling (id 4) or Night Vision (id `0x27`,
+owner request 2026-10-21), both by the same query. **Units only**: heroes are filtered by `IsClass(THero)`, and
 leaders never reach the site (`TLeader.GetUnitMoraleValue` returns a constant 90). Added inside
 `TAbstractUnit.GetUnitMoraleValue @0x5577EED8`, straight after vanilla's race-terrain ±10 and before
 the [0,100] clamp, so it refreshes whenever the terrain term does. Hook `0x5577EF9B`, cave
-`0x55851800`; addresses and the class survey in the script's docstring.
+`0x55851800` (122 of `0x80` B; the three ability queries share one `_has` subroutine); addresses and
+the class survey in the script's docstring.
 
 Unproven: the penalty only shows after a morale refresh (`UpdateMoraleValue` via `Changed`,
 `SetUnitResource`, `UpdateFormation`), so flight gained mid-turn from a spell or item on a cave level
@@ -1592,28 +1594,30 @@ does **not** make those abilities unblockable in manual combat. Category 5 (Flam
 the five Breaths `0x56`–`0x5A`) has its own `NextStrike` case, which builds each strike's line with
 `MakeRangedPath` (`0x40D65F`) and zeroes a blocked strike (`0x40F06F`).
 
-**Breath and Flame Throwing aim each strike at its own hex** — `build_breath_line.py`, 🔨 APPLIED,
-UNTESTED (2026-09-24), ported from Inioch's `patch_breath_line_v1.py` with his range-check defect
-fixed.
+**Breath and Flame Throwing aim each strike at its own hex** — `build_breath_line.py`, applied
+2026-09-24, drawn sweep 2026-10-22. The damage half is ported from Inioch's
+`patch_breath_line_v1.py` with his range-check defect fixed.
 - **The defect:** vanilla tests each of the 12 damaging strikes (of 20; strikes 12–19 are a cosmetic
   return sweep) along the fan's spray angle, not toward the hex it damages. Side walls ate strikes
   in corridors, and obstacles beyond the target cancelled hits.
-- **The fix:** hook `0x40D5F1` (`6A 32 8B 45 FC`) → PIC cave `0x439400` (164 B, reservation to
+- **The fix:** hook A `0x40D5F1` (`6A 32 8B 45 FC`) → PIC cave A `0x439400` (220 B, reservation to
   `0x4397FF`). For strikes 0–11 the cave centres the line on the damage hex, taken from the same
   tables vanilla uses at `0x40D671`–`0x40D72A` (`dHXtoHN` result bounded 1–60, table index 0–71),
-  and zeroes the fan offsets. On any failed check it runs vanilla untouched.
-- **Animation:** the damaging flames are now drawn to the hexes they hit; keeping the old fan would
-  need a second path call.
-- **Multiplayer:** no draw of its own. It changes how many synced `Random(100)` block rolls happen
-  at `0x40EE5B`, identically on every peer. Auto-resolve has no obstruction step.
-- Surgical `--undo`.
-
-In-game checklist:
-1. A dragon breathing down a one-hex corridor hits enemies in range along it.
-2. An obstacle beyond the target no longer cancels hits.
-3. An obstacle between breather and target still blocks.
-4. Flame Throwing behaves the same way.
-5. The flame animation looks acceptable.
+  and zeroes the fan offsets. On any failed check it runs vanilla untouched. It first saves the
+  vanilla aim in BSS `0x46CA20`.
+- **Animation:** hook B `0x40F0B1` (the category-5 tail after the block loop, replayed) → cave B
+  `0x4394E0` (607 B). Once the block loop has decided the strike, cave B frees the damage line's
+  block records, calls `MakeRangedPath` again with the saved vanilla aim, and cuts that sweep
+  after the first record whose hex passes the block loop's obstacle test. If the strike was
+  blocked, it also cuts the sweep back to the blocking distance. The cut is deterministic, so the
+  flame also stops at obstacles vanilla blocks only by chance (adjacent wall 50 %, overlay 8 by
+  height). Strikes 12–19 are untouched.
+- **Multiplayer:** neither cave draws, and `MakeRangedPath` has no `Random` call. Cave A changes
+  how many synced `Random(100)` block rolls happen at `0x40EE5B`, identically on every peer. Cave
+  B runs after the last roll. Auto-resolve has no obstruction step.
+- Surgical `--undo` restores both hooks.
+- Unproven: `[ca+0x24] = 0` is the "blocked" sentinel; a damaged hex in column 0 would also
+  read as blocked and trim the drawn flame to the damage line's length.
 
 ### The obstruction scan
 
@@ -1812,9 +1816,13 @@ conceptually redundant with an ability the game already ships. Shield is the *ra
 Parry, meant to be bought separately. Ranged is discriminated **structurally, by which constructor
 builds the blow, not by a flag**: melee goes through `CreateStrikeCA`, ranged (and breath, and Bolts)
 goes through the single shared `TRangedAttackAbility.CreateRangedAttackCA @0x5576EAE4` — the one link
-site serves *both* engines, told apart inside the cave by the victim's instance size (`0x68` tactical
-vs `0x64` fast — **test exact equality for fast, not `>=`**, or the 75% roll would leak into manual
-combat, which is reached from a UI message handler).
+site serves *both* engines, told apart inside the cave by the victim's class: since 2026-10-22 an
+auto-resolve unit is the one whose VMT is `TFastCombatUnit`'s (`0x5571D4BC`, call/pop anchor), and any
+other unit of at least `0x68` bytes is manual. ⚠⚠ Until then it was the instance size (`≥ 0x68`
+tactical, `== 0x64` fast). `build_combatunit_slot.py` (2026-10-21) grew both classes by a dword
+(`0x6C`/`0x68`), so every auto-resolve unit took the manual path, and `GETHEX` read its `+0x60`
+(not an HS) as a pointer. The result was a crash on any ranged hit on a Shield unit in auto-resolve
+(`AoWEPACK 0x55823013`, "Read of address 00000008", owner 2026-10-22), and no 75 % roll at all.
 
 ```
 mode         gate            rule

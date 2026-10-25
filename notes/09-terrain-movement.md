@@ -1257,8 +1257,10 @@ guy in front is blocking me".
 - **Inioch's two fixes, re-caved:** a hex a group-mate is leaving can be walked through, while a
   reserved destination blocks transit. A starting hex costs its real terrain cost, within vanilla's
   bounds (terrain 0–15, overlay −1–14).
-- **Blocked at execution:** "stop where blocked" relies on vanilla's own step code. It was not
-  traced; check it in-game.
+- **Blocked at execution:** "stop where blocked" is vanilla's own step code: `TCombatMoveTE.DefaultMove`
+  ends a move when its next hex is occupied (`TAoWMapField.GetPlayer` at `0x408E5A`). Since
+  2026-10-25 `build_tactical_los.py`'s `stepchk` holds that call and also ends a plain move when the
+  mover sees its route blocked further on (`11-engine-internals.md`).
 
 **Sites:** hooks `0x41E7F7` (preview), `0x41E2B0` (click) and `0x41E43A` (confirm), the last two call-retargets; sort byte `0x40F81C`;
 VMT slots `0x412DDC` and `0x431214` (`.reloc` kept); starting-hex cost `0x42083A`. Zone
@@ -1393,6 +1395,12 @@ separate `changedCb`.
   Path of Frost.
 - **The fix:** the script restores the 21 vanilla bytes, so the function is byte-identical to the
   root reference again. The cave is left in place with no caller, so `--undo` can re-link it.
+
+**Paths of Life and Decay leave lava alone too** (owner, 2026-10-22, AoWx's rule from Inioch's
+share9). Their whole-function caves in `build_chasm_sky_spellguard.py` (`0x558121C0` Life → Grass,
+`0x558121F0` Decay → Wasteland) skipped only 6, 0, `0xB` and `0xE`, so surface lava became grass or
+wasteland. They now skip 9 as well; each cave fills its 48-byte step, so nothing moved. All four
+Paths now leave lava alone: Frost by the 2026-09-24 fix, and Sand and Desiccate by their mappings.
 
 In-game checklist:
 1. A Path of Frost unit walking past lava leaves it lava, on every level.
@@ -1587,6 +1595,9 @@ permanently inverted. It also made signs and towers unselectable: vanilla `TStru
 - Fog add/subtract read bit `0x80` of `[field+0x1B]`, a snapshot of "Earth/Rock" that only the
   rebuild writes. Between rebuilds every subtract sees what its add saw.
 - Exploration reads live terrain, unchanged, so multiplayer exploration is as before v6.
+- Tactical combat no longer explores through these fills: `build_tactical_los.py` replaces both
+  `ExploreArea` calls in `AoWTCPCK.dpl`, so neither this filter nor the sight+2 hand edit
+  (`0x557721BE`) reaches a combat map. Re-tune combat sight in that script.
 - `TriggerTerrainChangedEvent` (every terrain change, editor brush included, plus every
   map-changed notification) marks the map; before the next frame, `DrawDynamicScene` scans the
   fields and rebuilds only if some hex's Earth/Rock status no longer matches its snapshot.

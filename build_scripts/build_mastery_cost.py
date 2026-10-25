@@ -102,6 +102,7 @@ CODE_ZERO_END = 0x558E7918
 
 HOOK_VA = 0x557894F8
 HOOK_ORIG = bytes.fromhex("8b8088010000")     # mov eax,[eax+0x188]
+DUAL_MASTERY = 0x558B63A0                     # build_dual_sphere.py's cave_mastery (chains HOOK_VA)
 EPILOGUE_VA = 0x55789510                      # mov eax,ebx; pop esi; pop ebx; ret
 
 MC_OFF = 0x188                # map -> TGlobalMagicControl
@@ -192,9 +193,16 @@ def main():
     cave = build_cave(CAVE_VA)
     hook = make_hook(CAVE_VA)
     cur = bytes(data[off(HOOK_VA):off(HOOK_VA) + len(HOOK_ORIG)])
-    ours = cur == hook
+    # build_dual_sphere.py (2026-10-25) retargets this hook to its cave_mastery, which scales a
+    # dual-sphere spell for both of its spheres and passes everything else on to this cave.  That
+    # chained hook is an accepted applied state; --undo refuses while it is in place.
+    chained = cur == make_hook(DUAL_MASTERY)
+    ours = cur == hook or chained
 
     if args.undo:
+        if chained:
+            print("REFUSED: build_dual_sphere.py chains through 0x%08X; undo it first." % HOOK_VA)
+            return
         if not ours:
             print("Nothing to undo: 0x%08X does not carry this feature." % HOOK_VA)
             return
@@ -245,7 +253,8 @@ def main():
         shutil.copy2(DLL, BAK)
         print("backup -> %s" % os.path.basename(BAK))
 
-    data[off(HOOK_VA):off(HOOK_VA) + len(hook)] = hook
+    if not chained:
+        data[off(HOOK_VA):off(HOOK_VA) + len(hook)] = hook
     payload = bytearray(CAVE_LIMIT)
     payload[0:len(cave)] = cave
     data[off(CAVE_VA):off(CAVE_VA) + CAVE_LIMIT] = payload

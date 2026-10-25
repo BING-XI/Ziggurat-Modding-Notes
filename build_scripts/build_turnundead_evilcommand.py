@@ -277,8 +277,9 @@ THE ANKH OVERLAY — the last cosmetic gap (user-approved 2026-09-02)
 A `Release/Ability.pfs` record for 0x89 (build_commandedundead_pfs.py, key 147) gives the
 ability its image sequence, and on its own that draws NOTHING: persistent status icons are not
 drawn generically. `AoWE.TAbstractUnit.ShowEx @0x557812EC` — the shared sprite draw, used by
-fast combat directly and by manual tactical through AoWTCPCK's import of `TCombatUnit.Show` —
-holds a HARD-CODED chain of per-ability blocks:
+auto-resolve and the unit panel (not the manual-combat battlefield, which draws from AoWTCPCK's
+own fixed id list: build_ankh_battlefield.py, 2026-10-22) — holds a HARD-CODED chain of
+per-ability blocks:
 
     0x60 0x62 0x5D 0x91 0x04 0x30 Seduced 0x96 Dominated 0x95 Charmed 0x61 0x5C 0x5F 0x5E 0x7F
     0x6B Possessed 0x22 Turned Undead 0x46

@@ -106,6 +106,12 @@ FORWARD HAZARDS
     scan asserts the expected list and aborts on any change).
   * build_combatlog_wallcrush.py owns the Wall Crushing call (return 0x40A29F); the two must stay
     disjoint -- do not add 0x40A29F to the table.
+  * build_flamingskull.py (2026-10-19) turns the `mov edx,0x18` before Hurl Boulder's GetAbility in
+    both MapFieldMsgProcs (0x405E0A, 0x432BC5) into `call cave_hid` (0x43B7A0).  hid_id() matches
+    cave_hid's shape and takes its fallback 0x18, so the tables are byte-identical with or without
+    Flaming Skull (checked against the root copy 2026-10-23) and either script may be applied or
+    undone first.  Before that, this script died at import with "no id before GetAbility/GetSpell
+    at 00405E0F".  Reshaping cave_hid brings that abort back: update HID_SHAPE with it.
 
     python build_scripts/build_combatlog_siege.py            dry run + state, both modules
     python build_scripts/build_combatlog_siege.py --apply
@@ -471,10 +477,31 @@ def _tc_bytes():
     return open(TCPCK, "rb").read()
 
 
+HID_SHAPE = [r"mov edx, dword ptr \[ebp - 8\]", r"mov edx, dword ptr \[edx \+ 0xc\]",
+             r"cmp edx, 0x[0-9a-f]+", r"je (0x[0-9a-f]+)", r"mov edx, (0x[0-9a-f]+)", r"ret"]
+
+
+def hid_id(d, md, prev):
+    """build_flamingskull.py turns `mov edx,0x18` before GetAbility into `call cave_hid` (H1 0x405E0A,
+    H3 0x432BC5): EDX := [msg+0xC] if it is Hurl Flaming Skull's id, else 0x18.  Given that call,
+    return the fallback id, so the table is the same with or without Flaming Skull; else None."""
+    m = re.fullmatch(r"call (0x[0-9a-f]+)", prev or "")
+    if not m:
+        return None
+    t = int(m.group(1), 16)
+    o = P.va2off(d, t)
+    ins = list(md.disasm(bytes(d[o:o + 0x20]), t))[:len(HID_SHAPE)]
+    got = [re.fullmatch(p, ("%s %s" % (x.mnemonic, x.op_str)).strip()) for p, x in zip(HID_SHAPE, ins)]
+    if len(ins) < len(HID_SHAPE) or not all(got) or int(got[3].group(1), 16) != ins[5].address:
+        return None
+    return int(got[4].group(1), 16)
+
+
 def scan_table(d, fn, shp, expect):
     """Derive (ret, kind, atk_off, id) for every SetHitPoints call in a MapFieldMsgProc and assert
     the pattern vanilla uses: id -> GetAbility/GetSpell -> GetCombatInfo -> ExecuteDamageRole with
-    ATK [ebp+off] / DAM [ebp+off+1], or the fire tick's TCAttack/TCDamage cells."""
+    ATK [ebp+off] / DAM [ebp+off+1], or the fire tick's TCAttack/TCDamage cells.  An ability id
+    loaded by Flaming Skull's cave_hid reads as its fallback (hid_id)."""
     from capstone import Cs, CS_ARCH_X86, CS_MODE_32
     md = Cs(CS_ARCH_X86, CS_MODE_32)
     md.skipdata = True
@@ -489,8 +516,9 @@ def scan_table(d, fn, shp, expect):
                 st = {"kind": kind + 3, "id": 0}
             else:
                 m = re.fullmatch(r"mov edx, (0x[0-9a-f]+)", prev or "")
-                assert m, "no id before GetAbility/GetSpell at %08X: %s" % (x.address, prev)
-                st = {"kind": kind, "id": int(m.group(1), 16)}
+                hid = hid_id(d, md, prev) if kind == AB and not m else None
+                assert m or hid is not None, "no id before GetAbility/GetSpell at %08X: %s" % (x.address, prev)
+                st = {"kind": kind, "id": int(m.group(1), 16) if m else hid}
         m = re.fullmatch(r"movsx edx, byte ptr \[ebp - (0x[0-9a-f]+)\]", s)
         if m:
             st["atk"] = -int(m.group(1), 16)

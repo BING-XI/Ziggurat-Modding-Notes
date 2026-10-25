@@ -8,11 +8,11 @@ build_reformingflesh.py — new passive ability: Reforming Flesh (id 0xB1).
     python build_scripts/build_reformingflesh.py --dis       disassemble the installed caves
 
 EFFECT
-    A unit with Reforming Flesh heals +5 HP at the start of EVERY combat round, round 1
+    A unit with Reforming Flesh heals +4 HP at the start of EVERY combat round, round 1
     included, clamped at its maximum HP. Works for units and heroes, in manual tactical
     combat and in auto-resolve alike.
 
-    HEAL is a single named constant below — a re-tune is one line. The 5 is already on the
+    HEAL is a single named constant below — a re-tune is one line. The 4 is already on the
     post-doubling Ziggurat scale (every HP pool and damage source is x2); do NOT "convert" it.
 
 TARGET: AoWEPACK.dpl ONLY. No other binary is touched.
@@ -234,8 +234,8 @@ BACKUP = os.path.join(BACKUP_DIR, os.path.basename(DLL) + ".pre-reformingflesh")
 DLL_BASE = 0x55700000
 
 # ============================================================================== the two knobs
-HEAL = 5            # HP restored at the start of every combat round.
-                    # Already on the post-doubling Ziggurat scale — do NOT scale it to 10.
+HEAL = 4            # HP restored at the start of every combat round. Owner ruling 2026-10-23
+                    # (was 5). Already on the post-doubling Ziggurat scale — do NOT scale it.
 
 EXPAND_COST = 20    # hero level-up point cost -> [ability+0x14], via cave_cost. THE OWNER'S
                     # NUMBER, chosen 2026-09-10 and typed into AoWDevEd; it supersedes the 50
@@ -598,8 +598,10 @@ CAVE_COST = PARTS[3][1] if len(PARTS) > 3 else None
 #   v1 (2026-08-30): no FExpandCost store — the ability was permanently free at level-up.
 #   v2 (2026-08-31): `mov dword [eax+0x14], 50` in cave_reg. STILL FREE in game: the Ability.pfs
 #                    load zeroes the field afterwards. Superseded by cave_cost, not re-tuned.
+#   v3 (2026-09-10 .. 2026-10-23): cave_cost, HEAL 5.
 PRIOR_BUILDS = [dict(fixes=[], reg_store=None),
-                dict(fixes=[], reg_store=50)]
+                dict(fixes=[], reg_store=50),
+                dict(heal=5)]
 PRIOR_ZONES = [build_zone(**kw) for kw in PRIOR_BUILDS]
 
 CAVE_ZONE_END = CAVE_REG + max([len(ZONE)] + [len(z) for z, _p in PRIOR_ZONES]) + 0x20

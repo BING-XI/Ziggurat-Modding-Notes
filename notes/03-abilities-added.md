@@ -38,6 +38,16 @@ canonical cross-project cave-ownership map is `12-re-toolchain.md`.
 | Shoot Bane Javelin — Shoot Bolt with physical and death damage (`0xBE`) | applied 2026-10-19 | `build_banejavelin.py` + `build_banejavelin_pfs.py` + `build_shredderbolt_banejavelin.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` + `Release/Unitres.pfs` |
 | Hurl Flaming Skull — Hurl Boulder with physical, fire, death and wall damage (`0xBF`) | applied 2026-10-19 | `build_flamingskull.py` + `build_flamingskull_pfs.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` |
 | Wheeled — a road hex costs 2, not 3 (`0xC0`) | applied 2026-10-19 | `build_wheeled.py` + `build_wheeled_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Extra Shots — each missile shot 25 % for another, chaining (`0xC1`) | applied 2026-10-21 | `build_extrashots.py` + `build_extrashots_pfs.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` |
+| Rally — no-target battle ability: cures panic 50 %, +30 morale, radius 6 (`0xC2`, status `0xC3`) | applied 2026-10-21 | `build_rally.py` + `build_rally_pfs.py` | AoWEPACK.dpl + AoWTCPCK.dpl + AoWz.exe + `Release/Ability.pfs` |
+| Skirmisher — an attack costs 12 moves, once per round (`0xC4`) | applied 2026-10-21 | `build_skirmisher.py` + `build_skirmisher_pfs.py` (+ `build_combatunit_slot.py`) | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` |
+| Searing Aura — enemies within 2 hexes roll to catch fire each turn (`0xC5`) | applied 2026-10-21 | `build_searingaura.py` + `build_searingaura_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Mirror Image — multi-level I–XX; each image makes one strike or shot miss (`0xC6`) | applied 2026-10-21 | `build_mirrorimage.py` + `build_mirrorimage_pfs.py` (+ `build_combatunit_slot.py`) | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` |
+| Mental Discipline — immune to the command trio, Possess and Turn Undead (`0xC7`) | applied 2026-10-22 | `build_mentaldiscipline.py` + `build_mentaldiscipline_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Rime Aura — enemies within 2 hexes roll to be frozen each turn (`0xC8`) | applied 2026-10-22 | `build_rimeaura.py` + `build_rimeaura_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Smoky Haze — enemies within 2 hexes roll to be poisoned each turn (`0xCA`) | applied 2026-10-22 | `build_smokyhaze.py` + `build_smokyhaze_pfs.py` | AoWEPACK.dpl + `Release/Ability.pfs` |
+| Stone Gaze — a facing enemy within 6 hexes may be petrified at its turn start (`0xCB`, status Petrified `0xCC`) | applied 2026-10-22 | `build_stonegaze.py` + `build_stonegaze_pfs.py` + `build_stonegaze_holders.py` | AoWEPACK.dpl + AoWTCPCK.dpl + `Release/Ability.pfs` + `Release/Unitres.pfs` |
+| Lucky — once per battle lethal damage leaves it at 1 HP (`0xC9`) | applied 2026-10-22 | `build_lucky.py` + `build_lucky_pfs.py` (+ `build_combatunit_slot.py`) | AoWEPACK.dpl + `Release/Ability.pfs` |
 | Copper Medal — rank ladder, stat bonus, icon | ✅ CONFIRMED WORKING (2026-07-30) | `build_copper_medal.py` | AoWEPACK.dpl + `Images/*Combat.ILB` |
 | Copper Medal — 4th ability-owner slot (copper bonus abilities) | 🔨 APPLIED, UNTESTED (2026-07-30) | `build_copper_medal.py` (`COPPER_GRANTS_ABILITIES=True`) | AoWEPACK.dpl + `AoWDevEd.exe` |
 | Heroic medal — tier×30, bluish-violet icon (id 9), ATK +4 DEF +2 DAM +3 RES +4 HP +10 MV +4 | applied 2026-10-20 | `build_copper_medal.py` (`HEROIC = 30`) + `build_heroicchoice.py` (`HEROIC_TOTALS`) | AoWEPACK.dpl + `Images/*Combat.ILB` |
@@ -104,8 +114,8 @@ and contains roughly 90–149 vanilla `call RegisterAbility` sites (the exact co
 feature that claims one), every one immediately preceded by `mov eax,ebx` — so `EBX` liveness is
 total across the window `0x557BC000`–`0x557BD200`, and any free site works. **Sites already consumed
 and never to be reused:** `0x557675C4` (Assassin — outside the window, a *different* registration
-function, see below), and 13 repointed sites inside it (measured 2026-10-09, plus Wheeled): `0x557BC9E9` (Path of
-Sand), `0x557BCD81` (Wheeled, 2026-10-19), `0x557BCD98` (Razor Plate), `0x557BCDAF`, `0x557BCDC6` (Liquid Body), `0x557BCDFB`,
+function, see below), and 23 repointed sites inside it (measured 2026-10-09, plus Wheeled, Extra Shots, Rally, Skirmisher, Searing Aura, Mirror Image, Mental Discipline, Rime Aura, Lucky, Smoky Haze and Stone Gaze): `0x557BC9E9` (Path of
+Sand), `0x557BCC9B` (Stone Gaze + Petrified), `0x557BCCB2` (Smoky Haze), `0x557BCCC9` (Lucky), `0x557BCCE0` (Rime Aura), `0x557BCCF7` (Mental Discipline), `0x557BCD0E` (Mirror Image), `0x557BCD25` (Searing Aura), `0x557BCD3C` (Skirmisher), `0x557BCD53` (Rally + Rallied, 2026-10-21), `0x557BCD6A` (Extra Shots, 2026-10-21), `0x557BCD81` (Wheeled, 2026-10-19), `0x557BCD98` (Razor Plate), `0x557BCDAF`, `0x557BCDC6` (Liquid Body), `0x557BCDFB`,
 `0x557BCE30`, `0x557BCE65`, `0x557BCE9A`, `0x557BCECF` (Shield), `0x557BCF04` (Caster Cost, all four),
 `0x557BCF39` (Drillmaster), `0x557BCF6E` (Magebane). Ranged attacks register in a different routine,
 `0x5576F2EC` (EBX = the control there too); its `call RegisterAbility` sites `0x5576F7E2` and
@@ -173,12 +183,16 @@ byte pattern but is unrelated city-AI code, not an ability). **The only trustwor
 apparent gap is dynamic** — register it and watch for the `"Ability already registered"` assert.
 `0x38` (Assassin) and `0x9F` (Path of Sand) were claimed exactly this way.
 
-**Measured 2026-10-19, for orientation only — re-derive before trusting it:** highest id in use
-`0xC0` (Wheeled). Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
+**Measured 2026-10-21, for orientation only — re-derive before trusting it:** highest id in use
+`0xCC` (Petrified). Verified remaining nil slots below the vanilla top (`0xA9`): `0x21, 0x4E`–`0x55, 0x5B,
 0x66`–`0x69, 0x6E, 0x85`–`0x87, 0x97` (19 gaps; a nil registry slot is necessary but not sufficient —
 per-id verification means scanning both binaries for `mov edx,<id>` / `push <id>` feeding an ability
-call, since cut content can still reference an id that nothing currently registers). Free above the
-current max, under the hard ceiling described next: `0xC1`–`0xCD` (13 ids). Roughly **32 stateful
+call, since cut content can still reference an id that nothing currently registers). **2026-10-22:
+`0x52` (Living Flame) and `0x53` (the Regeneration enchantment) taken from this list** — the first
+gap ids claimed. A crude scan of all three modules (`mov edx,imm32` / `mov dl,imm8` / `push imm8`
+followed by any call) found code for most gaps but none for `0x52`, `0x53`, `0x5B`, `0x85`; neither
+claimed id has an `Ability.pfs` record or an `AbilTypes` byte. A gap id needs no loop-ceiling bump. Free above the
+current max, under the hard ceiling described next: `0xCD` (1 id). Roughly **32 stateful
 slots** and, if the untested bit-only band below turns out to be sound, another **50 passive** slots
 — that is the shape of the budget, not a number to bank on unchanged.
 
@@ -211,7 +225,7 @@ ability *bitset* (`SetAbSet @0x5574E0BC` auto-grows on `id >= count`, asserting 
 `0xCD` regardless; a full save/load round trip (and an MP sync test if relevant) is the thing that
 would settle it, and as of this writing nobody has run one.
 
-**Recommended range for a new stateful ability today: `0xC1`–`0xCD` (13 contiguous ids)**, above
+**Recommended range for a new stateful ability today: `0xCD` (1 id)**, above
 everything registered and under the hard ceiling. This shrinks by one every time any feature —
 inside or outside this file — claims an id; re-measure, do not quote it even from this paragraph.
 Freeze the chosen id before shipping: ids are serialised into saves as bitset indices and every MP
@@ -315,7 +329,12 @@ either side of the relocation. It applies only to a *future* selectable ability 
 
 **If a new ability should draw a persistent overhead status icon** (the crossed-swords/skull-style
 marker over a unit, not the level-up dialog or the unit card), that is a *third*, unrelated
-mechanism: `TAbstractUnit.ShowEx @0x557812EC` draws status icons only for a **hard-coded chain** of
+mechanism, and it has TWO consumers. ⚠ The manual-combat battlefield never calls `ShowEx`:
+`TTacticalCombatUnitHS.Show` (AoWTCPCK, loop `0x004227AA`) draws from a fixed id list, since
+2026-10-22 the 15-entry copy at `0x0043C400` owned by `build_ankh_battlefield.py` (vanilla's 14 at
+`0x004675B8` + `0x89`); append a new id there, raising the count `0x004228A1` and the bound
+`0x00422BD0` with it. `TAbstractUnit.ShowEx @0x557812EC`, used by auto-resolve and the unit panel,
+draws status icons only for a **hard-coded chain** of
 explicit `if GetAbilityEnabled(unit,id) then ShowLooped(...)` blocks, in this fixed order: `0x60,
 0x62, 0x5D, 0x91, 0x04, 0x30` (Seduced), `0x96` (Dominated), `0x95` (Charmed), `0x61, 0x5C, 0x5F,
 0x5E, 0x7F, 0x6B` (Possessed), `0x22` (Turned Undead), `0x46`. An ability absent from this chain
@@ -328,7 +347,7 @@ different feature's `cave_ankh` (`build_turnundead_evilcommand.py`, not owned in
 record (minted by a DevEd assign-and-save round trip, key = id + 10 — no build script can create
 one, see the level-up-cost section below); if it is selectable and minted above id 169, a category
 byte in the relocated `AbilTypes` table; and if it should draw a persistent status icon, its own
-block in the `ShowEx` chain. None of these apply to a plain passive below id 170.
+block in the `ShowEx` chain and an entry in the battlefield list. None of these apply to a plain passive below id 170.
 
 ⭐ **Owner's rule (2026-10-10): every new ability goes into the Ziggurat Manual's Hero Offers grid
 at 0 % for every race**, unless the owner rules it unofferable (a status such as Embrittled or
@@ -541,7 +560,11 @@ from-scratch ability in this project, and the recipe every later one above was v
 A moving unit carrying Path of Sand dries the terrain it crosses toward Desert, using the same
 progression as the user's Desiccate spell — a 4th Path alongside vanilla Life (`0x45`) / Decay
 (`0x44`) / Frost (`0x6D`). Footprint: inner disk 100%, 25% proc on the outer ring (radius 2),
-identical to the other three Paths.
+identical to the other three Paths. **Not on the cave levels** (owner, 2026-10-22): Caverns, Depths
+and the Abyss are excluded; the surface and the Firmament keep it. The dispatch cave tests
+`[field+0x12]` itself, because its hook (`0x557804B7`) sits past vanilla's surface-only gate for
+Life and Decay (`0x55780421`). Until 2026-10-22 a Sand unit in the Caverns turned Dirt into Steppe. The move of `cave_sandreg` it
+caused (package init) is proved: the game starts (owner, same day).
 
 **Terrain progression** (read-once per proc, no cascade; Desert is terminal): `Grass(1)→Steppe(4)`,
 `Snow(3)→Grass(1)`, `Steppe(4)→Desert(2)`, `Wasteland(5)→Desert(2)`, `Dirt(C)→Steppe(4)`. Cloned into
@@ -1583,7 +1606,7 @@ cave removed the ability from the editor.
 
 `re_tools/idladder.py` runs every compiled `case` ladder in a module with the probe id and with
 unregistered ids and lists the ladders where the probe takes its own exit. With `abquery.py` and an
-immediate scan, Shoot Bolt's id is special in three places across AoWEPACK, AoWTCPCK and AoWz.exe,
+immediate scan, Shoot Bolt's id is special in four places across AoWEPACK, AoWTCPCK and AoWz.exe,
 none of them in auto-resolve:
 
 | site | what it decides | an unknown id gets |
@@ -1591,6 +1614,14 @@ none of them in auto-resolve:
 | `AoWTC.MakeAbilPath @0x004271EC` | arc 20 for `0x2C`/`0x2D`/`0x39`/`0x3A`/`0x7B` | arc 50 |
 | `TCAI.CheckUnit @0x004175B0` | ranged ids → `EvalPath`, wall-breakers with the wall flag, breaths → `EvalBreath` | no score: the AI never shoots |
 | `GetUnitIndexAIPriority @0x5575BB26` | +100 recruit priority for `0x39`/`0x3A` | nothing |
+| projectile tick `0x00429FC1` | a second path step per tick (`0x429FDB`) for `0x2C`/`0x2D`/`0x39`/`0x3A`/`0x7B`, and `0x34` when `[+0x18]=0x75`; the tick itself advances once at `0x00429ED5` | half speed |
+
+The 2026-10-19 census missed the fourth: `idladder.py`'s linear sweep read the jump table at
+`0x00429EF7` as code and never decoded the switch head. Bane Javelin flew at half speed until hook S
+(2026-10-21; found through Inioch's share9, where his javelin looked "slow and crooked"). Since
+2026-10-22 the tool also decodes from jump-table entries and branch targets and reports the head
+(in ours, hook S's cave `0x43B680`, rejoining at `0x429FC7`). Hurl Boulder (`0x18`) is not in the
+switch, so Hurl Flaming Skull needs no entry.
 
 Add the category byte `[0x00469440 + id]` (Shoot Bolt's is 1), the two ceiling LADDERs, and the
 `Ability.pfs` record, which supplies sprites, sounds and the auto-combat picture. A wall breaker
@@ -1678,6 +1709,301 @@ passive for machines that roll on wheels. The owner assigns the carriers in the 
 - ⚠ The AI plans a transport's leg (`TAIMoveControl.Initialize`, `[group+0x130]`) on the raw combined
   table, which has never seen Enchanted Roads either; a Supply Caravan carrying an AI group is
   costed at 3 a road hex there.
+
+## Extra Shots — each missile shot may grant another (`0xC1`)
+
+Scripts `build_extrashots.py` (AoWEPACK.dpl + AoWTCPCK.dpl) and `build_extrashots_pfs.py`
+(`Release/Ability.pfs` key 203), applied 2026-10-21; the docstrings hold the addresses, caves and
+`--undo`. Owner's design: 25 % per shot, an extra shot rolls again (runs are possible on purpose),
+missiles only. A flat "+1 shot" was rejected because its worth depends on the attack's shot count.
+
+- **Missiles:** every id the `TRangedAttackAbility` (`0x5576ED48`) and `TBoltsAbility` (`0x5576EDE8`)
+  factories register, cave registrations included, minus Call Flames `0x1F`: Archery, Hurl Boulder,
+  Hurl Stones, Fire Cannon, Fire Musket, Doom Gaze, Shoot Bolt, Throw Javelin, Poison Darts, Poison
+  Spit, the five Bolts, Shoot Bane Javelin, Hurl Flaming Skull. The script derives the set by scan
+  and bakes it as a 256-bit set in both caves. Breaths and Flame Throwing are other classes.
+- **Auto-resolve:** the shot loop of `TRangedAttackAbility.fcExecuteCombatCommand` (`TBoltsAbility`
+  inherits it) counts down in EDI; at `0x5576EBEF` a success jumps back to the loop top with the
+  count unchanged. It also requires the target to be standing (VMT `+0x60`). P2 COMBAT RAW, one draw
+  per shot for every shooter (§4.5 of `12-re-toolchain.md`).
+- **Manual combat:** `TCAbRangedTE.NextStrike` counts the shot at `0x0040F436`; a success adds one to
+  the attack's total `[TE+0x28]`, which `Execute`'s per-frame driver reads live (`0x0040CB29`), so it
+  fires again and the event ends only when shots fired reaches the total. P1 SYNCED DRAW (raw draws
+  in `NextStrike` are cosmetic), gated on replicated state only. No target test: an extra shot at a
+  fallen target lands on its empty hex, as vanilla's remaining shots do.
+- **Record:** cloned from Forestry's (key 13), cost 8 (Extra Strike's), mask `0x03FF`. Ranged
+  column, 0 % for every race in Hero Offers.
+- **Registration:** `0x557BCD6A`, launch-proved 2026-10-21 (alive, responding, no error window).
+  LADDER `0xC2` in both ceiling scripts.
+- Unproven without the game: the tactical event firing the extra shot (animation, sound, combat
+  log). The AI's shot valuation ignores Extra Shots.
+
+## Rally — a battle ability with no target (`0xC2`; status Rallied `0xC3`)
+
+Scripts `build_rally.py` (AoWEPACK.dpl + AoWTCPCK.dpl + AoWz.exe) and `build_rally_pfs.py`
+(`Release/Ability.pfs` keys 204/205), applied 2026-10-21; the docstrings hold the addresses, caves,
+the AI rule and the `--undo`. Owner's design: fires when clicked, no targeting step, AoE around the
+user; once per round (it spends the action); every ally within 6 hexes, the user included, rolls
+50 % each to lose Panicked and gains Rallied, +30 morale for the rest of the battle.
+
+- **No vanilla ability fires from its button.** The precedent is `SelectSpell @0x00423270`: a combat
+  spell whose `SpellTypes` kind is 9 / `0x17` / `0x1D` / `0x25` / `0x2C` is cast at once through
+  `AbRangedTC(hs, 0, 0)`. Rally does the same from the panel: `AoWz.exe` calls `SelectAbility`
+  through its import from `TTCUnit.UAbilLBMouseDown` (`0x0043498C`) and `TUnitWindow.UseAbility`
+  (`0x00409FC5`); both calls are retargeted, and a Rally id goes to AoWTCPCK's `rally_click`, which
+  re-checks `SelectAbility`'s gates and sends `AbRangedTC(hs, own hex)`. The Q and right-click
+  cycles call `SelectAbility` from inside AoWTCPCK and stay plain selection.
+- **The event:** `TCAbRangedTE.Execute`'s phase 0, right after `[TE+0x10]` = the user
+  (`0x0040B3B0`): ability Rally runs `rally_effect`, zeroes the user's `[+0x5C]` (as a shot does),
+  sets the done flag and leaves at `0x0040B70F`, the no-shooter exit. Every peer runs it.
+- **Rallied** is a second `TPanickedAbility` instance (mode 3, "entire combat", so
+  `TDurationAbility.CombatDone` removes it at battle end). Every panic effect keys on id `0x6C`, and
+  nothing tests the class, so the instance carries none of them; its data record stores the id at
+  `+0x0E`. `UpdateMoraleValue`'s `GetUnitMoraleValue` call (`0x5577F074`) adds +30 while a unit holds
+  it; gaining it (`TPanickedAbility.Expand`) and losing panic (`RemoveAbility` + `Changed`, Healing's
+  path) both recompute morale mid-battle.
+- **Rally's class** is `TEnhancementAbility` with a run-time VMT copy (GetMem at registration,
+  `VMT-0x40..VMT+0x10C`, parent link kept so `IsClass` still holds) whose `+0xA0`/`+0xA4` are the
+  auto-resolve prefetch/execute: `TFastCombatUnit.fcExecute` asks every ability the unit holds.
+- **The AI rule** (`rally_value`, both AIs): any panicked ally in range → rally (value 1000 per
+  panicked ally + 300 per unbuffed); otherwise rally for the morale only when an enemy is within 6
+  hexes and the enemy side cannot panic anyone — no Cause Fear unit, and no caster who could cast
+  Terror (105): researched (or the engine's know-every-spell case) and a hero/leader with Spell
+  Casting or a unit with Spell Casting ≥ Terror's tier (live `TSpell+0x21`). Manual combat: a
+  type-1 move on itself after `build_ai_selfheal.py`'s proposal (`0x0041921A`), executed by that
+  script's executor, which accepts Rally. Auto-resolve: one `TFastCombatCommand` per turn.
+- **Distance:** `dHXtoHN < 127` from the units' HS positions (`[obj+0x60]`, VMT `+0x74`/`+0x78`).
+  Auto-resolve has no positions (`+0x60` is a flag byte of `TFastCombatUnit`): every ally counts.
+- **RNG:** one draw per ally in range, hoisted out of the panic test; P1 synced in the tactical event
+  (RandSeed saved/restored), P2 raw in auto-resolve. `rng_audit.py --owners` names both sites.
+- **Records:** Rally from Forestry's (cost 12, Healing's; mask `0x03FF`; Magic column; 0 % Hero
+  Offers row); Rallied from Panicked's (mask 0, as Embrittled). LADDER `0xC4`.
+- Launch-proved 2026-10-21. Unproven without a battle: the click, the event's early exit, the AI
+  move values (DV 1000/300 through `DVtoDEV`/`tcDVtoDEV`) against real alternatives.
+
+## The combat-unit slot — one dword of per-battle state on every combat unit
+
+`build_combatunit_slot.py` (layout `combatunit_slot.py`), applied 2026-10-21: the two combat-unit
+leaf classes each grow by one dword at their old instance end — `TTacticalCombatUnit` (AoWTCPCK, VMT
+`0x00412B4C`) 0x68 → 0x6C, `TFastCombatUnit` (AoWEPACK, VMT `0x5571D4BC`) 0x64 → 0x68 — by rewriting
+`[VMT-0x1C]`. ClassCreate zero-fills the whole instance and combat objects are rebuilt for every
+battle, so the dword starts at 0 in each fight and is never saved. Byte 0 is Mirror Image's images
+used, byte 1 Skirmisher's "attacked this round", byte 2 the draw marks of Mirror Image's Show wrapper (bit 0 the copies, bit 1 a Stone Gaze statue),
+byte 3 Lucky's "spent this battle" (2026-10-22). The dword is full: the next feature needing
+per-battle unit state grows it again. Neither class has a subclass
+(scanned), so no inherited field can sit at the old end. Undo its users first.
+
+## Skirmisher — an attack costs 12 moves instead of the turn (`0xC4`)
+
+`build_skirmisher.py` (AoWEPACK registration + AoWTCPCK) and `build_skirmisher_pfs.py` (key 206),
+applied 2026-10-21. Owner's design: after a melee or ranged attack the unit keeps its movement less
+12 points, once per round. Manual combat only — auto-resolve has no movement.
+
+- Vanilla ends a turn by zeroing `[unit+0x5C]`: `TCMeleeMoveTE.LastMove` `0x004097CA` and
+  `TCAbRangedTE.Execute` phase 0 `0x0040B6F6`. For a Skirmisher both now store `max(0, moves − 12)`
+  and set the slot's byte 1; a ranged use counts only for an attack category (not a spell, not
+  `AbilTypes` 0 or 4 — Healing, Rally and other touches end the turn as before).
+  `TTacticalCombatUnit.NewTurn` (`0x0041CF7D`) clears the mark with the refill.
+- Once per round is three gates on the mark: `MeleeMoveTC`'s entry (the sole creator of the melee
+  event, wall smashing included), `AbRangedTC`'s entry (attack categories only) and
+  `TCAI.CheckUnit`'s entry (mover = `TList.Get([cai+8], [cai+0x20])`; it ends `ret 0x1C`, asserted
+  with the other two epilogues). The cursor glyph is not gated: a marked unit still shows the attack
+  cursor and the click does nothing.
+- Record from Forestry's, cost 12, Wayfaring column, 0 % Hero Offers.
+
+## Searing Aura — enemies within 2 hexes may catch fire each turn (`0xC5`)
+
+`build_searingaura.py` (AoWEPACK) and `build_searingaura_pfs.py` (key 207), applied 2026-10-21.
+Owner's design: at the start of the holder's own turn every enemy within 2 hexes rolls Fire
+Strike's ignite roll (widened from adjacent the same day, `RADIUS` in the script).
+
+- `TCombatUnit.NewTurn` → `TAbilityOwner.TriggerNewCombatTurn` calls every held ability's VMT
+  `+0xF8` `NewCombatTurn(ability, unit, CL = player)` — Burning ticks the same way. The ability object
+  gets a run-time VMT copy (as Rally's) with `+0xF8` → `cave_aura`; no hook site.
+- The roll is the enemy's own `ExecuteDamageEffectsRole` (combat VMT `+0x118`) with mask 1 and, on
+  success, `ExecuteDamageEffects` (`+0x128`): Fire Immunity, Fire Protection and the live roll
+  tuning come for free. Reach: hex distance 1–2 (`dHXtoHN < 19`) in manual combat; `TAbility.fcValidRoundDistance`
+  (fast combat's melee reach) in auto-resolve.
+- RNG: the roll is HitRole (raw). Manual combat re-anchors `System.RandSeed` from a synced draw
+  before each roll (§4.4's bridge; site `0x558B3221`); auto-resolve is P2 raw.
+- Record from Forestry's, cost 12, Melee column, 0 % Hero Offers.
+- Launch-proved with Skirmisher 2026-10-21. Unproven without a battle: the timing against
+  Burning's own tick, and how often it catches.
+
+## Lucky — once per battle lethal damage leaves it at 1 HP (`0xC9`)
+
+`build_lucky.py` (AoWEPACK) and `build_lucky_pfs.py` (key 211), applied 2026-10-22. Owner's idea
+from the Good-race round. It covers every damage source, spells and Burning included (owner,
+2026-10-22).
+
+- One HP step for every damage source in both combat systems: `TCombatObject.ExecuteDamage` (VMT
+  `+0x124`) takes dealt = min(damage, HP), writes HP − dealt and calls DestroyObject at 0. Strikes,
+  shots and spells reach it through DoDamage (`+0x108`), Invoke Death too (DoDamage for the full
+  HP), Burning through `+0x124` directly; manual combat's `TTacticalCombatUnit.ExecuteDamage` calls
+  it inherited and only afterwards asks GetEnabled to pick the flinch or the death animation.
+  Callers test "alive" after the call, so nothing treats the unit as dead first.
+- Hook `0x55726C8A` (10 B, the min) → `cave_clamp`: a lethal hit on a combat unit holding `0xC9`
+  whose slot byte 3 is still 0 sets the byte and deals HP − 1. A unit already at 1 HP takes 0.
+  `build_panic_cleardamage.py` owns the function's entry, `0x55726C58`.
+- Self Destruct's own blast (`0x55768A05`, `call [ecx+0x124]` on the user) spends the luck first,
+  so the blast still kills its user.
+- Not covered, being no damage: a unit destroyed with the object it is bound to
+  (`TCombatUnit.ObjectDestroyed`), a possessor consumed by Possess, Decay at battle end.
+- No RNG. Record from Forestry's, cost 8 (a placeholder), Resistances column, 0 % Hero Offers.
+  Heroic options: Halfling Slinger 3, Halfling Cleric 3, Halfling Swordsman 2, Halfling Rogue 3,
+  Leprechaun 2 (`build_heroic_options.py`, not applied). Launch-proved 2026-10-22.
+
+## Smoky Haze — enemies within 2 hexes may be poisoned each turn (`0xCA`)
+
+`build_smokyhaze.py` (AoWEPACK) and `build_smokyhaze_pfs.py` (key 212), applied 2026-10-22. The
+poison twin of Searing Aura and Rime Aura, owner's request (proposed as "Miasma", renamed because
+that name suits a strategic spell): at the start of the holder's own turn every enemy within 2 hexes
+rolls Poison Strike's roll.
+
+- Rime Aura's script with effect mask `0x10`: `ExecuteDamageEffectsRole`'s poison branch (Poison
+  Immunity `0xA` refuses, effect word `0x55781E18` = `0x10`); `ExecuteCombatDamageEffects` turns
+  bit `0x10` into Poisoned (`0x60`).
+- RNG as the other auras: manual-combat re-anchor site `0x558B4D21`; auto-resolve P2 raw.
+- Record from Forestry's, cost 12 (a placeholder), Melee column, 0 % Hero Offers. Heroic options:
+  Spider Queen 3, Doom Bat 2, Goblin Shaman 2, Goblin Wyvern Rider 2, Undead Reaper 2, Bone Horror 3,
+  Mummy 1 (`build_heroic_options.py`, not applied). Launch-proved 2026-10-22.
+
+## Rime Aura — enemies within 2 hexes may be frozen each turn (`0xC8`)
+
+`build_rimeaura.py` (AoWEPACK) and `build_rimeaura_pfs.py` (key 210), applied 2026-10-22. The cold
+twin of Searing Aura, owner-approved: at the start of the holder's own turn every enemy within 2
+hexes rolls Cold Strike's roll.
+
+- Searing Aura's machinery unchanged (run-time VMT copy, `+0xF8` NewCombatTurn → `cave_aura`; reach
+  `dHXtoHN < 19` in manual combat, `fcValidRoundDistance` in auto-resolve) with effect mask 2
+  instead of 1. Mask 2 is `ExecuteDamageEffectsRole`'s cold branch (Cold Immunity `8` refuses, Cold
+  Protection raises the resistance, effect word `0x55781E24` = 2); `ExecuteCombatDamageEffects`
+  turns bit 2 into Frozen (`0x5F`) and removes Burning.
+- RNG as Searing Aura's: manual-combat re-anchor site `0x558B4521`; auto-resolve P2 raw.
+- Record from Forestry's, cost 12 (Searing Aura's — a placeholder, the owner gave none), Melee
+  column, 0 % Hero Offers. Heroic options: Yeti 3, Glacier Drake 2 (`build_heroic_options.py`,
+  not applied). Launch-proved 2026-10-22.
+
+## Mirror Image — each image absorbs one strike or shot (`0xC6`)
+
+`build_mirrorimage.py` (AoWEPACK + AoWTCPCK) and `build_mirrorimage_pfs.py` (key 208), applied
+2026-10-21. Owner's design: a multi-level ability, up to 20 levels at 4 points each; the holder
+enters each battle with one image per level, every incoming strike and shot misses and deletes an
+image, and the images return for the next battle.
+
+- A plain `TMultiLevelAbility` (cap 20, `Put(1..20, 4)`) registered at `0x557BCD0E`, with a run-time
+  copy of the class VMT whose `+0x10C` GetLevelName gives "Mirror Image I".."XX" (level 0 plain).
+  The cap `[+0x28]` is a dword but the level is a byte (`movzx` in GetLevel, `inc byte` in Expand,
+  streamed as tag `0x0A`): 255 is the hard limit for any multi-level ability.
+- The miss: both damage-roll calls in `TDamageCA.Generate` / `GenerateEx` (`0x55729C4E`,
+  `0x55729CCA`, `call [edi+0x110]` / `+0x114`) go through `cave_absorb`. A `TStrikeCA` or
+  `TRangedAttackCA` against a combat unit with images left returns 0 damage and spends one (slot
+  byte 0); zero damage also skips the effect roll. Spells (`TCombatSpellCA`), Turn Undead, Self
+  Destruct, touch abilities and Burning are not attacks and pass. Both combat systems.
+- The images: `TTacticalCombatUnitHS.Show` (VMT cell `0x00412DB0`) is wrapped. For each image left
+  the original Show runs with a displaced origin while slot byte 2 is set; during those passes the
+  six body draws use ILPACK's 50 % blend (`TRLESprite16.ShowTransparent`, image VMT `+0x9C`) and
+  the overlays (status animations, health bar) are skipped (`0x0042274B` → the try block's exit
+  `0x00422B00`). The unit itself is drawn last, on top; `ShowShadow` is separate, so images cast
+  none. Offsets: three ellipses of 6, 6 and 8 positions (x radius 10/18/26 px, y half), outer ones
+  lost first.
+- A unit holding Petrified is marked a statue (slot byte 2 bit 1) while Stone Gaze's AoWTCPCK header
+  is present; its body draws then go to Stone Gaze's tint (see "Stone Gaze").
+- RNG: no draw. An absorbed attack skips the defender's raw roll, decided from replicated state.
+- Record from Forestry's, cost 4, Resistances column, 0 % Hero Offers. The editor's medal filter
+  takes up to 20 levels per Add (`MAX_STEPS`, was 8).
+- Launch-proved 2026-10-21. Unproven without a battle: how the copies look (the pixel offsets were
+  chosen blind) and whether any partial redraw leaves traces outside the unit's own rectangle.
+
+## Mental Discipline — no command, possession or turning (`0xC7`)
+
+`build_mentaldiscipline.py` (AoWEPACK) and `build_mentaldiscipline_pfs.py` (key 209), applied
+2026-10-22. Owner's design: the holder cannot be targeted by Charm, Seduce, Dominate (the command
+trio), Possess or Turn Undead. No effect on fear: Fearless covers that (owner, 2026-10-22).
+
+- Untargetable: every touch ability's CanTouch (VMT `+0x11C`) calls `TTouchAbility.CanTouch`
+  `0x557682AC` first with the ability unchanged in EAX, and that is the target pick of the
+  manual-combat click, the tactical AI and the auto-resolve AI. Its entry refuses a holder for ids
+  `0x1C`, `0x1D`, `0x26`, `0x6A`, `0x94`. "Can Command Undead" (`0x88`) is not in the trio.
+- The Turn Undead combat spell has no target filter in vanilla (a living target is accepted and
+  nothing happens). Its two undead tests treat a holder as living: `TTurnUndead.CreateCA`
+  `0x557F7CA0` (no damage CA) and `fcGetDamageValueEx` `0x557F7D25` (AI value 0). The spell can
+  still be cast at a holder and does nothing.
+- The fear rolls, for reference: Cause Fear `TStrikeCA.Generate` `0x55766908` (`HitRole(10 − RES)`),
+  Terror `0x557F99FF` tactical and `0x557F987B` auto-resolve (`12 − RES`); each reads RES with a
+  7-byte `mov eax,<target> / mov edx,[eax] / call [edx+0x74]`, a clean hook site.
+- No RNG.
+- Record from Forestry's, cost 8 (Parry's — a placeholder, the owner gave none), Resistances
+  column, 0 % Hero Offers. Launch-proved 2026-10-22.
+
+## Stone Gaze — a facing enemy may be turned to stone (`0xCB`; status Petrified `0xCC`)
+
+`build_stonegaze.py` (AoWEPACK + AoWTCPCK), `build_stonegaze_pfs.py` (keys 213, 214) and
+`build_stonegaze_holders.py` (`Unitres.pfs`), applied 2026-10-22. Owner's design 2026-10-22.
+
+- **Trigger.** A `TEnhancementAbility` registered at `0x557BCC9B` with a run-time VMT copy whose
+  `+0xF8` NewCombatTurn is `cave_gaze`. It runs for the holder at every turn start and acts when the
+  turn is an enemy player's, on each of that player's units. A dead or locked gazer does not gaze.
+  Immune: Magic Immunity (`0x06`), Stone Gaze holders, war machines (`GetUnitType` 2), the already
+  petrified.
+- **Reach.** Manual combat: hex distance 1–6 and mutual facing — the victim lies in the gazer's 120°
+  arc and the gazer in the victim's, each centred on its `TUnitHS+0x14` facing. Auto-resolve has no
+  facing: every enemy in melee reach (`fcValidRoundDistance`), as the auras.
+- **The arc rule.** The arc's edges run along hex directions F−1 and F+1, so "half or more of the hex
+  inside" is exactly "the cube vector lies in the closed cone of those two directions": two sign
+  tests on (q, r, s), odd-q offset → cube `q = x, r = y − (x >> 1)`. Proof: exact polygon clipping
+  of every hex within radius 6 for all six facings (756 hexes) agrees with the cone test with no
+  mismatch; the hexes on an edge line are exactly 50 % inside and count.
+- **Roll.** A 50 % proc (`RandInt(2) == 0`), then `HitRole(8 − RES)` = 90 − 5·RES %, clamped 10–90.
+  RNG as the auras: manual-combat re-anchor `0x558B53C1`, proc `0x558B53D3`, HitRole call
+  `0x558B53F1`; auto-resolve P2 raw.
+- **Petrified** is a second `TStunnedAbility` (mode 3, the whole battle) whose VMT copy's `+0x60`
+  gives +8 DEF (Stunned's −4).
+  - `TCombatUnit.GetLocked` (`0x55724BA4`) answers true for it, so in both combat systems the unit
+    cannot act or retaliate and its turn passes, as a stunned unit's. It stays attackable.
+  - Dead for the result: `GetUndestroyedConquerObjects` (`0x55726E5B`) skips it, and CheckTerminate,
+    UpdateStatus, `TFastCombat.Execute` and the combat log all count with it. The gaze calls
+    CheckTerminate after petrifying, so turning a side's last free unit to stone ends the battle.
+  - After the battle: `TCombat.Terminate`'s entry (`0x557274B8`) destroys the statues of every side
+    with no counted unit left, holding `[combat+0x34]` at 1 so the deaths' CheckTerminate calls
+    return at once. Not at Finalize: `TTacticalCombat.Finalize` frees the combat map before
+    `TCombat.Finalize` runs. The winners' statues lose Petrified in Finalize's CombatDone pass (mode
+    3) and leave as flesh with the HP they had. A battle that ends with free units on both sides (a
+    fallen leader, a flight) kills no statue. A losing side's petrified Leader dies, through the
+    fallen-leader list.
+  - Removal: Remedy (`TRemedy.ExecuteSpell`'s last RemoveAbility, `0x557E741E`) and Dispel Magic,
+    ability and spell (`TDispelMagicCA.Execute` `0x5576CAD5`, unconditional), just past the 30
+    bytes `build_combatlog_actions.py` asserts from `0x5576CAB7`.
+- **The look.** AoWTCPCK `tint_draw` (`0x0043C810`): a copy of ILPACK's RLE16 sprite draw (565 and
+  555, the engine's clipping) that writes each pixel beige-grey from its luminance. Mirror Image's
+  Show wrapper owns the six body-draw hooks; it marks a statue (slot byte 2 bit 1) only while Stone
+  Gaze's header "SGZ1" (`0x0043C800`) is present, and its `cave_draw` then jumps to the tint. An
+  image that is not a `TRLESprite16`/`TTransparentRLESprite16`, or has another pixel format, draws
+  normally. No overhead icon: neither status-icon list names `0xCC`.
+- **Data.** Stone Gaze's record from Forestry's, cost 32 (Doom Gaze's), mask `0x3FF`, Magic column,
+  0 % Hero Offers; Petrified's from Stunned's, mask 0, empty image list. Holders: the Basilisk (65)
+  base set and the Halfling Cockatrice Hussar (99) gold set swap Doom Gaze for it; the Beholder (24)
+  base set gains it. These three were every Doom Gaze holder; the Beholder is now the only one.
+- Launch-proved (game and editor) 2026-10-22. Unproven without a battle: the gaze in play, the
+  statue deaths inside Terminate, and whether unit sprites are `TRLESprite16` in the RLE layout the
+  tint reads (if not, statues draw untinted).
+
+## Living Flame — fire heals the unit (`0x52`)
+
+`build_livingflame.py` (AoWEPACK; registration + the battle heal), `build_livingflame_pfs.py`
+(key 92), `build_livingflame_holders.py` (Unitres), applied 2026-10-22. Owner's design: the Fire
+Halo spell is renamed Living Flame and fire heals its target; the creatures whose life essence is
+fire get the same as a passive. The spell side is `04-spells-modded.md`, "Living Flame".
+
+- Two abilities, one name. The spell's enchantment `0xA3` cannot be innate (Liquid Body's reason:
+  `GetSourceName` dereferences the cast record with no nil check; Dispel and Magebane count it), so
+  Fire Elemental (226), Fire Sprite (228) and Salamander (58) carry the passive `0x52` on their
+  base owner (tag `0x19`). All three already had Fire Immunity and Fire Strike.
+- Effect: either id makes a hit that is fire and nothing else heal the holder instead of harming it
+  — in battle `build_livingflame.py`, on the map `build_firefeed.py` v3. Mixed hits harm.
+- Registration at `0x557BCC84` (the last direct `call RegisterAbility`), mask `0x03FF`. Record from
+  Forestry's, cost 20, Resistances column, Hero Offers 0 % except Azracs 10 % (owner).
+  Launch-proved 2026-10-22.
 
 ## Open items
 

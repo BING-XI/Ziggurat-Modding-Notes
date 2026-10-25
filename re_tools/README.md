@@ -166,6 +166,14 @@ See `../Editor_Lag_CopyPaste_Investigation_2026-07-07.md` for the findings these
   ⚠ Like `fieldrefs.py`, it resyncs the linear sweep: bare `capstone.disasm()` over a CODE section
   stops at the first undecodable byte and silently reports near-zero hits.
 
+## Added 2026-10-22 (launch test)
+
+- **launch_proof.py** — the launch test for a package-init cave: kills running AoW binaries,
+  starts `AoWz.exe` (or `--exe`) from the Ziggurat folder, waits (`--wait`, default 10 s), lists
+  its windows and exits 0 only if it is alive, responding and shows no error dialog. Sets
+  `General\Skip Intro` to 1 for the run and restores the previous value afterwards (owner,
+  2026-10-22: launch tests skip the intro).
+
 ## Added 2026-09-03 (crash capture)
 
 - **veh_capture.py** — registers, stack and fault site of a **crashed** game. Complements
@@ -263,6 +271,11 @@ Not ported: `diag_veh_attach.py` (= `veh_capture.py --attach`).
   this simulates the rungs instead, and follows `jmp [reg*4+table]` and the byte-indexed two-level
   form. Each hit prints the other ids that share the probe's exit, which separates an ability
   switch from a digit or range test. `--ceilings` also prints `id < N` tests with N between the
-  probe and the new id. Blind to memory-operand tests (`cmp [ebp-x], id`), id lists walked in a
-  loop and bit tests: pair it with `abquery.py` and an immediate scan. First use: Shoot Bane
-  Javelin (`../Zig notes/03-abilities-added.md`, "What a new ranged ability costs").
+  probe and the new id. Heads come from a linear sweep plus everything reachable from exports,
+  branch targets and jump-table entries (a jump table had hidden the projectile switch
+  `0x429FC1`, 2026-10-22); a hook cave that replays a ladder is reported with the vanilla address
+  it jumps back to. Also prints LISTs: range-checked id tables walked in a loop, such as the
+  battlefield status icons — AoWTCPCK only, the one module compiled with range checks. Blind to
+  memory-operand tests (`cmp [ebp-x], id`), lists in AoWEPACK or the exe, and bit tests: pair it
+  with `abquery.py` and an immediate scan. First use: Shoot Bane Javelin
+  (`../Zig notes/03-abilities-added.md`, "What a new ranged ability costs").

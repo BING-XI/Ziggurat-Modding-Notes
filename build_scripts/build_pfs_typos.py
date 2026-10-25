@@ -693,6 +693,29 @@ FIXES = [
      "Halves the cost of spells which affect the world or the map.\r\n",
      "Cuts 40% off the cost of spells which affect the world or the map.\r\n",
      "record 185 = Ritualist (ability 0xAF)"),
+
+    # Fire Halo -> Living Flame, 2026-10-22 (owner's design; build_livingflame.py heals in battle,
+    # build_firefeed.py v3 on the map; the name is build_resstr_names.py's row). The lead clause is
+    # the owner's own wording. "Ignite flammable material" is dropped from the spell text: the
+    # enchantment's record names what it grants (Fire Strike, Fire Immunity, Lava Crossing).
+    ("Spells.pfs",   50,  10,
+     "Links a unit to the Plane of Fire, giving it fire immunity, fire strike, and the ability to "
+     "ignite flammable material.\r\n",
+     "Fuels a unit's life essence with elemental fire: fire heals it instead of harming it, and it "
+     "gains fire immunity, fire strike and lava crossing.\r\n",
+     "record 50 = spell id 40 (Fire Halo -> Living Flame) + 10"),
+    ("Ability.pfs", 173,  5,
+     "Enchantment gives Fire Strike, Fire Immunity, and Lava Crossing.\r\n",
+     "Life essence fuelled by elemental fire: fire heals it. Grants Fire Strike, Fire Immunity, "
+     "Lava Crossing.\r\n",
+     "record 173 = Fire Halo's enchantment (ability 0xA3), now Living Flame. ⚠ u8 directory: "
+     "tag 9 sits at offset 207, so this field may grow by at most 48 B (+40 here)"),
+
+    # Reforming Flesh 5 -> 4 HP per round, owner 2026-10-23 (build_reformingflesh.py HEAL).
+    ("Ability.pfs", 187,  5,
+     "Heals the unit by +5 HP per combat round.\r\n",
+     "Heals the unit by +4 HP per combat round.\r\n",
+     "record 187 = Reforming Flesh (ability 0xB1)"),
 ]
 
 

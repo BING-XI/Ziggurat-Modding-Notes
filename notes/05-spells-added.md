@@ -18,6 +18,7 @@ container-format documentation beyond the splicing rules both features actually 
 
 | feature | status | owning script | binary / file |
 |---|---|---|---|
+| Regeneration spell (id 79, Water tier 1) + its enchantment (ability `0x53`) | applied 2026-10-22, launch-proved | `build_regen_spell.py`, `build_regen_spell_pfs.py`, `build_regen_spell_icon.py` | `AoWEPACK.dpl`, `Release\Spells.pfs` record 89, `Release\Ability.pfs` record 93, `Images\SpellIcn.ILB` entry 129 |
 | Embrittle spell (id 109) + Embrittled status (ability `0xB2`) — mechanics | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle.py` | `AoWEPACK.dpl` (7 hooks + 1 cave), `AoWTCPCK.dpl` (1 byte) |
 | Embrittle spellbook icon (broken-bone stamp, reuses dead entry 128) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle_icon.py` | `Images/SpellIcn.ILB` |
 | Embrittle `Spells.pfs` record 119 + `Ability.pfs` record 188 | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle_pfs.py` | `Release/Spells.pfs`, `Release/Ability.pfs` |
@@ -214,7 +215,7 @@ Fields poked on the cloned `TSlow` instance after calling its vanilla constructo
 inherited): `[+0x10]` id `109`, `[+0x14]` mana `14`, `[+0x18]` research cost `80`, `[+0x20]` sphere `3`
 (`msEarth`), `[+0x21]` tier `3`, `[+0x34]` power `9`. `TMagicSphere`: `0` Cosmos, `1` Life, `2` Death,
 `3` Earth, `4` Air, `5` Fire, `6` Water. Mana and research were calibrated against **Tremors**, the other
-Earth tier-3 combat spell (also mana 14, research 80). **Free spell ids are now 79–99**, and `0xB2` was
+Earth tier-3 combat spell (also mana 14, research 80). **Free spell ids are now 80–99** (79 is Regeneration), and `0xB2` was
 the first free ability id at the time (`0xB1` Reforming Flesh was the prior top).
 
 #### Registration sites — chain, never re-use
@@ -444,7 +445,8 @@ needed migrating: v1 never ran long enough to reach a save, so no save can conta
 |---|---|---|---|
 | v1 (2026-09-01, ~1 h) | Embrittlement | `0` (header address passed directly — the bug) | GPF at startup, "Runtime error 216." Never worked; no save can reference it. |
 | v2 | Embrittlement | `8` (correct) | Launches. Superseded for the name only. |
-| v3 — current, shipped | **Embrittle** | `8` (correct) | Current live layout. |
+| v3 (to 2026-10-21) | **Embrittle** | `8` (correct) | `cave_reg_abil` called `TSlowEnchantmentAbility.Create` with ECX = the classref cell, which `TEObject.Create` stores as the owner. No symptom (the owner callbacks it reaches do nothing); Inioch's Slow clone died of the same garbage owner with "Runtime error 216" (share9). |
+| v4 — current, shipped | **Embrittle** | `8` (correct) | `xor ecx,ecx` before the constructor, as vanilla does at `0x557BCAD4` and as `cave_reg_spell` already did. Fits the same 16-byte slot; no other cave moved. The owner launched the game successfully the same day. |
 
 **Why "Embrittle", not "Embrittlement"** (decided 2026-09-01, after checking vanilla rather than
 assuming): vanilla inflects a status name away from its spell's — `PassiveAb.TBlessedEnchantment.Create`
@@ -974,6 +976,185 @@ run, so a build script still works after an editor save. But a save *after* appl
 bakes the new record in permanently from the editor's point of view; `--undo` afterwards removes what is,
 mechanically, the editor's own record rather than the script's — which is fine, because both are keyed on
 the same id.
+
+## Regeneration — a Water enchantment that heals fully each turn (spell 79, 2026-10-22)
+
+Owner's design: Water, tier 1, 20 mana, upkeep 2; the enchanted unit heals as a unit with the
+Regeneration ability (`0x31`) does — fully, at the start of each turn. World map only: id 79 is a
+strategic id, `SpellTypes[79]` = 0, and Regeneration acts at `TAbstractUnit.NewTurn` anyway.
+
+The recipe of this file, twice over (`build_regen_spell.py`):
+- **The spell is a `TStoneSkin` instance** (class cell `0x557E5624`) with id 79, name, mana, upkeep
+  (`[+0x1C]`), research, sphere and tier poked; registered at `0x557E8E3A`. Stone Skin hard-codes
+  its enchantment `0x99` in `ExecuteSpell` (two `mov edx,0x99`, EBX = the spell) and in
+  `ValidTargetUnit`, whose spell pointer is lost before its test — so that one is hooked at entry:
+  for id 79 it runs `TUnitSpell.ValidTargetUnit`, then refuses a unit holding `0x31` or `0x53`.
+- **The enchantment `0x53` is a `TUnitEnchantmentAbility` instance** built by the base constructor
+  (class pointer = VMT `0x55722364`, reached by delta) with name and id poked — no subclass, so no
+  `Remove` override; registered at `0x557BCC6D`. Id from the verified gaps (`03-abilities-added.md`).
+- **The effect** is one hook on `NewTurn`'s Regeneration query (`0x55780DA6`): `0x31` or `0x53`
+  takes the full-heal branch.
+- Data: `Spells.pfs` record 89 cloned from Stone Skin's 27 (so the cast animation is Stone Skin's)
+  and `Ability.pfs` record 93 from Stone Skin's enchantment 163 (tag 9 `00 00`). Book icon: dead
+  `SpellIcn.ILB` entry 129 repainted — Water disc from icon 100, heart in a circular arrow, 24×29
+  (`build_regen_spell_icon.py`, original bytes embedded for `--undo`).
+- No RNG. Unproven: that the AI casts it (Stone Skin's inherited AI, weight 5).
+
+## Dual-sphere spells — the owner's tier rule (planned, 2026-10-22, revised 2026-10-24)
+
+Death/Fire is built (2026-10-25, below); the other 13 pairs are planned. The plan is to bring in most of Inioch's AoWx 1.37.420 pair spells
+(`Inioch/Inioch_Share9_Catalogue.md` §2.5, his plumbing in §4.3), under a rule that differs from his:
+
+- **Dual-sphere tiers are 1–3, and they are never researched.** A pair's tier N is granted
+  automatically once the player has researched **tier N of both** spheres: Water 2 and Life 2 grant
+  Life/Water 2 (owner, 2026-10-24). Researching tier N needs N picks in that sphere (the picks gate
+  in `ValidResearchSpell`), so tier N in effect needs N+N picks. (His: picks(A) + picks(B) − 1,
+  researched, tiers 1–4.)
+- For Spellcasting a dual tier N counts as single tier N+1 (owner, 2026-10-25).
+- 14 pairs: Life and Death each with Earth, Air, Fire and Water, plus the six element pairs. Life and
+  Death never pair. **Earth+Air and Fire+Water share at most 4 picks** (`TLeader.CanAddSphere
+  0x5578B1F8`, read from the live dll 2026-10-22), so under this rule those two pairs stop at tier 2.
+
+**The planning document is the manual's Planned Spells tab** (Single sphere and Dual sphere), written
+by the owner in the page (Edit text) and stored in `manual_text.json` as
+`PLAN.DUAL.<a>_<b>.t<N>.extra.<n>.0/.1` and `PLAN.<sphere>.t<N>.extra.<n>.0/.1` (name, notes; N =
+the tier shown). It is the owner's alone: renames and builds are not carried into it (owner,
+2026-10-25). Nothing in the game or the build writes the `PLAN.*` keys (`12-re-toolchain.md` §14.4b).
+Spells → Dual sphere shows only what the game has: the pair grid, then each built pair's cards
+(icon, caster, stats; the tier row names the two tiers that grant it) and `DUAL_SPELL_NOTES`. A
+built spell needs:
+- a pair block in `manual_data.json`;
+- its record in `Zig notes/spell_names.json`, which supplies the card's icon and caster;
+- its note in `DUAL_SPELL_NOTES`. On 2026-10-24 the 35 dual
+entries were moved from `DUAL.<a>_<b>.t<N+1>` to these keys as plain text. Copy of the file before
+the move: `Ziggurat/backups/manual_text.pre-plannedspells.2026-10-24.json`.
+
+**Review page for Inioch's set:** `Inioch/dual_sphere_review.html`, built by `Inioch/build_dual_review.py`
+from `share9/changelog_1.37.420.txt` (54 spells, 14 pairs). There is one card per spell with his level,
+costs and effects, the owner's current plan entries beside each pair, and the Ziggurat equivalents
+from the catalogue. Each card is marked T1 / T2 / T3 / Maybe / Drop and takes a note; T3 is disabled
+for the two opposed pairs. Verdicts stay in the browser's localStorage (`zig-dual-review-v2`). Export
+and Import move them as JSON (format 2 wraps them with `"version": 2`). Format 1, a bare object with
+tiers `t2`–`t4`, is migrated on load and on Import. Copy gives a plain-text summary to paste into a
+session. The page reads `manual_text.json` at build time and never writes it.
+
+**The owner's verdicts:** `Inioch/dual_sphere_review.json` (format 2, 2026-10-22) holds 25 of the
+54 spells: 6 at tier 1, 6 at tier 2, 9 at tier 3 and 4 dropped. Several carry rework notes, such as
+Ice Age renamed Fimbulwinter and Arms Race made to duplicate machine productions.
+
+### Death/Fire — the first pair: agreed design (owner, 2026-10-25; built the same day)
+
+Built in two stages: the owner rules on the design, then it is implemented. In-game testing is ad hoc.
+Death/Fire also carries the groundwork every pair will use.
+
+**Every dual-sphere spell**
+- Granted with no research when tier N of both spheres is known. The event log names the spells
+  gained. The check runs at every turn start, so saves and scenarios that already hold both tiers
+  get them too.
+- Unit Spellcasting gate (units only; heroes are ungated): a dual tier-N spell needs Spellcasting N+1.
+- Mastery costs: both spheres' modifiers apply and multiply (opposed ×1.5, own ×0.75).
+- Caster family follows the class rule (combat Evoker, summon Conjurer, unit Enchanter, global Ritualist).
+- Spellbook icon: a new glyph per spell over a glow. A dual spell's glow is a yin-yang of its two
+  spheres' colours, the first-named sphere on the left, with the two opposite-colour dots. Glyphs,
+  glows and effects are previewed to the owner before they are written.
+- Combat effects are data: `Spells.pfs` tag `0xC` lists frame sequences from effect libraries with
+  anchor offsets, and the spell's combat class decides which slot plays where. Geyser (id 118, class
+  30) is sparkles at the caster, then frames 0–4 and 2–4 of `Effects\Storm1.ILB` (320×480) over a
+  single target. Call Flames is `Effects\ExplTC.ILB` (27 frames of a rising fire column); High Prayer
+  draws `Effects\Magic.ILB` 89–109 on every unit it affects. Green-purple flame is made by recolouring
+  the game's own flame frames at native size, in palette B (owner, 2026-10-25): purple flame, green
+  edge, for both spells.
+
+**Wizard's Towers** (the only random-spell source)
+- Price stays at 3/8 of the spell's research cost (the owner's own hand-edit). A dual tier-N spell
+  takes the research figure of a typical single tier N+1 spell (80 / 160 / 240), so 30 / 60 / 90 gold.
+- A dual spell is eligible when both its spheres are ticked; it counts as level N+1.
+- Offers are drawn only from spells whose own enabled test passes (Bird's View and Conceal Area need
+  fog of war), never Warp Party on a map with "Disable Warp Party" (`map+0x193`, build_warpban.py).
+  The two offers may share a sphere; they only have to be different spells.
+- A Custom tower (one hand-picked spell) offers that one spell and never re-rolls. Every other tower
+  offers two spells, each player may buy each once, and re-rolls both every d20 turns. On each
+  re-roll the tower's hex changes to a different terrain from Grass, Desert, Snow, Steppe, Wasteland
+  and Dirt (any map level; never Water), but not Grass when the new offer holds a Death spell and not
+  Wasteland when it holds a Life spell (a dual spell's spheres count). The day-1 roll keeps the map's
+  terrain. A Random tower in an older save rolls its second spell, and schedules its first re-roll,
+  on the next turn.
+- Editor: levels become checkboxes (any mix of 1–4); Life and Death can never both be ticked. Towers
+  already on maps keep their spheres as they are (Life and Death together included). A newly placed
+  tower starts with a random set of spheres, never Life and Death together.
+- The tower dialog keeps one panel and switches between the two offers (a toggle).
+- The AI buys the cheaper offer, then the other if it can still afford it.
+
+**Taint the Flame** (tier 1, battle, Evoker): no target, 8 mana. Every Burning (`0x7F`) or Living
+Flame (`0x52` / `0xA3`) unit on the field, on both sides, takes a Death attack, 12/12 against RES,
+with Death damage's usual Cursed roll. Fire Mastery's granted Living Flame counts (it is the counter
+to Fire Mastery, and those units also heal from fire). No other side effect. Small flames recoloured
+green-purple play on each unit hit, drawn the way High Prayer draws its aura. The AI casts it only when the enemy has more targets than its own side.
+In auto-combat it hits every unit that qualifies. Spellbook text: "Strikes every unit that's burning
+or has Living Flame ability with Death damage."
+
+**Pillar of Banefire** (tier 2, battle, Evoker): range 8, AoE radius 2 (19 hexes), everyone inside.
+Death + Fire + Wall (the Wall bit as in Triple Fireball), 10/15 × 2 against RES, the normal fire
+chance to set Burning. 16 mana. Animation: Geyser's burst in green-purple, reordered so it descends
+rather than rises, and without Geyser's knock-back: no unit is moved. One burst; each unit in the
+area is struck twice. No burning ground. 4 targets in auto-combat. The AI casts it as it casts
+Fireball. Spellbook text:
+"The flame of the underworld burns the essence and can even destroy stone walls."
+
+**Enmity of Nine Hells** (named Demon Curse until 2026-10-25; tier 3, world map, Enchanter): 40 mana, upkeep 10, range 12. Curses a unit owned
+by another player (never an independent: the engine will not let a hunt chase one), one curse per
+unit; heroes and leaders may be targets. Dispel Magic makes its normal roll against it. Demons may
+appear on water (they fly). A party on the Hunt behaviour can never be recruited by anyone. Rolled at the start of the caster's turn while the
+upkeep is paid: the curse's first turn has no chance; then 1/32, 1/16, 1/8, 1/4, and 1/2 every turn
+after, with no reset after a wave. Each time
+it succeeds, d(X/2) Demons (rounded down, capped at d6, X = the turns the curse has been active)
+appear on a random valid hex 8–16 hexes from the victim on its map level (none that turn if there
+is no such hex), and the curse goes on rolling. They are
+independent and stay independent, with a hunt behaviour that chases cursed units (any curse, so one
+pack may be drawn off to another victim) and turns to Raid once none is left; it attacks whatever
+the odds. Any Demon unit on the map, players' own included, strikes any unit under Enmity of Nine Hells at +5/+5
+ATK/DAM, attacking or defending. Demons get no ability for this: the party AI and the unit-type
+check against the curse do it. Dispel Magic or
+the death of the unit that cast it lifts the curse. No overhead marker: it shows in the unit's
+ability list. The event log reports the cast to both players and says nothing when demons appear.
+The AI casts it at the enemy's strongest unit. Spellbook text (proposed): "Curses an enemy unit.
+Sooner or later demons manifest to hunt it down, striking it with +5 attack and damage."
+
+### Death/Fire — as built (2026-10-25)
+
+Every script's docstring carries its sites, caves, RNG sites and `--undo`. Apply order is the list
+order; undo in reverse.
+
+| Script | Binary | What |
+|---|---|---|
+| `build_dual_sphere.py` | AoWEPACK `0x558B6000` | side table + `dual_find` (pinned), turn-start grant, unit tier gate, two-sphere Mastery |
+| `build_dual_sphere_exe.py` | AoWz.exe `0x0062BC00` | "Death/Fire" sphere name in the book, research and tower windows; book tier |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 156–158 (both twins) |
+| `build_banefire_fx.py` | `Images/Effects/BANEFIRE.ILB` | palette-B flame, sparkle, spray and burst frames |
+| `build_deathfire_pfs.py` | `Spells.pfs` 90, 91 | Taint (High Prayer's record), Pillar (Geyser's) |
+| `build_deathfire_combat.py` | AoWEPACK `0x558B6800` | spells 80 and 81 registered from TDeathRay / TFireBall instances |
+| `build_deathfire_tc.py` | AoWTCPCK `0x0043E800` | class aliases, AI, targeting, Pillar's landing and descending spray |
+| `build_demon_curse.py` | AoWEPACK `0x558B7000` | spell 82 + enchantment `0x5B`, roll, spawn, hunt AI, +5/+5, AI casting |
+| `build_demon_curse_pfs.py` | `Spells.pfs` 92, `Ability.pfs` 101 | Dark Gift's records, re-numbered |
+| `build_wizardtower_dual.py` | AoWEPACK `0x558B8000` | two offers, eligibility, re-roll + terrain, slot-aware buy, AI |
+| `build_wizardtower_dual_exe.py` | AoWz.exe `0x0062D400` + the tower form | Next button (length-neutral DFM rewrite), slot-aware display and Buy |
+| `build_wizardtower_dual_editor.py` | AoWDevEd.exe `0x0050F000` (then `build_zigeditor.py`) | level checkboxes, Life/Death exclusive |
+
+`build_spellcast_herotier.py`, `build_mastery_cost.py` and `build_scroll_spellbook.py` accept the
+dual-sphere retargets as their applied state and refuse `--undo` while they are in place.
+
+Choices made in the build, not in the design:
+- Enmity of Nine Hells' enchantment level is 4 (a dual tier 3 counts as a single tier 4), which sets Dispel's
+  roll. Its caster's unit id lives in the enchantment's alignment padding (24 bits); its turn count in
+  the ability data's spare byte.
+- A demon pack is marked in its AI group's padding byte (`+0x4F` = `0xDC`, saved). The mark moves to
+  the Raid group; recruitment is refused for any Hunt party and any marked party.
+- Tower text and price come from the swapped-in offer; the token carries the bought spell, so a buy
+  that crosses a re-roll is refused instead of buying the wrong spell.
+
+Unproven: whether the hunt finder's 200-point search reaches a victim 16 hexes away over hard
+terrain; a Raid pack split by the AI loses its mark (and its recruitment block). The Next button has
+no alignment props (DFM budget), so it relies on `awNone` keeping its stored position.
 
 ## Open items
 

@@ -105,7 +105,32 @@ MODDED = {0x9F: "Path of Sand", 0x38: "Assassin", 0xAB: "Drillmaster",
           # and wall damage; the cut vanilla "Hurl Fire Skull".
           0xBF: "Hurl Flaming Skull",
           # build_wheeled.py, applied 2026-10-19 -- a road hex costs 2 movement points, not 3.
-          0xC0: "Wheeled"}
+          0xC0: "Wheeled",
+          # build_extrashots.py, applied 2026-10-21 -- each missile shot may grant another.
+          0xC1: "Extra Shots",
+          # build_rally.py, applied 2026-10-21 -- no-target battle ability: cures panic, +30 morale.
+          0xC2: "Rally",
+          # build_rally.py -- Rally's status, a TPanickedAbility instance of mode 3 (entire combat).
+          0xC3: "Rallied",
+          # build_skirmisher.py, applied 2026-10-21 -- an attack costs 12 moves, once per round.
+          0xC4: "Skirmisher",
+          # build_searingaura.py, applied 2026-10-21 -- enemies within 2 hexes roll to catch fire each turn.
+          0xC5: "Searing Aura",
+          # build_mirrorimage.py, applied 2026-10-21 -- multi-level I..XX: each image absorbs one attack.
+          0xC6: "Mirror Image",
+          # build_mentaldiscipline.py, applied 2026-10-22 -- untouchable by the command trio, Possess,
+          # Turn Undead.
+          0xC7: "Mental Discipline",
+          # build_rimeaura.py, applied 2026-10-22 -- enemies within 2 hexes roll to be frozen each turn.
+          0xC8: "Rime Aura",
+          # build_lucky.py, applied 2026-10-22 -- once per battle lethal damage leaves it at 1 HP.
+          0xC9: "Lucky",
+          # build_smokyhaze.py, applied 2026-10-22 -- enemies within 2 hexes roll to be poisoned each turn.
+          0xCA: "Smoky Haze",
+          # build_stonegaze.py, applied 2026-10-22 -- mutual-facing gaze within 6 hexes turns enemies to stone.
+          0xCB: "Stone Gaze",
+          # build_stonegaze.py -- its status: a TStunnedAbility instance for the whole battle, +8 DEF.
+          0xCC: "Petrified"}
 
 # Vanilla ids the constructor scan cannot reach cleanly (set via movement-type tables or a
 # shared enhancement path, not a T<Name>Ability.Create). Sourced from Investigation_Combat.md

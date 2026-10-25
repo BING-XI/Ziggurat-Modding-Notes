@@ -13,10 +13,17 @@ NEW RULES (Inioch's, adopted 2026-09-25)
     * unit damage: underground cities with no wall or a wooden wall are hit at ATK 18 instead of 14
       (his +2 on vanilla's 7, doubled); stone walls keep 14.
     "Underground" = any map level except the surface (0) and the Firmament (3), i.e. Caverns 1,
-    Depths 2 and the Abyss 4 ([city+0x12]).  His test was level != 0, which would also count our
-    Firmament; ours does not.  (Until 2026-09-27 the test was "level 1 or 2", which left the Abyss
-    out; re-tuned in place, same cave VAs, same hook bytes.)  Wall type [city+0x4C]: 0 none,
-    1 wood, 2 stone, 3 the editor's "Random" (replaced on the first day; treated as none).
+    Depths 2 and the Abyss 4.  The level is [[city+4]+0x12], a byte of the city's map hex, as
+    vanilla TCity.UpdateImages reads it (0x557AC51F) and HSEPack's TMapObject.GetLhx returns it
+    (0x556095C1); a nil hex counts as the surface.  His test was level != 0, which would also count
+    our Firmament; ours does not.  Wall type [city+0x4C]: 0 none, 1 wood, 2 stone, 3 the editor's
+    "Random" (replaced on the first day; treated as none).
+    History: until 2026-09-27 the test was "level 1 or 2", which left the Abyss out.  Until
+    2026-10-21 it read [city+0x12], which is not the level (TMultiHexMO keeps only x/y at
+    +0x10/+0x11 and TStructure streams nothing at +0x12), so the underground branch depended on an
+    unrelated byte -- Inioch's share9 found the same read in his own script reading 0 on every
+    level.  That fix grew cave_walls by 3 bytes and moved cave_atk from 0x5584D75C to 0x5584D760;
+    re-applied as --undo with the old script, then --apply.
 
 THE PATCH
     A. 0x557B1E79 `mov edx,0Ah / call Random` (10 B) -> cave_walls: the same single synced
@@ -41,6 +48,7 @@ HB, HB_VAN, HB_RESUME = 0x557B1CE7, bytes.fromhex("ba0e000000"), 0x557B1CEC
 CAVE_A = 0x5584D700
 WOOD, STONE, UG_BONUS = 8, 5, 1
 ATK_NORMAL, ATK_UG = 14, 18
+assert UG_BONUS == 1, "cave_walls adds the bonus with `inc edx`; the slot has no room for an add"
 
 
 def cave_walls(va):
@@ -60,19 +68,20 @@ def cave_walls(va):
         xor edx, edx
     w_have:
         push eax
+        mov eax, dword ptr [ebx + 4]
+        test eax, eax
+        je w_lvl
+        movzx eax, byte ptr [eax + 0x12]
+        test eax, eax
+        je w_lvl
+        cmp eax, 3
+    w_lvl:
         push {ATK_NORMAL}
         pop eax
-        push ecx
-        movzx ecx, byte ptr [ebx + 0x12]
-        test ecx, ecx
-        je w_lvl
-        cmp ecx, 3
-    w_lvl:
-        pop ecx
         je w_store
         test edx, edx
         je w_ug
-        add edx, {UG_BONUS}
+        inc edx
     w_ug:
         cmp ecx, 2
         je w_store
@@ -101,7 +110,8 @@ def cave_atk(va):
         mov edx, dword ptr [edx + {G_ATK:#x}]
         test edx, edx
         jne a_ok
-        mov edx, {ATK_NORMAL}
+        push {ATK_NORMAL}
+        pop edx
     a_ok:
         jmp {HB_RESUME:#x}
     """, va)

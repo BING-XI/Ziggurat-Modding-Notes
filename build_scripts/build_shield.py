@@ -402,10 +402,20 @@ GAE           = 0xA8         # combat-object VMT slot: GetAbilityEnabled(EDX=id)
 # ⚠ NOT TAoWHSMap.Random @0x5577827C -- see the DETERMINISM block in the module docstring.
 RANDINT       = 0x55701080
 
-# The two instance sizes the `ranged` cave branches on. Read from VMT-0x1C, so they are the
-# engine's own numbers, not layout guesses.
-SZ_TACTICAL   = 0x68         # AoWTC..TTacticalCombatUnit -- manual, has hexes + facing
-SZ_FAST       = 0x64         # AoWE..TFastCombatUnit      -- auto-resolve, has neither
+# How the `ranged` cave tells the engines apart.  Since 2026-10-22 (IDENT): an auto-resolve unit
+# is the object whose VMT is TFastCombatUnit's (same module, reached through a call/pop anchor),
+# and anything else at least SZ_TACTICAL bytes is a manual TTacticalCombatUnit.
+# ⚠⚠ Instance sizes alone are NOT a discriminator any more.  build_combatunit_slot.py (2026-10-21)
+# grew TTacticalCombatUnit 0x68 -> 0x6C and TFastCombatUnit 0x64 -> 0x68, so the old size-only
+# test (>= 0x68 tactical, == 0x64 fast) sent every auto-resolve unit down the tactical path:
+# GETHEX read the fast unit's +0x60 (not an HS) as a pointer and faulted at 0x55823013,
+# "Exception occured during TArmyCombatMoveTE ... Read of address 00000008", on a ranged hit
+# on a Shield unit in auto-resolve (owner, 2026-10-22).  The auto-resolve roll had stopped
+# firing at all.  The identity test holds whatever either size becomes.
+SZ_TACTICAL   = 0x68         # minimum TTacticalCombatUnit size (0x68 vanilla, 0x6C with the slot)
+SZ_FAST       = 0x64         # TFastCombatUnit's VANILLA size: only the pre-IDENT layouts used it
+FAST_VMT      = 0x5571D4BC   # AoWE.TFastCombatUnit VMT (combatunit_slot.FAST_VMT)
+PH_FAST       = 0x61111117   # placeholder: FAST_VMT - anchor, patched by fix_pic
 
 # ---- sites --------------------------------------------------------------------------------
 REG_INJ   = 0x557BCECF; REG_ORIG   = bytes.fromhex("e8 64 33 f9 ff")   # call 0x55750238
@@ -606,18 +616,20 @@ def src_arc(gethex_va, arc):
     """ % (gethex_va, gethex_va, DHX_TO_RAD, DHX_TO_HN, "\n".join(tests))
 
 
-def src_ranged(arc_va, pen, auto):
+def src_ranged(arc_va, pen, auto, ident=True, va=0):
     """ranged chain tail -- the ONLY combat link Shield installs, serving BOTH engines.
 
     ESI = shooter, [EBP-4] = victim (CAN BE NIL), [esp] = damage, [esp+4] = the attack dword.
     EAX/ECX/EDX are dead at entry.
 
-    Shape:
-        victim nil?                       -> out
-        victim lacks ability 0xB0?        -> out
-        instance size >= 0x68 (tactical)  -> geometric arc test, unchanged
-        instance size == 0x64 (fast)      -> RandInt(den) < num
-        anything else                     -> out (belt-and-braces; nothing else can get here)
+    Shape (ident, from 2026-10-22):
+        victim nil?                            -> out
+        victim lacks ability 0xB0?             -> out
+        VMT is TFastCombatUnit's (auto)        -> RandInt(den) < num
+        instance size >= 0x68 (tactical)       -> geometric arc test, unchanged
+        anything else                          -> out
+    ident=False is the 2026-08-27..2026-10-21 shape (size >= 0x68 tactical, == 0x64 fast), kept
+    so prior_builds() recognises it; see the IDENT note at SZ_TACTICAL for why it broke.
 
     ⚠ EAX/EDX must be re-established before the exit jmp: 0x5576EB39 is `call [edx+0xb8]`.
     ⚠ Both branches must leave ESP exactly where they found it before `sub byte [esp+4]`:
@@ -653,6 +665,44 @@ def src_ranged(arc_va, pen, auto):
         """ % (ABILITY_ID, GAE, arc_va, pen, RNG_DEST)
 
     num, den = auto
+    if ident:
+        return """
+        mov  eax, [ebp - 4]
+        test eax, eax
+        je   _rg_out
+        mov  edx, 0x%X
+        mov  ecx, [eax]
+        call dword ptr [ecx + 0x%X]
+        test al, al
+        je   _rg_out
+        mov  eax, [ebp - 4]
+        mov  ecx, [eax]
+        call 0x%X
+        pop  edx
+        add  edx, 0x%X
+        cmp  ecx, edx
+        je   _rg_fast
+        cmp  dword ptr [ecx - 0x1C], 0x%X
+        jb   _rg_out
+        push esi
+        push dword ptr [ebp - 4]
+        call 0x%X
+        test al, al
+        je   _rg_out
+        jmp  _rg_hit
+    _rg_fast:
+        mov  eax, %d
+        call 0x%X
+        cmp  eax, %d
+        jae  _rg_out
+    _rg_hit:
+        sub  byte ptr [esp + 4], %d
+    _rg_out:
+        mov  eax, esi
+        mov  edx, [eax]
+        jmp  0x%X
+        """ % (ABILITY_ID, GAE, va, PH_FAST, SZ_TACTICAL, arc_va, den, RANDINT, num, pen,
+               RNG_DEST)
     return """
         mov  eax, [ebp - 4]
         test eax, eax
@@ -720,7 +770,7 @@ def src_reg(cave_va, expand_cost=None):
 
 
 # ============================================================== cave layout
-def build_cave(arc=ARC, pen=SHIELD_ATK, cost=EXPAND_COST, auto=AUTO_CHANCE):
+def build_cave(arc=ARC, pen=SHIELD_ATK, cost=EXPAND_COST, auto=AUTO_CHANCE, ident=True):
     """Lay the sub-caves out back to back at CAVE_VA. -> (blob, {label: (va, len)}).
 
     Every sub-cave only references addresses of things EARLIER in the list, so one forward pass
@@ -748,9 +798,14 @@ def build_cave(arc=ARC, pen=SHIELD_ATK, cost=EXPAND_COST, auto=AUTO_CHANCE):
     arcva = emit("SHIELD_ARC", lambda va: asm(src_arc(gethex, arc), va),
                  "ret 8; [ebp+8]=defender [ebp+0xC]=attacker -> AL, arc %s" % (tuple(arc),))
     # csca_a / csca_b / melee1 used to sit here. Removed 2026-08-27 -- Shield is ranged-only.
-    emit("ranged", lambda va: asm(src_ranged(arcva, pen, auto), va),
-         "ranged link, BOTH engines: tactical(0x%X)=arc %s, fast(0x%X)=%s, -%d ATK"
-         % (SZ_TACTICAL, tuple(arc), SZ_FAST,
+    def mk_ranged(va):
+        code = asm(src_ranged(arcva, pen, auto, ident, va), va)
+        if ident and auto is not None:
+            code = fix_pic(code, va, 0x5A, [(PH_FAST, FAST_VMT)])     # 0x5A = pop edx
+        return code
+    emit("ranged", mk_ranged,
+         "ranged link, BOTH engines: tactical(>=0x%X)=arc %s, fast(%s)=%s, -%d ATK"
+         % (SZ_TACTICAL, tuple(arc), "VMT %08X" % FAST_VMT if ident else "0x%X" % SZ_FAST,
             "no-op" if auto is None else "%d/%d roll" % (auto[0], auto[1]), pen))
 
     # cave_reg needs the name blob's VA, which follows it: placeholder + fix_pic, exactly as
@@ -778,6 +833,9 @@ def build_cave(arc=ARC, pen=SHIELD_ATK, cost=EXPAND_COST, auto=AUTO_CHANCE):
 
 
 CAVE, LABELS = build_cave()
+# build_magebane.py hard-codes SHIELD_RANGED_CAVE = 0x558230D0 and re-emits a jump to it on
+# re-apply; the ranged sub-cave must never move.
+assert LABELS["ranged"][0] == 0x558230D0, "ranged cave moved to %08X" % LABELS["ranged"][0]
 ARC_VA = LABELS["SHIELD_ARC"][0]
 REG_VA = LABELS["cave_reg"][0]
 
@@ -814,18 +872,21 @@ def prior_builds():
         if AUTO_CHANCE is not None and tuple(AUTO_CHANCE) not in [
                 a for a in autos if a is not None]:
             autos.append(tuple(AUTO_CHANCE))
-        for _a in autos:
-            for _arc in ((0, 5), (0, 1)):
-                for _p in range(1, 13):
-                    for _c in [None] + list(range(0, 33)):
-                        if (_arc, _p, _c, _a) == (tuple(ARC), SHIELD_ATK, EXPAND_COST,
-                                                  None if AUTO_CHANCE is None
-                                                  else tuple(AUTO_CHANCE)):
-                            continue
-                        try:
-                            _PRIOR_BUILDS.append(build_cave(_arc, _p, _c, _a))
-                        except Exception:                        # noqa: BLE001
-                            pass
+        for _id in (True, False):
+            for _a in autos:
+                if _a is None and _id:
+                    continue                                     # IDENT needs a roll
+                for _arc in ((0, 5), (0, 1)):
+                    for _p in range(1, 13):
+                        for _c in [None] + list(range(0, 33)):
+                            if (_arc, _p, _c, _a, _id) == (tuple(ARC), SHIELD_ATK, EXPAND_COST,
+                                                           None if AUTO_CHANCE is None
+                                                           else tuple(AUTO_CHANCE), True):
+                                continue
+                            try:
+                                _PRIOR_BUILDS.append(build_cave(_arc, _p, _c, _a, _id))
+                            except Exception:                    # noqa: BLE001
+                                pass
     return _PRIOR_BUILDS
 
 
@@ -1125,14 +1186,14 @@ def main():
     print("Shield: ability id 0x%02X, -%d ATK, cave %08X..%08X (%d bytes of the "
           "%#x-byte page this script owns)"
           % (ABILITY_ID, SHIELD_ATK, CAVE_VA, CAVE_VA + len(CAVE), len(CAVE), CAVE_LIMIT))
-    print("  manual tactical (instsize 0x%X): geometric arc %s -- (D-F) mod 6"
+    print("  manual tactical (any other unit, instsize >= 0x%X): geometric arc %s -- (D-F) mod 6"
           % (SZ_TACTICAL, tuple(ARC)))
     if AUTO_CHANCE is None:
-        print("  auto-resolve    (instsize 0x%X): NO-OP (no roll emitted)" % SZ_FAST)
+        print("  auto-resolve    (TFastCombatUnit): NO-OP (no roll emitted)")
     else:
-        print("  auto-resolve    (instsize 0x%X): flat %d/%d = %.3f%% per shot, "
+        print("  auto-resolve    (VMT %08X, TFastCombatUnit): flat %d/%d = %.3f%% per shot, "
               "RandInt @%08X (System.@RandInt)"
-              % (SZ_FAST, AUTO_CHANCE[0], AUTO_CHANCE[1],
+              % (FAST_VMT, AUTO_CHANCE[0], AUTO_CHANCE[1],
                  100.0 * AUTO_CHANCE[0] / AUTO_CHANCE[1], RANDINT))
         print("     draw is lockstep-safe: raw @RandInt rides the per-combat seed installed by "
               "TCombat.Execute\n     @0x557282C8; the site is NOT predictor-reachable, so no "

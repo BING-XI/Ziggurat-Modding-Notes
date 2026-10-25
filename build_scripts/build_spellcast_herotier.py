@@ -123,7 +123,8 @@ TLEADER_CLASSREF = 0x557121F8 # [.] = TLeader (VMT 0x55712238) -- asserted only,
 
 CAVE      = 0x55846000        # exclusive reservation for this feature
 CAVE_SPAN = 0x80              # bytes this script owns and zeroes on --undo
-ZONE_END  = 0x55848000        # end of the reservation (asserted zero beyond the cave)
+ZONE_END  = 0x55847000        # end of the reservation (asserted zero beyond the cave); lowered from
+                              # 0x55848000 on 2026-10-25: build_spellward_rescope.py owns 0x55847000
 
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
 cs = Cs(CS_ARCH_X86, CS_MODE_32)
@@ -176,6 +177,17 @@ def rel32(site, dest):
 
 HOOK_OLD = b"\xE9" + rel32(CANCAST_INJECT, TIERGATE) + b"\x90"
 HOOK_NEW = b"\xE9" + rel32(CANCAST_INJECT, CAVE) + b"\x90"
+
+# build_dual_sphere.py (2026-10-25) retargets this cave's non-hero tail `jmp cave_tiergate`
+# (CAVE+0x1F) to its cave_gate, which adds 1 to a dual-sphere spell's tier for units and passes
+# everything else on to cave_tiergate.  That chained body is an accepted applied state; --undo
+# refuses while it is in place (undo build_dual_sphere.py first).
+DUAL_GATE = 0x558B6340
+TAIL_AT = 0x1F
+assert cave_region[TAIL_AT] == 0xE9 and \
+    cave_region[TAIL_AT + 1:TAIL_AT + 5] == rel32(CAVE + TAIL_AT, TIERGATE), "tail jmp moved"
+chained_region = (cave_region[:TAIL_AT] + b"\xE9" + rel32(CAVE + TAIL_AT, DUAL_GATE)
+                  + cave_region[TAIL_AT + 5:])
 
 
 # ---- PE helpers -------------------------------------------------------------------------
@@ -282,6 +294,12 @@ def main():
     ok = True
     already = todo = 0
     pristine = 0                                   # patches still in the pre-feature state
+    if rd(CAVE, CAVE_SPAN) == chained_region:
+        if undo:
+            print("REFUSED: build_dual_sphere.py chains through cave_herotier's tail; "
+                  "undo it first."); return 1
+        print("cave_herotier carries build_dual_sphere.py's chained tail (accepted).")
+        patches[1] = (CAVE, zero_region, chained_region, f"cave_herotier @ {CAVE:08X} (chained)")
     for va, old, new, desc in patches:
         target, other = (old, new) if undo else (new, old)
         cur = rd(va, len(new))

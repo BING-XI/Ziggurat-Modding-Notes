@@ -58,6 +58,9 @@ THIS SCRIPT (owner rulings 2026-09-24: plan sequentially front-first; queue behi
       0x31], the part branch's formula at 0x420B0C) instead of 0, with vanilla's bounds (terrain
       0..15, overlay -1..14; outside them it keeps vanilla's 0).
 
+⚠ build_tactical_los.py (2026-10-25) holds TTacticalCombatUnitHS VMT +0xD4 with its canover, which
+chains to cave_unit; this script then reports MIXED and refuses --apply / --undo.  Undo
+build_tactical_los.py first, then this; re-apply this first, then build_tactical_los.py.
 Markers exist only inside the local player's group-move planning, so AI pathing is unaffected.
 Paths are fixed before the tokens are built and travel inside them: multiplayer-safe.  No roll.
 More than 64 units, or no reachable target: vanilla.
