@@ -217,9 +217,12 @@ roads and bridges go stale.
 (`EAX=map, EDX=requester-or-0, ECX=x`; stack: `terrain, 0, level, y`). First reseeds
 `System.RandSeed` from the synced game RNG (`AoWHSMap.Random(map, 0xFFFFFF)` at `0x55778D9A`), so
 any cosmetic `RandInt()` the redraw does (resource-variant picks) stays deterministic across
-multiplayer clients; then forwards into the shared HSEngine implementation, which does the actual
-byte write and drives `TMapField.TerrainChanged` for that one hex — no validation/veto pass of its
-own. Used by: the `MovedTo` EarthWall→Dirt collapse, Level Terrain's EarthWall→Dirt, Raise Terrain
+multiplayer clients; then forwards into `HSEngine.THSMap.ChangeTerrain` (HSEPack `0x5560C688`), the
+same three passes as B over a spiral whose radius is the stack's `0` (one hex): write, the
+`CanChangeTerrain` veto poll (`0x5560C76C`; the requester in EDX is excluded) with roll-back, then
+commit and `TMapField.TerrainChanged`. So `TArmyHS.CanChangeTerrain` vetoes a single-hex change its
+army cannot stand on, exactly as in B (verified 2026-10-25; an earlier note here said there was no
+veto pass). Used by: the `MovedTo` EarthWall→Dirt collapse, Level Terrain's EarthWall→Dirt, Raise Terrain
 underground's Dirt→Earth flip and its Grip-of-Winter-owned melt-back.
 
 **B. `TAoWHSMap.ChangeTerrainEx` — map VMT `+0xD4`, `@0x55778DCC`.** Area+callback transactional
@@ -1574,6 +1577,75 @@ The move half (path, `MoveArmyEx`, prompt, ValidPath widening, MP drain) first r
   selection from `TSelectedArmy.GetArmyHS([map+0xD8])`.
 - The AI never uses it; its pathfinder has no vertical links outside caves.
 - Revert: `build_fly_levels.py --undo` (surgical).
+
+## Mountaineering climbs chasm edges (path links)
+
+`build_chasm_climb.py` (AoWEPACK.dpl, 2026-10-25, owner's design in `05-spells-added.md`, "Earth/Fire
+— agreed design"). A party whose every unit has Mountaineering (move-type bit `0x20`; with a
+transport, only the transport) paths between levels through chasm edges. With C a chasm hex, C′ the
+hex beneath it, A a land hex beside C and X′ a hex whose overhead hex X is land beside a chasm, the
+links are A ↔ C′ and X′ ↔ X. Above and beneath follow the flight chain with disabled levels skipped.
+The landing is priced with the party's own movement table and is never a chasm or the border. A
+climb needs 4 movement points and uses all that are left. The AI climbs too.
+
+**How the path search links hexes** (reusable for any "move from here to there" mechanic):
+- `TMoveControl` is a flood of accumulated costs (cost so far, not movement left).
+- A hex is asked for its links at exactly three places, each the 15-byte block `test [esi+0x19],0x80 /
+  je / mov edx,ebx / mov eax,esi / call TMapField.MoveExclusive`, with ESI = the hex and EBX = the
+  move control:
+  - `ProcessHexagon` `0x557458CE`: every hex a line reaches;
+  - `ExecuteExternalMove` `0x55745A88`: a link's landing;
+  - `SetupMove` `0x55745CA4`: the start hex.
+- Bit `0x80` of `[field+0x19]` (word `0x8000`) is set by a link object's `UpdateMapField`: caves,
+  teleporters and one-hex bridges. Their `MoveExclusive` (VMT `+0xD8`) calls
+  `ExecuteExternalMove(mc, src, dst, cost)` `0x55745928`. That call queues a sub-move, so path
+  reconstruction, `ValidPath`'s re-run and the AI all see the link.
+- The move control carries the mover: the cost table at `[mc+0x30]` (cost =
+  `[mc+0x31+terrain*16+overlay]`), the army HS at `[mc+0x134]` and the unit mask at `[mc+0x138]`,
+  copied from the settings by `Activate` `0x5574646C`. The neighbour pointer offsets are
+  `[mc+0x148+(x&1)*0x20+dir*4]`, with dir 1..6.
+- Executing a path: `MoveArmyEx` keeps only the hexes `build_patch.py`'s TrueReachPos lets each unit
+  reach. Its per-unit walk re-prices every step from the unit's own table and ignores the path's
+  stored costs. So a mechanic that charges something unusual has to teach that walk too, as
+  `cave_walk` does at `0x5580D86D`.
+- `TMoveArmyTE.ExecuteMove` runs each step on every peer: `MoveTo` (VMT `+0x10C`), then the field's
+  `+0x84`.
+
+**The three hooks:**
+- `cave_links` replays the vanilla link call, then adds the climbs for a mover that may climb
+  (filter: `[mc+0x41]`, grass × mountain, passable only to Mountaineering and Flying; then every
+  mover's move types). It only does so in a search on the world map (`[mc+4]` = `AoWHSMap`).
+- `cave_walk`: a step between levels whose source has no link object (no bit `0x80`) needs 4
+  points and costs all of them, so the march stops after a climb. Flights meet the same rule,
+  which matches theirs.
+- `cave_drain`, after the step's `MoveTo`: the same test sets every unit of the moving army to 0
+  movement (SetMovePoints, VMT `+0xDC`). Warp Party moves armies through `TArmyHS.MoveTo` directly,
+  outside the move transaction, so it keeps its movement.
+
+**The cost a climb is given in the search:** r is what is left of the turn at the hex, `m0 − d` or
+`M − ((d − m0) mod M)` (d = cost so far, m0 = `TArmy.MovePoints`, M = `TArmy.Moves`). The cost is r
+when r ≥ 4, otherwise r + M. A climb therefore ends a turn, and turn markers after it are right.
+
+**Battles share the path search** (world-map gate added 2026-10-26):
+- Every combat path search runs the same `ProcessHexagon`. It runs on `TAoWCombatMap`'s
+  `TCombatMoveControl`, built with the combat map at `0x41B428`, so its `[mc+4]` is the combat map.
+- The combat map descends from `TAbstractAoWHSMap`, not `TAoWHSMap`. `TAoWEngine.SetHSMap`'s
+  `IsClass` test therefore leaves the `AoWHSMap` global on the world map for the whole battle.
+- In a battle, `[mc+0x134]` is the unit's `TCUnitHS` and `[mc+0x138]` is 0. The only writer is
+  `CalculateMovePath` `0x41D8F3`; settings are zero-filled at creation. So no climb was ever
+  emitted.
+- Before the gate, the cave still read the world map at combat coordinates, using the combat map's
+  neighbour offsets. It did so whenever a combat hex bordered terrain `0xB`, and on every hex a
+  flyer or climber searched when the map has Firmament. `TMapContainer.GetField` has no bounds
+  check. On a world map narrower or shorter than the 59 × 53 battlefield grid, it returns a wild
+  pointer.
+- **Combat maps do carry Chasm.** `TRndTacHsm.RandomMap` paints each world hex's terrain onto its
+  region (`0x4261CD`, from `[rnd+0x9F0+i]`). It replaces only Water, Lava, CaveWater and Border
+  neighbours with the centre's terrain, so `0xB` and `0xE` reach the battlefield. Any tactical
+  code that reads terrain ids meets them.
+
+Surgical `--undo`. Unproven: what the player's view does when a pathed climb takes the selected army
+to another level, and the climbers' cost in AI searches.
 
 ## Earth and Rock block sight
 

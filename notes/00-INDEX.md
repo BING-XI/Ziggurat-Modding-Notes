@@ -118,6 +118,9 @@ file carries the specific checklist for its own rows.
 - Morale re-scale (ATK ±4, RES ±6) — 2026-08-26
 - Flyers lose morale underground (−5 Caverns / −10 Depths / −15 Abyss, units only, Cave Crawling and Night Vision exempt) — 2026-09-27; Night Vision 2026-10-21
 - Auto-resolve ends after round 200; the attackers retreat (`build_autocombat_roundcap.py`) — 2026-09-27
+- **The auto-combat window shows the Burning ticks the battle rolled** (`build_replay_turnseed.py`,
+  2026-10-27, vanilla bug): the window re-ran each turn start and re-rolled Burning, so units died
+  there, kept acting and ended alive. Each turn-start action now keeps the battle's seed. §14.
 - Map-fire dead-code fix (was ~4× too weak) — 2026-08-26
 - Burning / Decay / Turn-Undead-AI damage gap-fix — 2026-08-26
 - Shield — ranged-only scope, magnitude −5 — 2026-08-27
@@ -454,16 +457,16 @@ file carries the specific checklist for its own rows.
   **Leadership 20 → 10** and **Spell Casting 15 → 20**; Vision 4, Marksmanship 6 and Turn Undead 5
   were already right. ⚠ The owner has been authoring offer probabilities against the two wrong
   figures. The grid's fingerprint is over the offer percentages only, so `d3892d5f` is unchanged.
-- **Panic cleared by any damage that lands** — 🔨 APPLIED, UNTESTED (2026-09-09):
+- **Panic ends on a Resistance check** (power 10, when damage lands and at each own turn start;
+  until 2026-10-26 any landed damage cleared it) — 🔨 APPLIED, UNTESTED (2026-09-09, rolls 2026-10-26):
   `build_panic_cleardamage.py` on `AoWEPACK.dpl` alone (hook `TCombatObject.ExecuteDamage
-  @0x55726C58`, 6 B displaced; cave `0x55829000`, 58 B; snapshot
-  `backups\AoWEPACK.dpl.pre-paniccleardamage`; surgical `--undo`). One body serves all four combat
-  classes and AoWTCPCK.dpl reaches it through an import thunk, so the single hook covers melee,
-  ranged, breath, touch, spells, ticks **and auto-resolve** with no second binary. ⭐ The finding
-  that makes this the fix: **Panicked has no timer** — `TPanickedAbility.Create` writes duration
-  mode 3 ("entire combat"), which `NewTurn` (mode 1) and `NewCombatTurn` (mode 2) never tick, so
-  before this the only mid-battle exits were Healing and Remedy. Coupled to `build_panic_nomelee.py`
-  in play but not in code — separate hooks, separate caves, separate `--undo`s
+  @0x55726C58` for damage, TPanickedAbility VMT `+0xF8` NewCombatTurn for the turn start; slot
+  `0x55829000`–`0x558291FF`; surgical `--undo`). The damage body serves all four combat classes and
+  AoWTCPCK.dpl reaches it through an import thunk, so it covers melee, ranged, breath, touch,
+  spells, ticks **and auto-resolve**. ⭐ **Panicked has no timer** — `TPanickedAbility.Create` writes
+  duration mode 3 ("entire combat"), which `NewTurn` (mode 1) and `NewCombatTurn` (mode 2) never
+  tick. Coupled to `build_panic_nomelee.py` in play but not in code — separate hooks, separate
+  caves, separate `--undo`s
 - **Panic — the click-to-attack hard gate (6th hook)** — ✅ **CONFIRMED WORKING (2026-09-13)**:
   `build_panic_nomelee.py` gains site `meleemove` on `AoWTCPCK.dpl` (hook `0x00422CE8` in
   `TTacticalCombatUnitHS.MeleeMoveTC`, **6 B displaced** → `E9 rel32` + one `NOP`; cave `0x004383C0`,
@@ -563,6 +566,15 @@ file carries the specific checklist for its own rows.
 - Living Flame (ex Fire Halo) — fire heals the enchanted unit on the map and in battle; passive `0x52` on Fire Elemental, Fire Sprite and Salamander — 2026-10-22, launch-proved — `04-spells-modded.md`, "Living Flame"; ⚠ Fire Mastery grants the same enchantment
 - Dual-sphere spells — owner's rule (tiers 1–3, never researched: tier N of both spheres researched grants the pair's tier N) 2026-10-24; the manual's Planned Spells tab (Single and Dual sphere) is the planning page, Spells shows only the live game; Inioch's 54 as a review page `Inioch/dual_sphere_review.html` (`build_dual_review.py`), the owner's verdicts in `Inioch/dual_sphere_review.json` — `05-spells-added.md`, "Dual-sphere spells"
 - Death/Fire, the first dual pair — Taint the Flame, Pillar of Banefire, Enmity of Nine Hells, plus the groundwork every pair uses (grant, unit gate, two-sphere Mastery) — 2026-10-25, launch-proved (game and editor) — `05-spells-added.md`, "Death/Fire — as built"
+- Earth/Fire — Surtr's Chasm, Mountaineering climbing chasm edges (path links) and Dwarven Satchels (an unwieldy thrown 7-hex fire flask: 40 % on the aimed hex, 10 % on each neighbour; `build_satchels.py` + `build_satchels_tc.py`) built 2026-10-25, launch-proved; Awaken Volcano (a 4- or 9-hex mountain becomes a volcano that spills lava for 10 turns, a global-magic ritual with upkeep; `build_awaken_volcano.py` + `_pfs`) built 2026-10-25, launch-proved — `05-spells-added.md`, "Earth/Fire — agreed design" and "as built so far"; climbing mechanics in `09-terrain-movement.md`
+- Death/Water — Curse of Lethe (area sleep: Asleep `0x50`, a Stunned copy broken by damage; `build_lethe.py` + `_tc` + `_pfs`) and Blessing of Stygia (world-map Physical Protection by water: status `0x51`; `build_blessing_stygia.py` + `_pfs`; the slightly darker, purpler water: `build_stygia_tint.py`) built 2026-10-25, launch-proved; Plague not designed — `05-spells-added.md`, "Death/Water — agreed design" and "as built"
+- Air/Water — Mistform (Floating; the next landed damage ends it instead), Mist (enemies without True Seeing see 3 hexes less in battle) and Static Shield (Lightning Immunity; melee strikers may be stunned) built 2026-10-26 — `05-spells-added.md`, "Air/Water — as built"
+- Entangle to Life/Earth tier 1; Weight of the World (Earth tier 2: an AoE 6 strike, then a battle-long field that doubles movement cost and grounds flyers, marked by amber contour lines) built 2026-10-26 — `05-spells-added.md`, "Entangle to Life/Earth, Weight of the World — as built"
+- Meteor Storm (Earth/Air tier 2, world map: lands at the caster's second turn start after the cast, 16/20 physical on every unit within 4; no warning but an event-log line) built 2026-10-26 — `05-spells-added.md`, "Earth/Air: Meteor Storm — as built"
+- A spell Ziggurat adds to a tier comes with it: `cave_catchup` (`build_dual_sphere.py`) grants Regeneration, Weight of the World and Embrittle at turn start to players who completed their tier before the spell existed, 2026-10-26 — `04-spells-modded.md`, "A spell added to a tier comes with it"
+- Research of Entangle chosen before it became dual ("Secret I" in the book) moves back to Earth II: `cave_rstep` (`build_dual_sphere.py`), 2026-10-27 — `04-spells-modded.md`, "A spell moved INTO a dual tier strands research"
+- Imbue Altar (Death/Earth tier 2) and Imbue Spring (Life/Earth tier 2), world-map rituals that place the game's Blood Shrine and Spring of Life, built 2026-10-26 — `05-spells-added.md`, "Imbue Altar and Imbue Spring — as built"
+- Regeneration, Enmity of Nine Hells and Dwarven Satchels are cast in battle (`build_battlecast_unitspells.py`, 2026-10-25) — `05-spells-added.md`, Death/Fire, "Changed after the build"
 - Wizard's Towers offer two spells and re-roll every d20 days with a terrain change; Next button in the tower window; editor level checkboxes, Life/Death exclusive — 2026-10-25, launch-proved — `05-spells-added.md`, "Death/Fire — as built"
 - Storm / Poison Plant debuff — roll vs Resistance — 2026-07-30
 - Magic tab (Main) and the Power Distribution dialog name the research group — "Cosmos II" plus its unresearched members, and the sphere's spell-icon disc with a Roman tier numeral — instead of the representative spell (`build_magictab_tiername.py`, `.hcol` `0x0062A520`) — 2026-09-27; numeral white with a black outline 2026-10-18
@@ -1197,7 +1209,7 @@ file carries the specific checklist for its own rows.
 - **Firmament ↔ Surface caves** — a cave placed on the Firmament spawns its lower mouth on Surface; the cave chain is Firmament 3 → Surface 0 → Caverns 1 → Depths 2 → Abyss 4. 🔨 APPLIED 2026-09-30, `build_maplevel4.py` **v5** (`strict5` `0x55844308`, `strict4` zeroed, no hook site changed). Record: `11-engine-internals.md` "Firmament ↔ Surface caves"
 - **Firmament structure art** — cities (and every structure) on the Firmament use their surface art: `ForceTerrainType` ×2 falls back on Grass there instead of Dirt, and `GetCityImage`'s fallback treats level 3 as surface. 🔨 APPLIED 2026-10-01, `build_firmament_structart.py` (three in-place rewrites, no cave). Record: `11-engine-internals.md` "Structure art on the Firmament"
 - **Sky/Chasm bridges obey the water rule** — one-hex span, land at both ends of an axis; no more chains. `AoWE.Land` rewritten in place so Sky and Chasm are not land (its only callers are the hexagon bridge). 🔨 APPLIED 2026-10-01, `build_bridge_skychasm.py`. Record: `09-terrain-movement.md` §7
-- **Tactical line of sight and fog of war** — combat sight is triple the strategic sight, halved in exploration sites without Night Vision; every tactical combat starts unexplored, and in world battles each player's units flood-explore everything they can reach without crossing a blocker; units explore combat sight + 8 and see their combat sight, both through a clear line; cave rock blocks sight and exploration; houses, buildings, obstacles, trees and rocks block sight, and exploration only in exploration sites; city walls and gates block one way (units inside see out, units outside do not see in); walls, gates and buildings are explored whole; unseen hexes keep their terrain and decorations (walls, trees, corpses, fire…) under the shade but show no units or effects, and take no orders; no shared vision between allies; the AI stays omniscient except when it plays your units (Space, Auto). 🔨 APPLIED 2026-10-23, `build_tactical_los.py` (`AoWTCPCK.dpl`, zone `0x441000`, 32 sites; moves may target explored hexes, routes ignore unseen units, and a move halts when its unit sees its route blocked; `--emulate` runs the caves under unicorn). Record: `11-engine-internals.md` "Tactical line of sight and fog of war"
+- **Tactical line of sight and fog of war** — combat sight is triple the strategic sight, and in exploration sites 3 + Vision halved and rounded up without Night Vision; every tactical combat starts unexplored, and in world battles each player's units flood-explore everything they can reach without crossing a blocker; units explore combat sight + 8 and see their combat sight, both through a clear line; cave rock blocks sight and exploration; houses, buildings, obstacles, trees and rocks block sight, and exploration only in exploration sites; city walls and gates block one way (units inside see out, units outside do not see in); walls, gates and buildings are explored whole; unseen hexes keep their terrain and decorations (walls, trees, corpses, fire…) under the shade but show no units or effects, and take no orders; no shared vision between allies; the AI stays omniscient except when it plays your units (Space, Auto). 🔨 APPLIED 2026-10-23, `build_tactical_los.py` (`AoWTCPCK.dpl`, zone `0x441000`, 32 sites; moves may target explored hexes, routes ignore unseen units, and a move halts when its unit sees its route blocked; `--emulate` runs the caves under unicorn). Record: `11-engine-internals.md` "Tactical line of sight and fog of war"
 
 ---
 

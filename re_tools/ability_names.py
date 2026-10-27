@@ -130,7 +130,20 @@ MODDED = {0x9F: "Path of Sand", 0x38: "Assassin", 0xAB: "Drillmaster",
           # build_stonegaze.py, applied 2026-10-22 -- mutual-facing gaze within 6 hexes turns enemies to stone.
           0xCB: "Stone Gaze",
           # build_stonegaze.py -- its status: a TStunnedAbility instance for the whole battle, +8 DEF.
-          0xCC: "Petrified"}
+          0xCC: "Petrified",
+          # build_satchels.py, applied 2026-10-25 -- spell 84's enchantment and the one throw it grants.
+          0x4E: "Dwarven Satchels",
+          0x4F: "Throw Explosive Flask",
+          # build_regen_spell.py and build_demon_curse.py -- the enchantments of spells 79 and 82.
+          0x53: "Regeneration",
+          0x5B: "Enmity of Nine Hells",
+          # build_lethe.py, applied 2026-10-25 -- Curse of Lethe's status: a Stunned copy, 4 own turns.
+          0x50: "Asleep",
+          # build_blessing_stygia.py, applied 2026-10-25 -- a day status counting as Physical Protection.
+          0x51: "Blessing of Stygia",
+          # build_airwater_ench.py, applied 2026-10-26 -- the enchantments of spells 88 and 90.
+          0x54: "Mistform",
+          0x55: "Static Shield"}
 
 # Vanilla ids the constructor scan cannot reach cleanly (set via movement-type tables or a
 # shared enhancement path, not a T<Name>Ability.Create). Sourced from Investigation_Combat.md

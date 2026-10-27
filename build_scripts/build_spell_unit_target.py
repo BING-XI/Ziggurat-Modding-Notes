@@ -56,6 +56,10 @@ MULTIPLAYER / REPLAYS
     Local input and cursor only: a refused click issues no command.  No state, no random draws.
     The tactical AI does not go through either site.
 
+Since 2026-10-25 UNIT_ONLY is tested as a 128-bit set held in four immediates (the cmp ladder had
+no room for Regeneration and Enmity of Nine Hells), and cave_click / cave_cursor are pinned at
+0x0043AD50 / 0x0043ADB0, so a changed list re-tunes pred in place with --apply.
+
 Zone 0x0043AC40-0x0043AE3F, exclusive (above build_wallcrush_dam.py's zone).  PIC: rel32 and one
 call/pop anchor for the screen variable.  Surgical --undo.  --apply re-tunes the 2026-10-04 v1
 (site C only, Lethargy/Embrittle) in place.
@@ -88,12 +92,15 @@ GET_FIELD = 0x00401E6C              # HSEngine.TMapContainer.GetField thunk
 V_SCREEN = 0x0046C064               # AoWTCPCK BSS: the combat screen object
 
 AB_CAST = 0x34
-UNIT_ONLY = (8, 15, 16, 17, 32, 33, 35, 36, 37, 39, 40, 42, 43, 49, 55, 56, 77,
-             101, 109, 110, 111, 121)
+UNIT_ONLY = (8, 15, 16, 17, 32, 33, 35, 36, 37, 39, 40, 42, 43, 49, 55, 56, 77, 79, 82, 84,
+             88, 90, 101, 109, 110, 111, 121)
 #            Dispel Magic, Haste, Enchant Weapon, Stone Skin, Free Movement, Fury, Remedy,
 #            Holy Champion, Unholy Champion, Concealment, Fire Halo, Water Walking, Wind Walking,
-#            Liquid Form, Healing Water, Bless, Dark Gift, Turn Undead, Embrittle, Lethargy,
-#            Entangle, Vaporize
+#            Liquid Form, Healing Water, Bless, Dark Gift, Regeneration, Enmity of Nine Hells,
+#            Dwarven Satchels (battle-castable since 2026-10-25, build_battlecast_unitspells.py),
+#            Mistform, Static Shield (2026-10-26),
+#            Turn Undead,
+#            Embrittle, Lethargy, Entangle, Vaporize
 CALL_FLAMES = 113
 CID_WALL, CID_STRUCT, CID_TERRAIN = 0x220504, 0x220506, 0x220166
 WALL_MAT, WALL_HP, WOOD = 0x2D, 0x20, 1
@@ -104,7 +111,10 @@ def call_to(src, dst):
 
 
 def build_pred(va):
-    ids = "\n".join("cmp ecx, %d\nje refuse" % s for s in UNIT_ONLY)
+    # UNIT_ONLY as a 128-bit set in four immediates (2026-10-25: the cmp ladder outgrew the room
+    # before the pinned cave_click once Regeneration and Enmity joined)
+    assert all(0 <= s < 128 for s in UNIT_ONLY)
+    w = [sum(1 << (s & 31) for s in UNIT_ONLY if s >> 5 == k) for k in range(4)]
     return asm(f"""
         push  ebx
         push  esi
@@ -115,7 +125,24 @@ def build_pred(va):
         cmp   dword ptr [eax + 0x34], {AB_CAST:#x}
         jne   out
         mov   ecx, dword ptr [eax + 0x38]
-        {ids}
+        cmp   ecx, 127
+        ja    notset
+        mov   edx, ecx
+        shr   edx, 5
+        mov   eax, {w[0]:#x}
+        dec   edx
+        js    test_bit
+        mov   eax, {w[1]:#x}
+        dec   edx
+        js    test_bit
+        mov   eax, {w[2]:#x}
+        dec   edx
+        js    test_bit
+        mov   eax, {w[3]:#x}
+    test_bit:
+        bt    eax, ecx
+        jb    refuse
+    notset:
         cmp   ecx, {CALL_FLAMES}
         jne   out
         test  esi, esi
@@ -210,12 +237,16 @@ def build_cursor(va):
     """, va)
 
 
+PINNED = {"cave_click": 0x0043AD50, "cave_cursor": 0x0043ADB0}   # the installed addresses: a
+# longer UNIT_ONLY grows pred in place, so the hooks keep their bytes and --apply re-tunes it.
+
+
 def layout():
-    out, va = [], PRED
-    for name, fn in (("pred", build_pred), ("cave_click", build_click), ("cave_cursor", build_cursor)):
-        blob = fn(va)
-        out.append((name, va, blob))
-        va = (va + len(blob) + 0xF) & ~0xF
+    out = [("pred", PRED, build_pred(PRED))]
+    assert PRED + len(out[0][2]) <= PINNED["cave_click"], "pred outgrew its room"
+    out.append(("cave_click", PINNED["cave_click"], build_click(PINNED["cave_click"])))
+    assert PINNED["cave_click"] + len(out[1][2]) <= PINNED["cave_cursor"], "cave_click outgrew its room"
+    out.append(("cave_cursor", PINNED["cave_cursor"], build_cursor(PINNED["cave_cursor"])))
     return out
 
 

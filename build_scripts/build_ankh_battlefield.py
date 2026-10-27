@@ -22,12 +22,15 @@ THE GAP
     The list: 95 96 30 5C 5D 5E 5F 60 61 62 6B A3 7F 22.
 
 THE PATCH
-    the list, plus 0x89, copied to 0x0043C400 (15 dwords)
+    the list, plus 0x89 and Asleep 0x50 (build_lethe.py; its Ability.pfs record 90 carries Stunned's
+    dazed-stars frames, build_lethe_pfs.py), copied to 0x0043C400 (16 dwords)
     0x004227B6, 0x004227DC   disp32 0x004675B8 -> 0x0043C400 (both carry a .reloc; a same-module
                              address, so the rebase delta still applies -- kept)
-    0x00422BD0               the bound pair's upper limit 13 -> 14.  Only this loop's two `bound`s
+    0x00422BD0               the bound pair's upper limit 13 -> 15.  Only this loop's two `bound`s
                              (0x4227AD, 0x4227D3) use the pair at 0x422BCC (byte census).
-    0x004228A1               loop count 0x0E -> 0x0F
+    0x004228A1               loop count 0x0E -> 0x10
+    ⚠ 0x50 may stay on the list only while Asleep's record has its tag 8 (the draw reads the image
+    list unchecked): undo this script before build_lethe_pfs.py.
     The vanilla list at 0x004675B8 is left untouched.
 
 Slot 0x0043C400-0x0043C43F, exclusive.  No code: data and operands only.
@@ -53,6 +56,7 @@ P.TARGET, P.IMAGE_BASE = TCPCK, 0x00400000
 OLD_LIST = 0x004675B8
 IDS = (0x95, 0x96, 0x30, 0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x61, 0x62, 0x6B, 0xA3, 0x7F, 0x22)
 ANKH = 0x89
+ASLEEP = 0x50                                         # build_lethe.py
 SLOT = (0x0043C400, 0x0043C440)
 NEW_LIST = SLOT[0]
 REFS = (0x004227B6, 0x004227DC)                       # disp32 of `mov edx,[eax*4+list]`
@@ -64,11 +68,11 @@ d = open(TCPCK, "rb").read()
 live = struct.unpack_from("<14I", d, P.va2off(d, OLD_LIST))
 assert live == IDS, "the vanilla icon list moved or changed: %s" % [hex(x) for x in live]
 
-blob = struct.pack("<15I", *IDS, ANKH)
+blob = struct.pack("<16I", *IDS, ANKH, ASLEEP)
 caves = [("icon_list", NEW_LIST, blob)]
 hooks = [(r, struct.pack("<I", OLD_LIST), struct.pack("<I", NEW_LIST)) for r in REFS] + [
-    (BOUND_HI, struct.pack("<i", 13), struct.pack("<i", 14)),
-    (COUNT, b"\x0e", b"\x0f")]
+    (BOUND_HI, struct.pack("<i", 13), struct.pack("<i", 15)),
+    (COUNT, b"\x0e", b"\x10")]
 interior = [(r, r + 4, LOOP[0], LOOP[1]) for r in REFS] + [(COUNT, COUNT + 1, LOOP[0], LOOP[1])]
 
 if __name__ == "__main__":

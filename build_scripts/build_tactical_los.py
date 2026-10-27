@@ -4,13 +4,19 @@ build_tactical_los.py -- line of sight and fog of war in every tactical combat (
 2026-10-23).  AoWTCPCK.dpl.
 
 RULES
-    * Combat sight = 3 x (3 + Vision level) (SIGHT_MUL); inside an exploration site without Night
-      Vision it is then halved, rounded down: 9 -> 4 for most units (owner, 2026-10-25).
+    * Combat sight = 3 x (3 + Vision level) (SIGHT_MUL) in world battles.  Inside an exploration
+      site it is 3 + Vision, halved and rounded UP without Night Vision (owner, 2026-10-26): 2 for
+      Vision 0 or I, 3 for II; Night Vision keeps 3 + Vision.  Tried and dropped: tripled then
+      halved (2026-10-25), the engine's rounded-down half (2026-10-26).
     * A unit explores every hex within its combat sight + 8 (EXPLORE_BUF) that it has a clear line
       to, when it moves or is activated, and every unit does so at once when a wall, gate or
       building drops to 0 hit points; explored hexes stay explored.
-    * Walls, gates, houses and the other structures span several hexes (a wall 4, a gate 7);
-      exploring any hex of one explores all of it (wclose).
+    * An object blocks only on its solid hexes: its own hex, plus the parts its resource's terrain
+      list marks used (a few big trees and buildings).  The engine also makes every object a
+      child of the hexes its sprite overlaps (a tree 4, a house or gate 7, big buildings up to
+      37); those hexes do not block (spart).  When a wall, gate, house or structure's solid hex is
+      explored, the hexes its sprite covers are explored too, so it is not drawn half black
+      (wclose).
     * Outside exploration sites, at battle start each player also explores everything a flood fill
       from its units reaches without crossing rock, a wall or gate it may not see past, or the
       off-map border, plus the blockers that flood touches.  Exploration sites (dungeons, lairs,
@@ -99,14 +105,19 @@ decoration VMTs), then the routines, packed.
               hexes for the seated player, or any wclose change, set [map+0x30] (static scene
               invalid; ShowScene rebuilds it); every call clears the fog signature so the next
               frame recounts.  Runs inside TEs on every machine from synchronised state only.
-    wclose    unions the explored bits of players 1..12 (0x0FFF; bits 12-15 of [field+0x18] are
-              not player bits) across neighbouring hexes holding the same wall, gate, house or
-              structure object, until nothing changes.  Overlapping objects chain, so a city's
-              connected wall ring is explored whole once any face of it is.
-    csight    eax = TCombatUnit -> combat sight: GetVisibilityRange (3 + Vision, halved in a site
-              without Night Vision) x 3, except in the halved case base + floor(base/2), base
-              re-read through the Vision level query.  Used by explore's callers, fog_update,
-              reexplore and stepchk.
+    spart     is this part of an object solid: part 0 yes; other parts only for structures,
+              obstacles and terrain objects whose terrain list marks them used.  blocker, iswall
+              and wclose skip the rest.
+    wclose    gives the explored bits of players 1..12 (0x0FFF; bits 12-15 of [field+0x18] are the
+              engine's movement flags) of each hex where a wall, gate, house or structure is solid
+              to the neighbouring hexes holding the same object; only hexes explored before the
+              call give, so it never chains (a 2026-10-24 version chained along whole wall rings
+              and treated sprite hexes as solid).
+    csight    eax = TCombatUnit -> combat sight: GetVisibilityRange x 3 outside exploration sites;
+              inside one, 3 + Vision halved and rounded up without Night Vision (base minus the
+              engine's rounded-down half), unhalved with it.  Then, while build_mist_tc.py's pinned
+              entry 0x43CC40 starts with E9, that entry adjusts it (Mist).  Used by explore's
+              callers, fog_update, reexplore and stepchk.
     xpl       GetExplored for the move-order and cursor sites: explored for the seat (expl), seen
               or not; nil -> 0.
     calcwrap  CalculateMovePath with O_PLAN set around it: the only way the local player's
@@ -126,18 +137,18 @@ decoration VMTs), then the routines, packed.
               setter's own write then stores the same 0.  TE code: every machine.
     fogon     runs inside_build, then the SetFogEnabled call it replaced.  inside_build sets bit
               0x01 of [field+0x1B] (kept all battle) on the inside hexes: walls and gates marked
-              0x08, the border seeds 0x04; a flood from the centre (0x02) stopped by walls, gates
+              0x08, the border seeds 0x04; a flood from the centre (0x10) stopped by walls, gates
               and the border, a flood from the border (0x04) stopped by walls and gates; inside =
-              0x02 or 0x08 set, or 0x04 clear.  Scratch bits cleared after.  Runs once per battle
+              0x10 or 0x08 set, or 0x04 clear.  Scratch bits cleared after.  Runs once per battle
               on every machine from the template only.
     startflood  calls SetSeatedCombatPlayer, then worldflood: outside exploration sites, marks the
               solid hexes (bit 0x08) and the standing walls and gates (0x10), and for each player
-              with a live unit floods (bit 0x02, forward/backward relaxation sweeps until nothing
+              with a live unit floods (bit 0x04, forward/backward relaxation sweeps until nothing
               changes) from that player's units, stopped by solid hexes and the border, and by
               walls and gates unless one of the player's units stands inside; then sets that
               player's explored bit on the flood and on the stopping hexes it touches, then
-              wclose.  Scratch bits cleared after, 0x01 kept.  Runs once per battle on every machine from
-              synchronised state only.
+              wclose.  Scratch bits cleared after, 0x01 and 0x02 kept.  Runs once per battle on
+              every machine from synchronised state only.
     uds       TAoWCombatMap's UpdateDynamicScene: vanilla's loop, but per hex: seen -> every
               dynamic object (HSEngine CopyDynamicVisibleHS); explored, not seen -> only the
               dynamic objects whose VMT is in T_DECOR (decor); unexplored -> nothing.  First it
@@ -176,6 +187,15 @@ decoration VMTs), then the routines, packed.
               standing wall or gate blocks only when the viewer's hex is outside (bit 0x01 clear,
               copied to +0x1C by fill).  Off-map intermediates do not block; 64-step cap fails open.
 
+[field+0x1B] ON COMBAT MAPS: 0x01 inside the walls (this script, all battle); 0x02 the engine's "a
+unit here"; 0x04/0x08/0x10 this script's scratch during the two floods; 0x20/0x40
+build_wotw_tc.py; 0x80 build_los_terrain.py.  Bit 0x02 is set by TTacticalCombatUnitHS.UpdateMapField
+(0x420CEB) when a unit connects to the hex (TUnitHS.PlaceOnMap / MoveTo -> Connect -> the field's
+UpdateMapField), and nothing in the engine clears it (TAoWMapField.UpdateMapField 0x55771C88 clears
+only 0xE000 of the dword).  While it is clear TAoWMapField.GetPlayer (0x55771C9B) answers 0xFF
+without asking the hex's objects.  GetPlayer's combat callers: stepchk (0x44296E next hex,
+0x442A49 look-ahead) and ValidMultiMoveSelection 0x41EE0F.  No routine here writes 0x02.
+
 BSS 0x0046C200-0x0046C73F (writable, loader-zeroed): +0 signature, +4 unit count, +8/+0xC bitmap
 width/height (0 = no bitmap: lines never block), +0x10 blocking cell count, +0x14 level, +0x18
 last seat, +0x1C viewer inside, +0x20..+0x34 the flood's level, width, height, mark, border stop,
@@ -204,13 +224,21 @@ COUPLINGS: the explore radius ignores the sight+2 hand edit in TAoWMapLevel.Expl
 ExploreArea.  build_unit_ai.py hooks the heads of SetSeatedCombatPlayer/NewTurn; startflood calls
 SetSeatedCombatPlayer through that hook as vanilla did.  build_mirrorimage.py's cave_show draws
 through TTacticalCombatUnitHS.Show; uds decides whether Show is reached at all.
+build_mist_tc.py's entry 0x43CC40 is called from csight while it starts with E9; either script
+may be undone alone.
 build_combatlog_siege.py hooks the prologues of both SetHitPoints (0x405AE4, 0x432930); wallhp's
 sites are further in and share no bytes with them.
 ⚠ build_group_move_tc.py owns TTacticalCombatUnitHS VMT +0xD4 (cave_unit); canover now sits in
 that slot and chains to it through T_PREV, so build_group_move_tc.py reports MIXED and refuses
 --apply / --undo.  Undo this script first, then that one; re-apply that one first, then this.
 Its markers and CalculateMovePath calls (through VMT +8) all pass through calcwrap.
-HISTORY: 2026-10-25 the zone moved from 0x43D000-0x43E7FF (full) to 0x441000; migrate() undoes
+HISTORY: 2026-10-26 the start flood's mark moved from bit 0x02 to 0x04 and inside_build's centre
+mark from 0x02 to 0x10.  Clearing 0x02 after the start flood made every unit that had not moved
+since battle start read as absent to GetPlayer in world battles.  DefaultMove's next-step test
+and stepchk's look-ahead missed it, so a plain move routed through fog could walk onto a hidden
+stationary unit's hex (TUnitHS.MoveTo does not refuse).  ValidMultiMoveSelection accepted a group
+move onto it.
+2026-10-25 the zone moved from 0x43D000-0x43E7FF (full) to 0x441000; migrate() undoes
 an old-zone install on --apply / --undo.  2026-10-23 walls went one-way, both ways, then one-way
 again (owner).  The first one-way
 build hooked 0x424FD5 to the stub at 0x43D030; --apply and --undo put that site back to vanilla
@@ -236,8 +264,9 @@ COMB_RES = os.path.join(P.GAME, "Release", "comb_res.pfs")
 HSEPACK = os.path.join(P.GAME, "HSEPack.dpl")
 
 # ---------------------------------------------------------------- tuning
-SIGHT_MUL = 3            # combat sight = 3 x (3 + Vision level); inside an exploration site without
-                         # Night Vision that is then halved, rounded down (owner, 2026-10-25)
+SIGHT_MUL = 3            # combat sight = 3 x (3 + Vision level) in world battles; inside an
+                         # exploration site the engine's own sight, halved without Night Vision
+                         # (owner, 2026-10-26)
 EXPLORE_BUF = 8          # explored radius = combat sight + 8 (owner, 2026-10-23)
 RMAX = 40                # radius clamp
 STEP_CAP = 64            # line-walk cap; exhausted = clear
@@ -253,6 +282,7 @@ RC_TERR, RC_SINGLE, RC_MAIN = 0x220167, 0x22051F, 0x22051D
 # ---------------------------------------------------------------- addresses (verified at run time)
 ZONE = (0x00441000, 0x00444000)
 OLD_ZONE = (0x0043D000, 0x0043E800)  # the zone until 2026-10-25; --apply / --undo migrate off it
+MIST_ENTRY = 0x0043CC40              # build_mist_tc.py's pinned mist_adj (eax sight, edx unit -> eax)
 STUBS = ("explore", "uds", "drawfog", "seen", "aispot", "hover", "startflood", "fogon", "wallhp",
          "csight", "xpl", "calcwrap", "canon", "canover", "stepchk")
 E = {n: ZONE[0] + 8 * i for i, n in enumerate(STUBS)}
@@ -265,7 +295,8 @@ O_SIG, O_NU, O_BW, O_BH, O_NB, O_LVL, O_SEAT, O_VIN = 0x00, 0x04, 0x08, 0x0C, 0x
 O_ILVL, O_IW, O_IH, O_MARK, O_STOP, O_WSTOP, O_XPL = 0x20, 0x24, 0x28, 0x2C, 0x30, 0x34, 0x38
 O_PLAN = 0x3C                       # 1 while the local player's move order is being planned
 O_UNITS, O_BMAP, O_WMAP = 0x40, 0x140, 0x340
-F_FLAGS = 0x1B      # [field+0x1B]: 0x01 inside the walls (kept all battle); 0x02/0x04/0x08/0x10 scratch
+F_FLAGS = 0x1B      # [field+0x1B]: 0x01 inside the walls (kept all battle); 0x04/0x08/0x10 scratch;
+                    # 0x02 is the engine's (a unit here, read by GetPlayer): never written
 BORDER = 15                         # off-map terrain id ([field+0x14])
 PASS_CAP = 512                      # flood-fill sweep pairs
 
@@ -610,8 +641,8 @@ def routines(A, T):
     # blocker: edi = field, ebx = delta -> eax = 1 rock (lair rock, a site's "Wall" hex): blocks
     # everything; else a mask of 2 a standing wall or gate (blocks a viewer outside the walls) and
     # 4 an obstacle (houses and buildings with hit points, combat obstacles, listed trees and
-    # rocks): blocks sight, and exploration only inside an exploration site; 0 nothing.
-    # Clobbers eax/ecx/edx.
+    # rocks): blocks sight, and exploration only inside an exploration site; 0 nothing.  Only
+    # children at a solid part count (spart).  Clobbers eax/ecx/edx.
     R["blocker"] = f"""
         push esi
         push 0
@@ -624,6 +655,12 @@ def routines(A, T):
         js   no
         mov  eax, dword ptr [esi + ecx*4]
         test eax, eax
+        je   lp
+        movzx edx, byte ptr [edi + 0xc]
+        lea  edx, [esi + edx*4]
+        movzx edx, byte ptr [edx + ecx]
+        call {A['spart']:#x}
+        test edx, edx
         je   lp
         mov  edx, dword ptr [eax]
         sub  edx, ebx
@@ -717,6 +754,12 @@ def routines(A, T):
         js   no
         mov  eax, dword ptr [esi + ecx*4]
         test eax, eax
+        je   lp
+        movzx edx, byte ptr [edi + 0xc]
+        lea  edx, [esi + edx*4]
+        movzx edx, byte ptr [edx + ecx]
+        call {A['spart']:#x}
+        test edx, edx
         je   lp
         mov  edx, dword ptr [eax]
         sub  edx, ebx
@@ -891,9 +934,9 @@ def routines(A, T):
     """
 
     # inside_build: eax = map.  Bit 0x01 of [field+0x1B] = inside the walls, on every hex of
-    # level 0: reached from the centre without crossing a wall, gate or the border (mark 0x02),
+    # level 0: reached from the centre without crossing a wall, gate or the border (mark 0x10),
     # or not reachable from the border without crossing a wall or gate (mark 0x04 misses it), or a
-    # wall or gate hex itself (0x08).
+    # wall or gate hex itself (0x08).  Bit 0x02 is the engine's and stays as it was.
     R["inside_build"] = f"""
         push ebx
         push esi
@@ -933,7 +976,7 @@ def routines(A, T):
         mov  edx, ebp
         call {A['fld']:#x}
         mov  edi, eax
-        and  byte ptr [edi + {F_FLAGS:#x}], 0xe0
+        and  byte ptr [edi + {F_FLAGS:#x}], 0xe2
         call {A['iswall']:#x}
         test eax, eax
         je   ac
@@ -960,8 +1003,8 @@ def routines(A, T):
         jne  edge
         cmp  byte ptr [eax + 0x14], {BORDER}
         je   edge
-        or   byte ptr [eax + {F_FLAGS:#x}], 2
-        mov  eax, 2
+        or   byte ptr [eax + {F_FLAGS:#x}], 0x10
+        mov  eax, 0x10
         mov  edx, 1
         call {A['flood']:#x}
     edge:
@@ -980,14 +1023,14 @@ def routines(A, T):
         mov  edx, ebp
         call {A['fld']:#x}
         mov  cl, byte ptr [eax + {F_FLAGS:#x}]
-        test cl, 0xa
+        test cl, 0x18
         jne  inside
         test cl, 4
         je   inside
-        and  cl, 0xe0
+        and  cl, 0xe2
         jmp  wr
     inside:
-        and  cl, 0xe0
+        and  cl, 0xe2
         or   cl, 1
     wr:
         mov  byte ptr [eax + {F_FLAGS:#x}], cl
@@ -1042,9 +1085,10 @@ def routines(A, T):
     """
 
     # oneplayer: eax = AoW player id (1..31), edx = TCombatData, ecx = object count, ebx = delta.
-    # Flood from every live unit of that player, stopped by solid blockers ([field+0x1B] bit 0x08),
-    # by standing walls and gates (bit 0x10) unless one of its units stands inside the walls, and
-    # by the border; explore what the flood reached plus the blockers touching it.
+    # Flood from every live unit of that player (mark bit 0x04), stopped by solid blockers
+    # ([field+0x1B] bit 0x08), by standing walls and gates (bit 0x10) unless one of its units stands
+    # inside the walls, and by the border; explore what the flood reached plus the blockers
+    # touching it.  Bit 0x02 is the engine's "a unit here" (GetPlayer): never written.
     R["oneplayer"] = f"""
         push esi
         push edi
@@ -1072,7 +1116,7 @@ def routines(A, T):
         movzx eax, al
         cmp  eax, dword ptr [esp]
         jne  sn
-        or   byte ptr [esi + {F_FLAGS:#x}], 2
+        or   byte ptr [esi + {F_FLAGS:#x}], 4
         test byte ptr [esi + {F_FLAGS:#x}], 1
         je   sn
         mov  dword ptr [esp + 0x10], 1
@@ -1084,7 +1128,7 @@ def routines(A, T):
         cmp  dword ptr [esp + 0x10], 0
         sete al
         mov  dword ptr [ebx + {B + O_WSTOP:#x}], eax
-        mov  eax, 2
+        mov  eax, 4
         mov  edx, 1
         call {A['flood']:#x}
         mov  ecx, dword ptr [esp]
@@ -1104,7 +1148,7 @@ def routines(A, T):
         mov  edx, ebp
         call {A['fld']:#x}
         mov  edi, eax
-        test byte ptr [edi + {F_FLAGS:#x}], 2
+        test byte ptr [edi + {F_FLAGS:#x}], 4
         jne  mark
         test byte ptr [edi + {F_FLAGS:#x}], 8
         jne  face
@@ -1128,7 +1172,7 @@ def routines(A, T):
         call {A['fld']:#x}
         test eax, eax
         je   nn
-        test byte ptr [eax + {F_FLAGS:#x}], 2
+        test byte ptr [eax + {F_FLAGS:#x}], 4
         jne  nhit
     nn:
         inc  dword ptr [esp]
@@ -1159,7 +1203,7 @@ def routines(A, T):
         mov  eax, esi
         mov  edx, ebp
         call {A['fld']:#x}
-        and  byte ptr [eax + {F_FLAGS:#x}], 0xfd
+        and  byte ptr [eax + {F_FLAGS:#x}], 0xfb
         inc  esi
         jmp  cx_
     cn:
@@ -1175,6 +1219,7 @@ def routines(A, T):
 
     # worldflood: eax = map.  At battle start outside exploration sites, each player explores
     # everything a flood from its units reaches without crossing a sight blocker or the border.
+    # Scratch 0x04/0x08/0x10 are cleared after; 0x01, the engine's 0x02 and 0x20-0x80 are kept.
     R["worldflood"] = f"""
         push ebx
         push esi
@@ -1228,7 +1273,7 @@ def routines(A, T):
         mov  edx, ebp
         call {A['fld']:#x}
         mov  edi, eax
-        and  byte ptr [edi + {F_FLAGS:#x}], 0xe1
+        and  byte ptr [edi + {F_FLAGS:#x}], 0xe3
         mov  eax, ebp
         imul eax, dword ptr [ebx + {B + O_BW:#x}]
         add  eax, esi
@@ -1288,7 +1333,7 @@ def routines(A, T):
         mov  eax, esi
         mov  edx, ebp
         call {A['fld']:#x}
-        and  byte ptr [eax + {F_FLAGS:#x}], 0xe1
+        and  byte ptr [eax + {F_FLAGS:#x}], 0xe3
         inc  esi
         jmp  fx
     fn:
@@ -2101,11 +2146,64 @@ def routines(A, T):
         ret  0xc
     """
 
+    # spart: eax = object, edx = its part number on this hex (the byte after the field's child
+    # pointers: [[field+8] + [field+0xC]*4 + child index]) -> edx 1 when that part is solid.  An
+    # object is a child of its own hex (part 0) and of every hex its sprite overlaps (a tree 4, a
+    # house or gate 7, big buildings up to 37); only the parts its resource's terrain list
+    # ([[obj+8]+0x28]) marks used are solid (TTerrainList.GetUsed, as TCombatStructure.CanMoveOn
+    # tests).  Part 0 is always solid; walls, gates, terrain hexagons and every other class are
+    # solid on part 0 only (TCityWall.CanMoveOn tests part 0).  Preserves all but edx.
+    R["spart"] = f"""
+        test edx, edx
+        je   yes
+        push ecx
+        mov  ecx, dword ptr [eax]
+        sub  ecx, ebx
+        cmp  ecx, {vm['house']:#x}
+        je   tl
+        cmp  ecx, {vm['struct']:#x}
+        je   tl
+        cmp  ecx, {vm['town']:#x}
+        je   tl
+        cmp  ecx, {vm['work']:#x}
+        je   tl
+        cmp  ecx, {vm['main']:#x}
+        je   tl
+        cmp  ecx, {vm['obst']:#x}
+        je   tl
+        cmp  ecx, {vm['terr']:#x}
+        jne  no_
+    tl:
+        mov  ecx, dword ptr [eax + 8]
+        test ecx, ecx
+        je   no_
+        mov  ecx, dword ptr [ecx + 0x28]
+        test ecx, ecx
+        je   no_
+        cmp  edx, dword ptr [ecx + 4]
+        jge  no_
+        mov  ecx, dword ptr [ecx + 8]
+        movzx edx, word ptr [ecx + edx*2]
+        and  edx, 0x8080
+        cmp  edx, 0x8080
+        je   no_
+        pop  ecx
+    yes:
+        mov  edx, 1
+        ret
+    no_:
+        pop  ecx
+        xor  edx, edx
+        ret
+    """
+
     # wclose: ebx = delta; the level and size bmap_build left in O_LVL/O_BW/O_BH.  A wall, gate,
-    # house or other structure spans several hexes (TMultiHexMO: a child of each), so exploring
-    # one face of it left the rest black.  Unions the explored bits of players 1..12 (0x0FFF;
-    # bits 12-15 are not player bits) across neighbouring hexes holding the same such object,
-    # until nothing changes (16 passes at most).  -> eax = 1 if any bit changed.
+    # house or other structure is drawn over the hexes next to its solid hex, and DrawFog blacks
+    # out whatever part of it lies over an unexplored hex.  Pass 1 marks (bit 0x04 of [field+0x1B])
+    # every explored hex holding such an object at a solid part (spart); pass 2 gives each marked
+    # hex's explored bits of players 1..12 (0x0FFF; bits 12-15 are the engine's movement flags) to
+    # the neighbouring hexes holding the same object, and clears the mark.  Only hexes explored
+    # before the call give, so it never chains along a wall.  -> eax = 1 if any bit changed.
     R["wclose"] = f"""
         push esi
         push edi
@@ -2115,9 +2213,8 @@ def routines(A, T):
         mov  dword ptr [ebp + 0xc], 0
         cmp  dword ptr [ebx + {B + O_BW:#x}], 0
         je   xit
-        mov  dword ptr [ebp + 0x10], 16
-    pass:
         mov  dword ptr [ebp + 8], 0
+    pass:
         mov  dword ptr [ebp + 4], 0
     yl:
         mov  eax, dword ptr [ebp + 4]
@@ -2134,14 +2231,27 @@ def routines(A, T):
         mov  edi, dword ptr [edi + eax*4]
         mov  ecx, dword ptr [ecx + 0x78]
         add  edi, dword ptr [ecx + edx*4]
+        movzx eax, word ptr [edi + 0x18]
+        and  eax, 0xfff
+        mov  dword ptr [ebp + 0x10], eax
+        cmp  dword ptr [ebp + 8], 0
+        jne  pb
+        test eax, eax
+        je   xn
+        jmp  scan
+    pb:
+        test byte ptr [edi + {F_FLAGS:#x}], 4
+        je   xn
+        and  byte ptr [edi + {F_FLAGS:#x}], 0xfb
+    scan:
         movzx eax, byte ptr [edi + 0xd]
         mov  dword ptr [ebp + 0x1c], eax
     cl_:
         dec  dword ptr [ebp + 0x1c]
         js   xn
         mov  ecx, dword ptr [ebp + 0x1c]
-        mov  eax, dword ptr [edi + 8]
-        mov  eax, dword ptr [eax + ecx*4]
+        mov  esi, dword ptr [edi + 8]
+        mov  eax, dword ptr [esi + ecx*4]
         test eax, eax
         je   cl_
         mov  edx, dword ptr [eax]
@@ -2161,6 +2271,17 @@ def routines(A, T):
         cmp  edx, {vm['main']:#x}
         jne  cl_
     bld:
+        movzx edx, byte ptr [edi + 0xc]
+        lea  edx, [esi + edx*4]
+        movzx edx, byte ptr [edx + ecx]
+        call {A['spart']:#x}
+        test edx, edx
+        je   cl_
+        cmp  dword ptr [ebp + 8], 0
+        jne  prop
+        or   byte ptr [edi + {F_FLAGS:#x}], 4
+        jmp  xn
+    prop:
         mov  dword ptr [ebp + 0x14], eax
         mov  dword ptr [ebp + 0x18], 6
     nl:
@@ -2197,22 +2318,13 @@ def routines(A, T):
         js   nl
         cmp  eax, dword ptr [edx + ecx*4]
         jne  hl
-        movzx eax, word ptr [edi + 0x18]
-        movzx edx, word ptr [esi + 0x18]
-        mov  ecx, eax
-        or   ecx, edx
-        and  ecx, 0xfff
-        or   eax, ecx
-        cmp  ax, word ptr [edi + 0x18]
-        je   u1
-        mov  word ptr [edi + 0x18], ax
-        mov  dword ptr [ebp + 8], 1
-    u1:
-        or   edx, ecx
-        cmp  dx, word ptr [esi + 0x18]
+        movzx eax, word ptr [esi + 0x18]
+        mov  edx, eax
+        or   edx, dword ptr [ebp + 0x10]
+        cmp  edx, eax
         je   nl
         mov  word ptr [esi + 0x18], dx
-        mov  dword ptr [ebp + 8], 1
+        mov  dword ptr [ebp + 0xc], 1
         jmp  nl
     xn:
         inc  dword ptr [ebp]
@@ -2222,10 +2334,9 @@ def routines(A, T):
         jmp  yl
     pend:
         cmp  dword ptr [ebp + 8], 0
-        je   xit
-        mov  dword ptr [ebp + 0xc], 1
-        dec  dword ptr [ebp + 0x10]
-        jne  pass
+        jne  xit
+        mov  dword ptr [ebp + 8], 1
+        jmp  pass
     xit:
         mov  eax, dword ptr [ebp + 0xc]
         add  esp, 0x20
@@ -2236,10 +2347,11 @@ def routines(A, T):
     """
 
     # csight: eax = TCombatUnit -> eax = combat sight; clobbers ecx/edx like the vcall it
-    # replaces.  The engine's GetVisibilityRange (+0xA4) is 3 + Vision level, halved inside an
-    # exploration site ([unit+8] = TCombat, +0x40 == 1) without Night Vision (0x27).  Combat sight
-    # = SIGHT_MUL x that, except in the halved case: base + floor(base/2) = floor(3 x base / 2),
-    # base re-read through the Vision level query (+0x144, ability 0x40) as the engine does.
+    # replaces.  The engine's GetVisibilityRange (+0xA4) is base = 3 + Vision level, halved and
+    # rounded DOWN inside an exploration site ([unit+8] = TCombat, +0x40 == 1) without Night
+    # Vision (0x27).  Inside a site combat sight is base halved and rounded UP (owner, 2026-10-26):
+    # base - floor(base/2), base re-read through the Vision level query (+0x144, ability 0x40);
+    # with Night Vision the engine's unhalved base.  Elsewhere SIGHT_MUL x the engine value.
     R["csight"] = f"""
         push ebx
         push esi
@@ -2256,22 +2368,31 @@ def routines(A, T):
         jne  tri
         mov  eax, dword ptr [ebx + 0x4c]
         test eax, eax
-        je   tri
+        je   done
         mov  edx, 0x27
         mov  ecx, dword ptr [eax]
         call dword ptr [ecx + 0x148]
         test al, al
-        jne  tri
+        jne  done
         mov  eax, dword ptr [ebx + 0x4c]
         mov  edx, 0x40
         mov  ecx, dword ptr [eax]
         call dword ptr [ecx + 0x144]
         lea  eax, [eax + 3]
-        add  esi, eax
+        sub  eax, esi
+        mov  esi, eax
         jmp  done
     tri:
         imul esi, esi, {SIGHT_MUL}
     done:
+        call {A['get_delta']:#x}
+        cmp  byte ptr [eax + {MIST_ENTRY:#x}], 0xe9
+        jne  fin
+        mov  eax, esi
+        mov  edx, ebx
+        call {MIST_ENTRY:#x}
+        mov  esi, eax
+    fin:
         mov  eax, esi
         pop  esi
         pop  ebx
@@ -2618,7 +2739,7 @@ def routines(A, T):
 ORDER = ("get_delta", "vis", "seen", "aispot", "hover", "drawfog", "hd", "blocker", "bmap_build",
          "los", "fill", "fog_update", "uds", "explore", "fld", "relax", "sweep", "flood",
          "unitfield", "oneplayer", "worldflood", "startflood", "expl", "decor", "iswall",
-         "inside_build", "fogon", "reexplore", "wallhp", "csight", "wclose", "xpl", "hidn",
+         "inside_build", "fogon", "reexplore", "wallhp", "csight", "spart", "wclose", "xpl", "hidn",
          "calcwrap", "canon", "canover", "stepchk")
 
 
@@ -2940,7 +3061,7 @@ def run_emulate(d, blobs, A, tables):
     for y in range(H):
         for x in range(W):
             f = F(x, y)
-            w32(f + 8, alloc(16)); w8(f + 0xD, 0); w8(f + 0x10, x); w8(f + 0x11, y)
+            w32(f + 8, alloc(0x30)); w8(f + 0xC, 8); w8(f + 0xD, 0); w8(f + 0x10, x); w8(f + 0x11, y)
     # stubs for every import the caves reach
     w32(cell(GETMAPLEVEL_T), stub("mov eax, %#x\nret" % L))
     w32(cell(A["cd_count"]), stub("mov eax, dword ptr [eax]\nret"))
@@ -3021,22 +3142,29 @@ def run_emulate(d, blobs, A, tables):
         w32(au, AUV); w32(au + 0x10, r - 3); w8(au + 0x14, nv)
         w32(u + 0x4c, au); w32(u + 8, COMBAT)
 
-    def obj(vmt, hp=None, guid=None):
+    def obj(vmt, hp=None, guid=None, solid=None):
         o = alloc(0x60)
         w32(o, vmt)
         if hp is not None:
             w32(o + HP_OFF, hp)
-        if guid is not None:
+        if guid is not None or solid is not None:
             res = alloc(0x40)
-            w32(res + 0xC, guid)
+            w32(res + 0xC, guid or 0)
             w32(o + 8, res)
+            if solid is not None:                     # terrain list: 7 parts, `solid` used
+                tl, data = alloc(0x10), alloc(0x20)
+                w32(tl + 4, 7); w32(tl + 8, data)
+                for k in range(7):
+                    mu.mem_write(data + 2 * k, b"\x00\x00" if k in solid else b"\xff\xff")
+                w32(res + 0x28, tl)
         return o
 
-    def put(x, y, objs, dynamic=0):
+    def put(x, y, objs, dynamic=0, hn=None):
         f = F(x, y)
         arr = r32(f + 8)
         for i, o in enumerate(objs):
             w32(arr + 4 * i, o)
+            w8(arr + 32 + i, (hn or [0] * len(objs))[i])
         w8(f + 0xD, len(objs)); w8(f + 0xE, len(objs) - dynamic)
 
     vm = {k: v[0] for k, v in VMT.items()}
@@ -3075,11 +3203,31 @@ def run_emulate(d, blobs, A, tables):
           "the rock, drops the tree, keeps the wall as a wall", bits == {0: (7, 0, 3), 1: (1, 4, 2)})
     for x in range(3):
         put(x, 0, [])
+    # an object blocks only on its solid parts, not on the hexes its sprite overlaps
+    tree, big = obj(vm["terr"], guid=g_terr, solid=(0,)), obj(vm["terr"], guid=g_terr, solid=(0, 1))
+    wl, hs1 = obj(vm["wall"], hp=5), obj(vm["house"], hp=5, solid=(0,))
+    put(20, 20, [tree]); put(20, 19, [tree], hn=[1])
+    put(24, 20, [big]); put(24, 19, [big], hn=[1])
+    put(28, 20, [wl]); put(28, 19, [wl], hn=[1])
+    put(32, 20, [hs1]); put(33, 20, [hs1], hn=[2])
+    w32(BSS + O_XPL, 0)
+    call(A["bmap_build"], eax=L)
+    sb = lambda x, y: (r8(BSS + O_BMAP + (y * W + x) // 8) >> ((y * W + x) % 8)) & 1
+    wb = lambda x, y: (r8(BSS + O_WMAP + (y * W + x) // 8) >> ((y * W + x) % 8)) & 1
+    got = (sb(20, 20), sb(20, 19), sb(24, 19), wb(28, 20), wb(28, 19), sb(32, 20), sb(33, 20))
+    check("bitmap: a tree, a wall and a house block on their own hex only, not where their sprites "
+          "reach; a part the terrain list marks used blocks too", got == (1, 0, 1, 1, 0, 1, 0))
+    mu.reg_write(UC_X86_REG_EDI, F(28, 19)); mu.reg_write(UC_X86_REG_EBX, 0)
+    sp = STACK_TOP - 4; w32(sp, MAGIC); mu.reg_write(UC_X86_REG_ESP, sp)
+    mu.emu_start(A["iswall"], MAGIC, count=100_000)
+    check("iswall: a wall's sprite hex is not a wall hex", mu.reg_read(UC_X86_REG_EAX) == 0)
+    for h in ((20, 20), (20, 19), (24, 20), (24, 19), (28, 20), (28, 19), (32, 20), (33, 20)):
+        put(h[0], h[1], [])
     # multi-hex buildings are explored whole
     a, b = obj(vm["wall"], hp=5), obj(vm["door"], hp=5)
-    hs, tr = obj(vm["house"], hp=5), obj(vm["terr"], guid=g_terr)
-    put(5, 5, [a]); put(6, 5, [a, b]); put(7, 5, [b]); put(10, 5, [hs]); put(11, 5, [hs])
-    put(14, 5, [tr]); put(15, 5, [tr])
+    hs, tr = obj(vm["house"], hp=5, solid=(0,)), obj(vm["terr"], guid=g_terr, solid=(0,))
+    put(5, 5, [a]); put(6, 5, [a, b], hn=[1, 6]); put(7, 5, [b]); put(10, 5, [hs])
+    put(11, 5, [hs], hn=[2]); put(14, 5, [tr]); put(15, 5, [tr], hn=[2])
     for x in range(3, 18):
         w32(F(x, 5) + 0x18, 0)
     w32(F(5, 5) + 0x18, 0x4001); w32(F(10, 5) + 0x18, 0x0004); w32(F(14, 5) + 0x18, 0x0002)
@@ -3087,9 +3235,9 @@ def run_emulate(d, blobs, A, tables):
     call(A["bmap_build"], eax=L)
     first = call(A["wclose"])
     got = {x: r32(F(x, 5) + 0x18) & 0xFFFF for x in (5, 6, 7, 10, 11, 14, 15)}
-    check("wclose: a wall and the gate sharing a hex with it, and a house, explored whole; a tree "
-          "not; bits 12-15 not carried", first == 1 and got == {5: 0x4001, 6: 1, 7: 1, 10: 4, 11: 4,
-                                                                  14: 2, 15: 0})
+    check("wclose: an explored wall and house reach the hexes their sprites cover; the gate whose "
+          "own hex is unexplored, and a tree, give nothing; bits 12-15 not carried",
+          first == 1 and got == {5: 0x4001, 6: 1, 7: 0, 10: 4, 11: 4, 14: 2, 15: 0})
     check("wclose: nothing left to close -> 0", call(A["wclose"]) == 0)
     for x in range(3, 18):
         put(x, 5, []); w32(F(x, 5) + 0x18, 0)
@@ -3145,6 +3293,9 @@ def run_emulate(d, blobs, A, tables):
     FAKE = alloc(0x200)
     w32(FAKE + 0x100, stub("ret"))
 
+    def pat(x, y):          # the engine's bit 0x02 and other scripts' 0x20-0x80, set before the floods
+        return (0x02 if (3 * x + y) % 4 == 0 else 0) | (0xE0 if (x + 5 * y) % 7 == 0 else 0)
+
     def load_walls(fn):
         reset()
         m = Z.Map(os.path.join(P.GAME, "TCMaps", fn))
@@ -3157,18 +3308,23 @@ def run_emulate(d, blobs, A, tables):
                     put(x, y, [o]); wall.add((x, y)); wobj[(x, y)] = o
                 if cls == 0x20558:
                     w8(F(x, y) + 0x14, BORDER); border.add((x, y))
+        for y in range(H):
+            for x in range(W):
+                w8(F(x, y) + F_FLAGS, pat(x, y))
         call(A["fogon"], eax=M, ecx=FAKE, edx=1)
         return wall, border, wobj
 
-    def flags_clean():
-        return not any(r8(F(x, y) + F_FLAGS) & 0x1E for y in range(H) for x in range(W))
+    def flags_clean(units=()):
+        """scratch 0x04/0x08/0x10 clear; 0x02 and 0x20-0x80 as set before (0x02 also on units)."""
+        return all(r8(F(x, y) + F_FLAGS) & 0xFE == pat(x, y) | (2 if (x, y) in units else 0)
+                   for y in range(H) for x in range(W))
 
     # 1b. inside/outside on the real walled templates
     for fn in ("0126c000.HSM", "0xxxc000.hsm", "TFort000.hsm", "023xc000.HSM"):
         wall, border, _w = load_walls(fn)
         got = {(x, y) for y in range(H) for x in range(W) if r8(F(x, y) + F_FLAGS) & 1}
         want = ref_inside(wall, border)
-        check("inside map %s: %d inside hexes == reference, scratch bits cleared"
+        check("inside map %s: %d inside hexes == reference, scratch bits cleared, 0x02/0xE0 kept"
               % (fn, len(want) - len(wall)), got == want and flags_clean())
     # 1c. one-way walls, the start flood and destroyed walls on 0126c000 with scattered trees
     wall, border, wobj = load_walls("0126c000.HSM")
@@ -3211,6 +3367,8 @@ def run_emulate(d, blobs, A, tables):
     w32(DATA, len(us))
     for i, u in enumerate(us):
         w32(DATA + 0x40 + 4 * i, u)
+    for h in p1 + p2:       # placed units: the engine's "a unit here" (TTacticalCombatUnitHS.UpdateMapField)
+        w8(F(*h) + F_FLAGS, r8(F(*h) + F_FLAGS) | 2)
     w8(M + 0x30, 0)
     call(A["worldflood"], eax=M)
     for p, seeds, blk, where in ((1, p1, set(), "inside, over the walls"), (2, p2, wall, "outside")):
@@ -3218,9 +3376,10 @@ def run_emulate(d, blobs, A, tables):
         want = ref_flood(blk, border, seeds)
         check("start flood: player %d (%s) explores %d hexes == reference, trees passed"
               % (p, where, len(want)), got == want and pocket in got)
-    check("start flood: inside bits kept, scratch bits cleared, static scene flagged",
+    check("start flood: inside bits kept, scratch bits cleared, 0x02 (units) and 0xE0 kept, "
+          "static scene flagged",
           {(x, y) for y in range(H) for x in range(W) if r8(F(x, y) + F_FLAGS) & 1} == inside
-          and flags_clean() and r8(M + 0x30) == 1)
+          and flags_clean(set(p1 + p2)) and r8(M + 0x30) == 1)
     for y in range(H):
         for x in range(W):
             w32(F(x, y) + 0x18, r32(F(x, y) + 0x18) & 0xFFFF0000)
@@ -3366,7 +3525,7 @@ def run_emulate(d, blobs, A, tables):
         for x, y, r, p in us:
             if p != 3:
                 continue
-            rad = (SIGHT_MUL * r) // 2 if site else SIGHT_MUL * r
+            rad = (r + 1) // 2 if site else SIGHT_MUL * r
             for ty in range(H):
                 for tx in range(W):
                     if _dist((x, y), (tx, ty)) <= rad and model_los(block, (x, y), (tx, ty)):
@@ -3425,22 +3584,23 @@ def run_emulate(d, blobs, A, tables):
         w8(COMBAT + 0x40, kind)
         u = alloc(0x80); w32(u, UV); sight(u, r, nv)
         got_cs[(kind, r, nv)] = call(A["csight"], eax=u)
-    want_cs = {(k, r, nv): (3 * r) // 2 if k == 1 and not nv else 3 * r for k, r, nv in cs}
-    check("csight: world 3 x sight; site 3 x sight, halved without Night Vision (3 -> 9 / 4)",
-          got_cs == want_cs and got_cs[(1, 3, 0)] == 4)
+    want_cs = {(k, r, nv): (r if nv else (r + 1) // 2) if k == 1 else 3 * r for k, r, nv in cs}
+    check("csight: world 3 x sight; site 3 + Vision, halved and rounded up without Night Vision "
+          "(3 -> 9 / 2, 4 -> 12 / 2, 5 -> 15 / 3)",
+          got_cs == want_cs and (got_cs[(1, 3, 0)], got_cs[(1, 4, 0)], got_cs[(1, 5, 0)]) == (2, 2, 3))
     w8(COMBAT + 0x40, 1)
     for y in range(H):
         for x in range(W):
             w32(F(x, y) + 0x18, r32(F(x, y) + 0x18) & 0xFFFF0000)
-    call(A["explore"], eax=M, edx=12, ecx=8, args=(4, 3, 0))
+    call(A["explore"], eax=M, edx=12, ecx=8, args=(2, 3, 0))
     wants = {(tx, ty) for ty in range(H) for tx in range(W)
-             if _dist((12, 8), (tx, ty)) <= 4 + EXPLORE_BUF and model_los(block, (12, 8), (tx, ty))}
+             if _dist((12, 8), (tx, ty)) <= 2 + EXPLORE_BUF and model_los(block, (12, 8), (tx, ty))}
     gotx = {(x, y) for y in range(H) for x in range(W) if r32(F(x, y) + 0x18) & (1 << 2)}
-    check("exploration site: explore radius 4 + %d, obstacles block (%d hexes)"
+    check("exploration site: explore radius 2 + %d, obstacles block (%d hexes)"
           % (EXPLORE_BUF, len(wants)), gotx == wants and len(wants) < len(wantx))
     call(A["fog_update"], eax=M)
     wantc = model_counts(units, site=True)
-    check("exploration site: fog counters == model at 3 x sight halved, recounted on the kind "
+    check("exploration site: fog counters == model at sight halved and rounded up, recounted on the kind "
           "change (%d hexes)" % len(wantc), counts() == wantc)
     w8(COMBAT + 0x40, 2)
     call(A["fog_update"], eax=M)

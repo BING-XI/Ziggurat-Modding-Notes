@@ -2614,21 +2614,30 @@ tests, both now treating level 3 as surface. Three in-place rewrites, no cave:
 
 Applied 2026-10-23 to `Ziggurat/AoWTCPCK.dpl`; launch-tested. The script's docstring holds every
 address; `--emulate` runs the caves themselves under unicorn on a fake combat map and on four real
-walled templates (71 checks), `--test` checks the line-walk model. Revert: `--undo`
+walled templates (73 checks), `--test` checks the line-walk model. Revert: `--undo`
 (surgical).
 
 ### Rules (owner's rulings, 2026-10-23)
 
-- **Combat sight is triple the strategic sight:** 3 × (3 + Vision level). **Inside an exploration
-  site without Night Vision it is then halved, rounded down** (owner, 2026-10-25): 9 → 4 for most
-  units. The engine's getter halves first (`TCombatUnit.GetVisibilityRange @0x55724AD0`), so
-  `csight` re-reads the base through the Vision level query and adds half of it.
+- **Combat sight is triple the strategic sight in world battles:** 3 × (3 + Vision level).
+  **Inside an exploration site it is 3 + Vision, halved and rounded up without Night Vision**
+  (owner, 2026-10-26): 2 for Vision 0 or I, 3 for II; Night Vision keeps 3 + Vision. The engine's
+  getter (`TCombatUnit.GetVisibilityRange @0x55724AD0`) rounds down, so `csight` re-reads the base
+  through the Vision level query and subtracts the engine's half.
 - **Every tactical combat** starts unexplored. A unit explores every hex within its combat sight
   **+ 8** that it has a clear line to when it moves or is activated, and every unit does so at once
   when a wall, gate or building drops to 0 hit points; explored stays explored.
-- **Walls, gates, houses and other structures are explored whole.** Each spans several hexes (a wall
-  4, a gate 7, as children of every hex they cover); exploring one hex of one explores all of it, and
-  overlapping objects chain, so a connected wall ring is known once any face of it is.
+- **An object blocks only on its solid hexes** (2026-10-26, from a live wall-less town battle). The
+  engine makes every map object a child of its own hex (part 0) **and of every hex its sprite
+  overlaps**: a tree 4 hexes, a house or gate 7, big buildings 19 or 37. Which parts are solid is in
+  the object's resource, `[[obj+8]+0x28]`, a `TTerrainList` (`+4` count, `+8` two bytes per part,
+  terrain and overlay; a part is used unless both have the high bit, `TTerrainList.GetUsed`). In that
+  battle 412 of 553 trees and 44 of 56 houses were solid on part 0 only. A field's part numbers follow
+  its child pointers: `[[field+8] + [field+0xC]*4 + i]`. Walls and gates are solid on part 0 only
+  (`TCityWall.CanMoveOn` tests it). Until this fix every attached hex blocked, so a tree shadowed like
+  four trees, a house like seven, and walls looked three hexes thick.
+- When a wall, gate, house or structure's solid hex is explored, the hexes its sprite covers are
+  explored too, so it is not drawn half black at the edge of the explored area.
 - **Battles in the world** (not exploration sites): at the start each player also explores everything
   a flood fill from its units reaches without crossing rock, a wall it may not see past, or the off-map
   border, plus the blockers it touches. Attackers outside a city's walls therefore see the field but
@@ -2668,6 +2677,12 @@ walled templates (71 checks), `--test` checks the line-walk model. Revert: `--un
 - Per hex: `[field+0x18]` explored bits (bit `player−1`), `[field+0x1A]` fog counter for the seated
   player only (the local view). HSEngine field: `+8` child array, `+0xD` child count, `+0xE` static
   child count, `+0x10`/`+0x11` x/y.
+- `[field+0x1B]` bit `0x02` = a unit here. `TTacticalCombatUnitHS.UpdateMapField` (`0x420CEB`) sets
+  it when a unit connects to the hex (placement and every `TUnitHS.MoveTo`); the engine never clears
+  it (`TAoWMapField.UpdateMapField @0x55771C88` clears only `0xE000` of the dword). While it is
+  clear, `TAoWMapField.GetPlayer @0x55771C9B` answers `0xFF` without asking the hex's objects. Its
+  combat callers are `DefaultMove`'s next-step test (now `stepchk`) and
+  `ValidMultiMoveSelection @0x41EE0F`. The engine uses no other bit of that byte on combat maps.
 - With exploration on, AoWEPACK's `UpdateStaticScene`/`UpdateDynamicScene` copy only explored hexes'
   objects into the scene, and `DrawFog` paints unexplored black and counter-0 hexes with the shade.
   Vanilla hid units on unexplored hexes by not drawing them, not by painting over them.
@@ -2694,25 +2709,31 @@ walled templates (71 checks), `--test` checks the line-walk model. Revert: `--un
 - Both flags on in every combat (two in-place bytes in `RandomMap`).
 - `fogon` takes `RandomMap`'s `SetFogEnabled` call (`0x424FD5`, `call [ecx+0x100]`), after the template
   and its walls are loaded and before any unit is placed, and builds the inside map: bit `0x01` of
-  `[field+0x1B]` (unused on combat maps), kept all battle. Walls and gates are marked, a flood from the
+  `[field+0x1B]` (unused by the engine on combat maps), kept all battle. Walls and gates are marked, a flood from the
   centre stopped by them and the border, a flood from the border stopped by them; inside = reached by
   the first, missed by the second, or a wall or gate hex.
 - `startflood` takes `TTacticalCombat.Execute`'s `call SetSeatedCombatPlayer` (`0x429940`), after
   `RandomMap` has placed the map, its decorations and every unit. Outside exploration sites it marks
   the solid hexes and the standing walls and gates and, per player with a live unit, floods from that
-  player's units (scratch bits `0x02`/`0x08`/`0x10` of `[field+0x1B]`, relaxed forward and backward
-  until nothing changes; cleared after, `0x01` kept), passing walls and gates if one of the player's
-  units stands inside, and explores the result. Runs once per battle on every machine.
+  player's units (scratch bits `0x04`/`0x08`/`0x10` of `[field+0x1B]`, relaxed forward and backward
+  until nothing changes; cleared after, `0x01` and the engine's `0x02` kept), passing walls and gates
+  if one of the player's units stands inside, and explores the result. Runs once per battle on every
+  machine. Until 2026-10-26 the flood's mark was `0x02`, so clearing it made every unit that had not
+  moved since battle start read as absent to `GetPlayer` in world battles. A plain move routed
+  through fog could walk onto a hidden stationary unit's hex (`TUnitHS.MoveTo` does not refuse),
+  `stepchk`'s look-ahead missed stationary units, and a group move could target one. Neither flood
+  writes `0x02` now; `--emulate` sets it before both and checks it survives.
 - `wallhp` takes the `mov eax,[ebp-8]; mov edx,[ebp-4]` ahead of the hit-point write in
   `TCityWall.SetHitPoints` (`0x405C12`, walls and gates) and `TCombatStructure.SetHitPoints`
   (`0x432A4A`, houses and the other buildings). On a drop from > 0 to 0 it writes the 0 early and runs
   `explore` for every live unit. A destroyed wall already stopped blocking the line test (the setter
   clamps hit points at 0); without this, the hexes behind a breach were seen but stayed black until a
   unit moved or was activated, because only then did anything explore.
-- `wclose` runs after every `explore` and after the battle-start flood: it unions the explored bits
-  of players 1..12 across neighbouring hexes that hold the same wall, gate, house or structure object.
-  Before it, only a wall's outer face was explored and the rest drew black (seen live on `TFort000`,
-  2026-10-24). Bits 12–15 of `[field+0x18]` are not player bits (set on scattered hexes in a live
+- `spart` decides whether a child's part is solid; `blocker`, `iswall` and `wclose` skip the rest.
+  `wclose` runs after every `explore` and after the battle-start flood: each hex where a wall, gate,
+  house or structure is solid and that was explored before the call gives its explored bits of
+  players 1..12 to the neighbouring hexes holding the same object. No chaining: the 2026-10-24 version
+  chained along whole wall rings. Bits 12–15 of `[field+0x18]` are not player bits (set on scattered hexes in a live
   battle; vanilla's border hexagon zeroes 12–31) and are never carried.
 - **`[map+0x30]` must never be set inside `ShowScene`.** It means "static scene invalid";
   `ShowScene` runs `UpdateStaticScene` and `UpdateDynamicScene` (our `uds`) and then
@@ -2748,7 +2769,8 @@ walled templates (71 checks), `--test` checks the line-walk model. Revert: `--un
 - **Sieges:** defenders inside see the field over their walls; attackers outside see into the
   streets only through a fallen section or gate. An attacker standing on a wall or gate hex (a breach,
   a fallen gate) counts as inside and sees out over the rest.
-- **Exploration sites:** most units see 4 hexes and explore 12; Night Vision gives 9 and 17.
+- **Exploration sites:** most units see 2 hexes and explore 10; Night Vision gives 3 + Vision and 8
+  more.
   AI defenders wake as soon as the human has explored within 2 of them, so they arrive out of the fog.
 - **Open battles:** the terrain is known from the start; the enemy army is unseen unless a unit's
   combat sight (9 without Vision) reaches it.

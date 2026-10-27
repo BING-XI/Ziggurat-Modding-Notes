@@ -394,7 +394,7 @@ BUILDERS = [   # name, builder; laid out in this order, 16-byte aligned
     ("qualifies", c_qualifies),
     ("val", c_val),
     ("valex", lambda va: c_zeroed(va, ORIG_VALEX, 4, 4)),
-    ("fcval", lambda va: c_zeroed(va, ORIG_FCVAL, 8, 8)),
+    ("fcval", lambda va: c_zeroed(va, ORIG_FCVAL, 4, 8)),
     ("count", c_count),
     ("fcpre", c_fcpre),
     ("fcexec", c_fcexec),

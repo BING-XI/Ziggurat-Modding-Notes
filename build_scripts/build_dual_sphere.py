@@ -22,6 +22,8 @@ SITES (all rel32 retargets; nothing displaced)
   gate    0x5584601F  build_spellcast_herotier.py's non-hero tail `jmp cave_tiergate` -> cave_gate:
           a sphere-7 spell compares Spellcasting (vcall +0x144, item-aware) >= tier + 1; anything
           else goes on to cave_tiergate.  Heroes never reach this tail (ungated by ruling).
+  rstep   0x5577CD68  NewTurn's `call GetNetPowerToResearch` -> cave_rstep (below), which ends `jmp`
+          to it.
   mastery 0x557894F8  build_mastery_cost.py's hook `jmp cave` -> cave_mastery: a dual spell gets
           the per-sphere step (opposed x1.5, own x0.75) for each of its two spheres; anything else
           goes on to that script's cave.
@@ -35,6 +37,23 @@ cave_grant: one registry pass counts, per (sphere 1-6, tier 1-4), the spells a t
   ExecuteSpellResearched and a TLocationTextEventLog "Spell learned: <name>" goes to that player's
   logbook (history only, no popup).  Skips player id 0.
   Tower-bought spells count as known, so buying the last missing spell of a tier completes it.
+cave_catchup (owner, 2026-10-26: a spell Ziggurat adds to a tier comes with that tier): called first
+  by cave_grant.  A spell ADDED to a single-sphere tier (ids 79-99 and 109) is granted, with the same
+  "Spell learned" line, to a player who knows every vanilla member of its (sphere, tier) group, with
+  the same filter.  It reaches games whose tier was completed before the spell existed (Regeneration
+  was missing from every Water I granted before 2026-10-22; such a player saw it as a lone "Water I"
+  research entry).  New tiers already include it: tier research and day 1 walk the whole registry.
+  ExecuteSpellResearched clears the current research when it is the granted spell, as a tome does.
+  Then cave_grant's own count sees the spell as known, so a dual tier waiting on it follows the same
+  turn.
+cave_rstep (2026-10-27, the owner's report: a "Secret I" entry -- Taint the Flame, Dwarven Satchels,
+  Curse of Lethe, Mistform, Entangle -- under research): 0x5577CD68, NewTurn's research step `call
+  GetNetPowerToResearch` -> cave_rstep, which ends `jmp` to it.  A game that chose Earth II before
+  2026-10-26 with Entangle as the entry's spell kept researching spell 111 after it became dual (7, 1);
+  its completion would have granted every dual tier-1 spell.  Before the points are taken, research
+  of a MOVED spell moves to the first spell of the spell's old group that ValidResearchSpell accepts
+  (Entangle -> Earth II), the points already spent kept; with none, the research is cleared.  Runs
+  before the completion grant, so it reaches a research due to complete that very turn.
 
 Slot 0x558B6000-0x558B67FF, exclusive.  PIC.  No RNG.  Surgical --undo.
 
@@ -50,12 +69,24 @@ import aowepack_patch as P
 from aowepack_patch import asm, run
 from piccave import pic, ansistr
 
-DEATH, FIRE = 2, 5
+LIFE, DEATH, EARTH, AIR, FIRE, WATER = 1, 2, 3, 4, 5, 6
 # spell id -> (first sphere, second sphere).  The first-named sphere goes on the left of the icon.
 DUALS = [
-    (80, DEATH, FIRE),      # Taint the Flame      (build_taint_flame.py)
-    (81, DEATH, FIRE),      # Pillar of Banefire   (build_pillar_banefire.py)
+    (80, DEATH, FIRE),      # Taint the Flame      (build_deathfire_combat.py)
+    (81, DEATH, FIRE),      # Pillar of Banefire   (build_deathfire_combat.py)
     (82, DEATH, FIRE),      # Enmity of Nine Hells (build_demon_curse.py)
+    (83, EARTH, FIRE),      # Surtr's Chasm        (build_surtrs_chasm.py)
+    (84, EARTH, FIRE),      # Dwarven Satchels     (build_satchels.py)
+    (85, EARTH, FIRE),      # Awaken Volcano       (build_awaken_volcano.py)
+    (86, DEATH, WATER),     # Curse of Lethe       (build_lethe.py)
+    (87, DEATH, WATER),     # Blessing of Stygia   (build_blessing_stygia.py)
+    (88, AIR, WATER),       # Mistform             (build_airwater_ench.py)
+    (89, AIR, WATER),       # Mist                 (build_mist.py)
+    (90, AIR, WATER),       # Static Shield        (build_airwater_ench.py)
+    (111, LIFE, EARTH),     # Entangle (vanilla; moved from Earth, build_entangle_dual_pfs.py)
+    (92, EARTH, AIR),       # Meteor Storm         (build_meteor_storm.py)
+    (93, DEATH, EARTH),     # Imbue Altar          (build_imbue.py)
+    (94, LIFE, EARTH),      # Imbue Spring         (build_imbue.py)
 ]
 DUAL_SPHERE = 7             # the sphere byte every dual spell carries
 MAX_DUALS = 63
@@ -66,6 +97,13 @@ DUAL_FIND = 0x558B6100      # PINNED: in EDX = spell id; out EAX = entry or 0 (Z
 CAVE_GRANT = 0x558B6140
 CAVE_GATE = 0x558B6340
 CAVE_MASTERY = 0x558B63A0
+CAVE_CATCHUP = 0x558B6400
+ADDED = ((79, 99), (109, 109))   # spell ids Ziggurat added to single-sphere tiers (79 Regeneration,
+                                 # 91 Weight of the World, 109 Embrittle; dual ids are skipped by sphere)
+CAVE_RSTEP = 0x558B6580
+H_RSTEP = 0x5577CD68                 # NewTurn's research step: `call GetNetPowerToResearch`
+NETPOWER, VALID_RESEARCH = 0x5577CF80, 0x5577CFF0
+MOVED = ((111, 3, 2),)               # (spell, its old sphere, its old tier): Entangle was Earth tier 2
 
 AOWHSSET = 0x558FA044       # [.] = AoWHSSet; [+0x84] = TSpellControl
 GETCOUNT, GETSPELL = 0x55779AC0, 0x55779AC8
@@ -123,6 +161,8 @@ def cave_grant():
         mov  eax, dword ptr [ebp + 0x10]
         cmp  byte ptr [eax + 0xa6], 0
         je   Ldone
+        mov  eax, ebp
+        call {CAVE_CATCHUP:#x}
         mov  edi, esp
         xor  eax, eax
         mov  ecx, 12
@@ -253,6 +293,191 @@ def cave_grant():
                ansistr("Spell learned: "))
 
 
+def cave_catchup():
+    """eax = magic control; all registers kept.  Grid on the stack: [esp+0x00..0x17] the vanilla
+    members of each (sphere-1)*4 + tier-1 group (the spells ADDED excluded), [esp+0x18..0x2F] how
+    many of them the player knows.  ebp = magic control, esi = spell control, ebx = anchor, edi = id.
+    Lgroup: edi -> CF clear and ecx = the group index for a spell a tier grant would give."""
+    skip = "".join(f"""
+        cmp  edi, {lo}
+        jl   Lr{k}
+        cmp  edi, {hi}
+        jle  Lgrid
+    Lr{k}:""" for k, (lo, hi) in enumerate(ADDED))
+    grants = "".join(f"""
+        mov  edi, {hi + 1}
+    La{k}:
+        dec  edi
+        cmp  edi, {lo}
+        jl   Lae{k}
+        call Lone
+        jmp  La{k}
+    Lae{k}:""" for k, (lo, hi) in enumerate(ADDED))
+    src = f"""
+        pushad
+        sub  esp, 0x30
+        mov  ebp, eax
+        mov  edi, esp
+        xor  eax, eax
+        mov  ecx, 12
+        cld
+        rep stosd
+        {{ANC}}
+        mov  eax, dword ptr [ebx + {{HSSET}}]
+        mov  esi, dword ptr [eax + 0x84]
+        mov  eax, esi
+        call {GETCOUNT:#x}
+        mov  edi, eax
+    Lgrid:
+        dec  edi
+        js   Lgriddone
+        {skip}
+        call Lgroup
+        jc   Lgrid
+        inc  byte ptr [esp + ecx]
+        push ecx
+        mov  eax, dword ptr [ebp + 0x30]
+        mov  edx, edi
+        call {INDEXOF:#x}
+        pop  ecx
+        inc  eax
+        je   Lgrid
+        inc  byte ptr [esp + ecx + 0x18]
+        jmp  Lgrid
+    Lgriddone:
+        {grants}
+        add  esp, 0x30
+        popad
+        ret
+
+    Lone:
+        mov  eax, dword ptr [ebp + 0x30]
+        mov  edx, edi
+        call {INDEXOF:#x}
+        inc  eax
+        jne  Lret
+        call Lgroup
+        jc   Lret
+        mov  al, byte ptr [esp + ecx + 4]
+        test al, al
+        je   Lret
+        cmp  al, byte ptr [esp + ecx + 0x1c]
+        jne  Lret
+        mov  eax, ebp
+        mov  edx, edi
+        call {EXEC_RESEARCHED:#x}
+        mov  eax, dword ptr [ebx + {{EVCELL}}]
+        mov  dl, 1
+        xor  ecx, ecx
+        call {EVLOG_CREATE:#x}
+        push eax
+        mov  edx, dword ptr [ebp + 0x10]
+        mov  dl, byte ptr [edx + 0xa6]
+        mov  byte ptr [eax + 0x10], dl
+        mov  eax, esi
+        mov  edx, edi
+        call {GETSPELL:#x}
+        mov  ecx, dword ptr [eax + 8]
+        lea  edx, [ebx + {{LIT}}]
+        mov  eax, dword ptr [esp]
+        add  eax, 0x18
+        call {LSTRCAT3:#x}
+        mov  eax, dword ptr [ebp + 0x10]
+        mov  eax, dword ptr [eax + 0xd8]
+        mov  edx, dword ptr [esp]
+        call {ADD_EVENT:#x}
+        pop  eax
+        mov  edx, dword ptr [eax]
+        call dword ptr [edx + 0x2c]
+    Lret:
+        ret
+
+    Lgroup:
+        mov  eax, esi
+        mov  edx, edi
+        call {GETSPELL:#x}
+        test eax, eax
+        je   Lno
+        movzx ecx, byte ptr [eax + 0x20]
+        dec  ecx
+        cmp  ecx, 5
+        ja   Lno
+        movzx edx, byte ptr [eax + 0x21]
+        dec  edx
+        cmp  edx, 3
+        ja   Lno
+        cmp  byte ptr [eax + 0x22], 2
+        ja   Lno
+        lea  ecx, [ecx*4 + edx]
+        push ecx
+        mov  edx, dword ptr [eax]
+        call dword ptr [edx + 0x64]
+        pop  ecx
+        test al, al
+        je   Lno
+        clc
+        ret
+    Lno:
+        stc
+        ret
+    """
+    return pic(src, CAVE_CATCHUP, "ebx",
+               {"HSSET": AOWHSSET, "EVCELL": EVLOG_CELL, "LIT": ("TAIL", 8)}, ansistr("Spell learned: "))
+
+
+def cave_rstep():
+    """NewTurn's research step, `call GetNetPowerToResearch` (eax = esi = magic control), before the
+    points are taken and the completion grant runs.  If the research in progress is a spell that
+    became dual (MOVED), it moves to the first spell of the spell's old group that
+    ValidResearchSpell accepts, the points already spent kept; with none, the research is cleared
+    (+0x34 = 0, +0x38 so high nothing completes this turn).  Then the replayed call."""
+    moved = "".join(f"""
+        cmp  dword ptr [ebp + 0x34], {sid}
+        jne  Lm{k}
+        mov  bx, {sph | (tier << 8):#x}
+        jmp  Lfix
+    Lm{k}:""" for k, (sid, sph, tier) in enumerate(MOVED))
+    src = f"""
+        pushad
+        mov  ebp, eax
+        {moved}
+        jmp  Lout
+    Lfix:
+        {{ANC}}
+        mov  eax, dword ptr [esi + {{HSSET}}]
+        mov  esi, dword ptr [eax + 0x84]
+        mov  eax, esi
+        call {GETCOUNT:#x}
+        mov  edi, eax
+    Lscan:
+        dec  edi
+        js   Lnone
+        mov  eax, esi
+        mov  edx, edi
+        call {GETSPELL:#x}
+        test eax, eax
+        je   Lscan
+        cmp  word ptr [eax + 0x20], bx
+        jne  Lscan
+        cmp  byte ptr [eax + 0x22], 2
+        ja   Lscan
+        mov  edx, eax
+        mov  eax, ebp
+        call {VALID_RESEARCH:#x}
+        test al, al
+        je   Lscan
+        mov  dword ptr [ebp + 0x34], edi
+        jmp  Lout
+    Lnone:
+        mov  dword ptr [ebp + 0x34], 0
+        mov  dword ptr [ebp + 0x38], 0x3fffffff
+    Lout:
+        popad
+        jmp  {NETPOWER:#x}
+    """
+    return pic(src, CAVE_RSTEP, "esi", {"HSSET": AOWHSSET})
+
+
 def cave_gate():
     return asm(f"""
         cmp  byte ptr [eax + 0x20], {DUAL_SPHERE}
@@ -330,11 +555,13 @@ def cave_mastery():
 def main():
     blobs = [("TABLE", TABLE, table_blob()), ("dual_find", DUAL_FIND, cave_find()),
              ("cave_grant", CAVE_GRANT, cave_grant()), ("cave_gate", CAVE_GATE, cave_gate()),
-             ("cave_mastery", CAVE_MASTERY, cave_mastery())]
+             ("cave_mastery", CAVE_MASTERY, cave_mastery()), ("cave_catchup", CAVE_CATCHUP, cave_catchup()),
+             ("cave_rstep", CAVE_RSTEP, cave_rstep())]
     hooks = [
         (H_GRANT, rel(H_GRANT, UPDATE, 0xE8), rel(H_GRANT, CAVE_GRANT, 0xE8)),
         (H_GATE, rel(H_GATE, TIERGATE, 0xE9), rel(H_GATE, CAVE_GATE, 0xE9)),
         (H_MASTERY, rel(H_MASTERY, MASTERY_CAVE, 0xE9), rel(H_MASTERY, CAVE_MASTERY, 0xE9)),
+        (H_RSTEP, rel(H_RSTEP, NETPOWER, 0xE8), rel(H_RSTEP, CAVE_RSTEP, 0xE8)),
     ]
     # Pre-conditions: the two chained scripts must be in place, or our jumps lead nowhere.
     d = open(P.TARGET, "rb").read()

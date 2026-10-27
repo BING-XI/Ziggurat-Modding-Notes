@@ -578,6 +578,46 @@
   "unit": "UnitSpells",
   "vanilla": null
  },
+ "93": {
+  "class": "TLevelTerrain",
+  "name": "Surtr's Chasm",
+  "note": "added by build_surtrs_chasm.py 2026-10-25 -- a TLevelTerrain instance (Earth/Fire, tier 2)",
+  "spell_id": 83,
+  "unit": "GlobalTargetSpells",
+  "vanilla": null
+ },
+ "94": {
+  "class": "TEnchantWeapon",
+  "name": "Dwarven Satchels",
+  "note": "added by build_satchels.py 2026-10-25 -- a TEnchantWeapon instance granting the enchantment 0x4E, which carries the attack 0x4F (Earth/Fire, tier 1)",
+  "spell_id": 84,
+  "unit": "UnitSpells",
+  "vanilla": null
+ },
+ "95": {
+  "class": "TLevelTerrain",
+  "name": "Awaken Volcano",
+  "note": "added by build_awaken_volcano.py 2026-10-25 -- a TLevelTerrain instance whose ritual is a TSpellWardEnchantment record of type 0x56 (Earth/Fire, tier 3)",
+  "spell_id": 85,
+  "unit": "GlobalTargetSpells",
+  "vanilla": null
+ },
+ "96": {
+  "class": "TEntangle",
+  "name": "Curse of Lethe",
+  "note": "added by build_lethe.py 2026-10-25 -- a TEntangle instance putting units on 7 hexes to sleep (status 0x50) (Death/Water, tier 1)",
+  "spell_id": 86,
+  "unit": "CombatSpells",
+  "vanilla": null
+ },
+ "97": {
+  "class": "TSpellWard",
+  "name": "Blessing of Stygia",
+  "note": "added by build_blessing_stygia.py 2026-10-25 -- a TSpellWard instance whose record (type 0x57) grants the day status 0x51 by water (Death/Water, tier 2)",
+  "spell_id": 87,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": null
+ },
  "110": {
   "class": "TSolarFlare",
   "name": "Solar Flare",
@@ -661,7 +701,8 @@
   "name": "Entangle",
   "spell_id": 111,
   "unit": "CombatSpells",
-  "vanilla": "Entangle"
+  "vanilla": "Entangle",
+  "note": "moved to Life/Earth dual tier 1 by build_entangle_dual_pfs.py 2026-10-26 (sphere 7; build_dual_sphere.py's TABLE row)"
  },
  "122": {
   "class": "TTremors",
@@ -795,5 +836,61 @@
   "spell_id": 130,
   "unit": "CombatSpells",
   "vanilla": "Animate Dead"
+ },
+ "98": {
+  "class": "TWindWalking",
+  "name": "Mistform",
+  "note": "added by build_airwater_ench.py 2026-10-26 -- a TWindWalking instance granting enchantment 0x54: Floating, and the next landed damage ends it instead (Air/Water, tier 1)",
+  "spell_id": 88,
+  "unit": "UnitSpells",
+  "vanilla": null
+ },
+ "99": {
+  "class": "TDeathRay",
+  "name": "Mist",
+  "note": "added by build_mist.py + build_mist_tc.py 2026-10-26 -- a TDeathRay instance on High Prayer's instant class: enemies without True Seeing see 3 hexes less for the battle (Air/Water, tier 2)",
+  "spell_id": 89,
+  "unit": "CombatSpells",
+  "vanilla": null
+ },
+ "100": {
+  "class": "TWindWalking",
+  "name": "Static Shield",
+  "note": "added by build_airwater_ench.py + build_staticshield.py 2026-10-26 -- a TWindWalking instance granting enchantment 0x55: Lightning Immunity; melee strikers make a lightning stun check (Air/Water, tier 3)",
+  "spell_id": 90,
+  "unit": "UnitSpells",
+  "vanilla": null
+ },
+ "101": {
+  "class": "TTremors",
+  "name": "Weight of the World",
+  "note": "added by build_wotw.py + build_wotw_tc.py 2026-10-26 -- a TTremors instance on Geyser's battle class: one strike on every unit within 6 hexes, then a battle-long field (Earth, tier 2; AoWx's Gravity Well)",
+  "spell_id": 91,
+  "unit": "CombatSpells",
+  "vanilla": null
+ },
+ "102": {
+  "class": "TFireStormSpell",
+  "name": "Meteor Storm",
+  "note": "added by build_meteor_storm.py 2026-10-26 -- a TFireStormSpell instance on storm type 0 (vanilla's unused Blast Storm): it lands at the caster's second turn start after the cast (Earth/Air, tier 2)",
+  "spell_id": 92,
+  "unit": "Storms",
+  "vanilla": null
+ },
+ "103": {
+  "class": "TLevelTerrain",
+  "name": "Imbue Altar",
+  "note": "added by build_imbue.py 2026-10-26 -- a TLevelTerrain instance that places the set's Blood Shrine at the target (Death/Earth, tier 2)",
+  "spell_id": 93,
+  "unit": "GlobalTargetSpells",
+  "vanilla": null
+ },
+ "104": {
+  "class": "TLevelTerrain",
+  "name": "Imbue Spring",
+  "note": "added by build_imbue.py 2026-10-26 -- a TLevelTerrain instance that places the set's Spring of Life at the target (Life/Earth, tier 2)",
+  "spell_id": 94,
+  "unit": "GlobalTargetSpells",
+  "vanilla": null
  }
 }

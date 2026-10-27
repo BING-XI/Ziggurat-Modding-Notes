@@ -1550,9 +1550,11 @@ these gates read ability **presence**, not a cached stat.
 2026-09-09). `TDurationAbility.NewTurn @0x55764D30` gates on `[+0x28] == 1` and `NewCombatTurn
 @0x55764D8C` on `== 2`, so neither ever ticks it down; only `CombatDone @0x55764E00` — gate
 `(mode−2) < 2` unsigned, i.e. modes 2 and 3 — removes it, at battle end. So in vanilla the *only*
-mid-battle exits are Healing (`THealingAbility.HealUnit @0x5576C41C`) and Remedy. **Damage now
-clears it too** — see the next section, which also makes scope decision 5 below ("ranged
-deliberately not gated") near-moot: a panicked unit that gets shot stops being panicked.
+mid-battle exits are Healing (`THealingAbility.HealUnit @0x5576C41C`) and Remedy. **A Resistance
+check now ends it too** (`build_panic_cleardamage.py`, owner 2026-10-26): power 10, Cause Fear's,
+each time damage lands and at the start of each of the unit's own side's turns; it recovers on
+a failed HitRole(10 − RES), 5×RES % clamped 10–90. From 2026-09-09 until then any landed damage
+cleared it; Curse of Lethe's sleep took that rule over.
 
 ### The patch — six hooks
 
@@ -2017,10 +2019,11 @@ cannot be retuned from `Spells.pfs`, it is a DLL patch.**
 
 | R | chance vs Dispel I/II/III (vanilla) | spells |
 |---|---|---|
-| 3 | 50/60/70% | Bless, Dark Gift, Enchant Weapon, Fury, Haste, Stone Skin |
-| 4 | 40/50/60% | Concealment, Fire Aura, Free Movement, Healing Water, Holy/Unholy Champion |
-| 5 | 30/40/50% | Liquid Form, Wind Walking |
-| 6 | 20/30/40% | Water Walking |
+| 2 | 60/70/80% | Ziggurat: Dwarven Satchels, Mistform |
+| 3 | 50/60/70% | Bless, Dark Gift, Enchant Weapon, Fury, Haste, Stone Skin; Ziggurat: Regeneration |
+| 4 | 40/50/60% | Concealment, Fire Aura, Free Movement, Healing Water, Holy/Unholy Champion; Ziggurat: Enmity of Nine Hells, Static Shield |
+| 5 | 30/40/50% | Liquid Form |
+| 6 | 20/30/40% | Water Walking, Wind Walking |
 | 10 | 10/10/10% | Cosmetic Surgery (the floor) |
 
 ⚠ Only the `UnitSpells.*` rows above are verified; `R` was also read off several `CitySpells`/`Dungeon`/

@@ -134,6 +134,27 @@ Roman-numeral literals @`0x611020`+, ICONTAB @`0x61105C` (`0,27,30,33,36,42,39,0
 | `cave_costskip` | `0x611AD0` (live) | 7 B @`0x42EAB1` → jmp+2nop | modes 2/3: jump to `0x42ECB1`, past the "Cost:"/"Upkeep:" mana sections **and past `FillSlot`'s colour/enable block between them** — `build_research_slotstate.py` puts that state back (see "Greyed, unclickable research entries" below) |
 | nil-pushes | — | 4 byte patches @`0x42EDA7`/`AD`/`0x42EE0D`/`13` | research turns label reads just "Turns: N" |
 
+### A spell added to a tier comes with it (`build_dual_sphere.py`'s `cave_catchup`, 2026-10-26)
+
+Owner's ruling: a spell Ziggurat adds to a (sphere, tier) belongs to that tier.  Tier research and
+the day-1 grant walk the whole registry, so a tier completed after the spell existed includes it.
+A tier completed BEFORE did not: every Water I granted before 2026-10-22 lacked Regeneration, which
+then showed as a lone "Water I" entry in the research book (the owner's report; the raw research
+lists in `Save/autosave.asg` and every game in `EmailIn/` showed it).  At every player's turn
+start `cave_catchup` grants each spell in `ADDED` (ids 79-99 and 109) to a player who knows every
+vanilla member of its group, with a "Spell learned" line; before the first turn of this build it
+would have reached Regeneration in all ten games and Weight of the World in five.  A spell added
+later with an id outside `ADDED` needs a new range there.
+
+**A spell moved INTO a dual tier strands research in progress** (2026-10-27, the owner's report).
+Research stores the entry's representative spell id.  Games that chose Earth II with Entangle as
+its representative kept researching spell 111 after it became Life/Earth dual tier 1; the book
+showed "Secret I" with every dual tier-1 spell, and the completion grant would have given them all
+(two players in Nathyazik 2026, one in Swolterwood 1v1, due next turn).  `build_dual_sphere.py`'s
+`cave_rstep` (NewTurn's research step, before the points are taken) moves research of a spell in
+its `MOVED` table to a researchable spell of the old group, keeping the points spent.  Moving
+another vanilla spell into a dual tier needs a `MOVED` row.
+
 ### Magic tab + Power Distribution name the group (`build_magictab_tiername.py`, 2026-09-27)
 
 Four `call TAOWLabel.SetGText` operands retargeted (nothing displaced) plus one 5-byte `jmp` in
@@ -1501,10 +1522,9 @@ block** — `0x557792E8` (6), `0x557EBAFD` (1), `0x557EF981` (1), `0x55847000` (
 | spell description | `build_pfs_typos.py` — `Release/Spells.pfs` record **75** (spell id 65 + 10), tag `0x0A`; length-changing write, 128 → 109 chars (tuple `old`: vanilla + the 2026-09-06 text), CRC recomputed | "Wards the paths of the arcane. While any Astral Ward is active, no player can cast Town Gate or Warp Party." |
 | manual | `build_ziggurat_manual.py` — `NEWMECH_SPELLWARD` in `r_newmech()` | seven bullets under the heading "Astral Ward". ⚠ The spell **table** still says Spell Ward: names there come from the historical workbook, which is not edited (same as Grip of Winter / Freeze Water) |
 
-⚠ **The manual does not print spell descriptions.** `read_game_spells()` parses tag `0x0A`, but
-its only consumer is `merge_spell_icons()`; the `desc` field is dropped and the spell cards render
-Mana / Upkeep / Research alone. The rewritten record-75 text reaches the player through the
-**in-game spell book only**. Do not expect the `.pfs` edit to show up in `Ziggurat Manual.html`.
+Every manual spell card prints its record's tag `0x0A` text (`merge_spell_descs()`, 2026-10-26),
+so the rewritten record-75 text shows on the Astral Ward card. The card's vanilla reading is the
+same record in `Release - Vanilla/Spells.pfs`.
 
 ### Revert
 

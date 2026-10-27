@@ -2120,6 +2120,39 @@ retreat. Manual combat is untouched.
 
 ---
 
+## 14. The auto-combat window re-rolled Burning — units "died", acted, and lived
+
+`build_replay_turnseed.py`, applied 2026-10-27. Vanilla. Owner's report: units that die to Burning
+in auto-combat come back to life, and sometimes still act after they die.
+
+The window is not the battle. `TFastCombat.Execute` runs the whole fight; `AoWz.exe`'s fast-combat
+window then plays the battle's `TCombatLogbook` through a `TCombatViewer`, which starts from the
+logbook's copy of the battle-start `TCombatData` and calls each recorded action's `Play`; at the end
+position it loads the logbook's copy of the final state. Strike actions carry the damage and effect
+bits their `Generate` rolled, so they replay exactly. `TNewCombatTurnCA` does not: its `Execute`
+@`0x5572A308` runs every unit's turn-start abilities, and `TBurningAbility.NewCombatTurn` @`0x557BA3D4`
+rolls its `HitRole` there. `TNewCombatTurnCA.Play` @`0x5572A348` calls that `Execute` again on the
+viewer's copy, so every Burning tick was rolled a second time from whatever `System.RandSeed` held. A
+tick that missed in the battle could kill in the window; the unit then still made the strikes the
+battle recorded, and the end position showed it alive, as it was in the battle. The battle's own
+result was always consistent.
+
+Fix: `TNewCombatTurnCA` grows `0x10 → 0x14`; the first `Execute` of each action stores `RandSeed` at
+`+0x10` and sets `+0x0D` (the battle, where nothing changes); every later `Execute` of it (the
+window, a slider drag) writes that seed back first, so the window rolls what the battle rolled. The
+two fields are saved with the action (tags `0x15`/`0x16`), so a replay from Event History after a
+load matches too; a battle saved before this patch replays as before. Searing Aura, Rime Aura and
+Smoky Haze roll in the same pass and are covered by the same seed. Addresses, caves and what was
+ruled out (signed-byte HP wrap, Reforming Flesh, Living Flame, lifesteal, Lucky, the round cap,
+Poisoned, Decay): the script's docstring.
+
+Not proven in game: the fix was checked by emulating both caves under unicorn, not by watching a
+replay. Any other roll made inside an action's `Execute` rather than its `Generate` would still be
+re-rolled by the window; none was found in vanilla, but a future cave on that path needs the same
+treatment.
+
+---
+
 ## Open items
 
 - ~~Turn Undead `GetTouchAttack`~~ — **settled 2026-09-03, it is doubled (18/20/22/24/8). See §12.**

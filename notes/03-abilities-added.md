@@ -191,7 +191,10 @@ call, since cut content can still reference an id that nothing currently registe
 `0x52` (Living Flame) and `0x53` (the Regeneration enchantment) taken from this list** — the first
 gap ids claimed. A crude scan of all three modules (`mov edx,imm32` / `mov dl,imm8` / `push imm8`
 followed by any call) found code for most gaps but none for `0x52`, `0x53`, `0x5B`, `0x85`; neither
-claimed id has an `Ability.pfs` record or an `AbilTypes` byte. A gap id needs no loop-ceiling bump. Free above the
+claimed id has an `Ability.pfs` record or an `AbilTypes` byte. **2026-10-25: `0x5B` (Enmity of Nine
+Hells' enchantment), `0x4E` and `0x4F` (Dwarven Satchels' enchantment and its flask) taken**;
+`re_tools/idladder.py` found `0x4E`/`0x4F` only inside generic range ladders, and `0x4F` now has an
+`AbilTypes` byte (2). A gap id needs no loop-ceiling bump. Free above the
 current max, under the hard ceiling described next: `0xCD` (1 id). Roughly **32 stateful
 slots** and, if the untested bit-only band below turns out to be sound, another **50 passive** slots
 — that is the shape of the budget, not a number to bank on unchanged.
@@ -2074,3 +2077,32 @@ fire get the same as a passive. The spell side is `04-spells-modded.md`, "Living
   — two specific ids in this project's own range would have read nonzero "fake" categories and been
   scored by the AI as attack actions of an undefined kind. Relocating to a fresh 256-entry table was
   necessary, not a tidiness preference.
+
+## Asleep (`0x50`) and Blessing of Stygia (`0x51`) — the Death/Water statuses
+
+Built 2026-10-25 with their spells (`05-spells-added.md`, "Death/Water").
+- **Asleep** (`build_lethe.py`): a `TStunnedAbility` instance whose VMT copy returns 5 from
+  GetTotalDuration; mode 2, Stunned's −4 Defence. Its tick player is the sleeper's own side, so it
+  misses 4 of its own turns. Locked through `TCombatUnit.GetLocked` (`0x55724BF7`), drawn with
+  Stunned's dazed stars (unit panel `0x557817F3`; the battlefield list of `build_ankh_battlefield.py`),
+  removed by damage that lands (`0x55726CB3`), by Remedy (`0x557E740F`) and, without a roll, by
+  Dispel Magic (`0x5576CAE7`). Record 90 from Stunned's (102), mask 0.
+- **Blessing of Stygia** (`build_blessing_stygia.py`): a `TDurationAbility` instance (mode 1, type
+  byte 4), VMT copy returning 1 from GetTotalDuration. It counts as Physical Protection in
+  `TAbilityOwner.GetAbProtectionTypesAll` (`0x5574F990`), the one reader every protection query goes
+  through. Record 91 from Nature's Blessing's (109), mask 0.
+
+## Mistform (`0x54`) and Static Shield (`0x55`) — the Air/Water enchantments
+
+Built 2026-10-26 with their spells (`05-spells-added.md`, "Air/Water"); both in
+`build_airwater_ench.py`, registered at `0x557BCBFA`, records 94 and 95 from Wind Walking's
+enchantment (175), mask 0.
+- **Mistform**: a `TWindWalkingEnchantment` instance, so ending it runs Wind Walking's terrain check.
+  It counts as Floating `0x3B` in `GetAbMoveTypesAll` (`0x5574F7B6`) and in `GetAbilityEnabled`
+  (`0x5577F5E0`). Damage above 0 that lands on its holder in battle (`0x55726C7D`) or on the world
+  map (`0x55781B37`) becomes 0 and removes it; the absorbed blow's effects are dropped
+  (`0x55724C1C`); a self-destructing holder loses it first (`0x557689F4`). The terrain check after
+  an absorb waits for the army's next `TArmy.Validate` (`0x5578CF7C`).
+- **Static Shield**: a `TUnitEnchantmentAbility` instance. It counts as Lightning Immunity `0x09` in
+  `GetAbImmunityTypesAll` (`0x5574FB7B`) and in `GetAbilityEnabled`. Its stun is
+  `build_staticshield.py`'s.

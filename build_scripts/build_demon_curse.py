@@ -75,6 +75,11 @@ SITES
             GetStrengthMax(dtAll); score = level + [spell+0x40], as vanilla's.
   aiown     0x5577B6FD  AIExecuteCastSpellAction's `TE[+0x28] = caster's owner` -> call cave_aiown
             + nop: id 82 writes the target's owner, which TUnitSpellTE.Validate requires.
+  info      0x5577AC94  TUnitSpell.GetCombatInfo's tail (8 B) -> jmp cave_info: id 82 sets the info's
+            byte 7 to 2, so tactical targeting (TCombatUnitSelectionControl.MouseDownEvent's side
+            test, 0x0041F5C3) takes enemy units; every unit spell reports 1 (friendly).  Battle
+            casting itself is SpellTypes[82] = 7 (build_battlecast_unitspells.py, owner 2026-10-25);
+            the cast still goes through ExecuteSpell, so vtu's refusals hold in battle.
   slots     0x557221B0 TUnitEnchantment +0x18, 0x5571B8E8 THuntAG +0x18, 0x557D87BC TRaidAG +0x18
             (ReadWrite, .reloc kept) -> cave_ench_rw / cave_hunt_rw / cave_raid_rw.
 
@@ -182,6 +187,7 @@ SITES = {   # name: (va, vanilla bytes, function lo, hi)
     "s1":        (0x557666DF, bytes.fromhex("538a44240750"), 0x557665E4, 0x5576670C),
     "ai":        (0x5577B460, bytes.fromhex("558bec83c4e8"), 0x5577B460, 0x5577B550),
     "aiown":     (0x5577B6FD, bytes.fromhex("8a4624884728"), 0x5577B658, 0x5577B784),
+    "info":      (0x5577AC94, bytes.fromhex("c64305ff5f5e5bc3"), 0x5577AC78, 0x5577AC9C),
 }
 VMT_SLOTS = {   # name: (slot va, vanilla target)
     "ench_rw": (0x557221B0, ENCH_RW),
@@ -1232,6 +1238,22 @@ def build_reg_spell(va):
     return pic(src, va, "ecx", {"CELL": DARKGIFT_CELL, "NAME": ("TAIL", 8)}, ansistr(SPELL_NAME))
 
 
+def build_info(va):
+    """TUnitSpell.GetCombatInfo's tail (EBX = the info, ESI = the spell): id 82 targets enemies in
+    battle (byte 7 = 2; every unit spell reports 1, friendly).  Register-only."""
+    return asm(f"""
+        mov  byte ptr [ebx + 5], 0xff
+        cmp  dword ptr [esi + 0x10], {SPELL_ID}
+        jne  i_out
+        mov  byte ptr [ebx + 7], 2
+    i_out:
+        pop  edi
+        pop  esi
+        pop  ebx
+        ret
+    """, va)
+
+
 # ---- layout -------------------------------------------------------------------------------------
 def layout():
     caves, at, va = [], {}, SLOT[0]
@@ -1269,6 +1291,7 @@ def layout():
     put("reg_ench", build_reg_ench(va))
     put("reg_spell", build_reg_spell(va))
     put("lit", ansistr(EVENT_TEXT))
+    put("info", build_info(va))
     return at, caves
 
 
@@ -1315,7 +1338,7 @@ call_to = lambda src, dst: b"\xE8" + struct.pack("<i", dst - (src + 5))
 _call_sites = {"reg_ench": "reg_ench", "reg_spell": "reg_spell", "sel1": "sel", "sel2": "sel",
                "post": "post", "roll": "roll", "death": "death", "aiown": "aiown"}
 _jmp_sites = {"vtu": "vtu", "vtp": "vtp", "refresh": "refresh", "raid": "raid", "cp": "cp",
-              "join": "join", "m3": "m3", "s1": "s1", "ai": "ai"}
+              "join": "join", "m3": "m3", "s1": "s1", "ai": "ai", "info": "info"}
 HOOKS = []
 for name, (va, van, _lo, _hi) in SITES.items():
     if name in _call_sites:
@@ -1334,7 +1357,7 @@ ENTRY = {"cu": 0x558B7000, "dvc": 0x558B7030, "isc": 0x558B7090, "event": 0x558B
          "raid": 0x558B76B0, "cp": 0x558B7700, "join": 0x558B7720, "death": 0x558B7750,
          "m3": 0x558B77F0, "s1": 0x558B7820, "ai": 0x558B7850, "aiown": 0x558B79D0,
          "ench_rw": 0x558B79F0, "hunt_rw": 0x558B7A20, "raid_rw": 0x558B7A40,
-         "reg_ench": 0x558B7A60, "reg_spell": 0x558B7AC0, "lit": EVENT_LIT}
+         "reg_ench": 0x558B7A60, "reg_spell": 0x558B7AC0, "lit": EVENT_LIT, "info": 0x558B7B70}
 assert AT == ENTRY, "the cave layout moved (the docstring's RNG sites move with it)"
 assert max(va + len(b) for _n, va, b in CAVES) <= SLOT[1]
 

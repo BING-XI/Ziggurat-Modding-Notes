@@ -1055,7 +1055,8 @@ Death/Fire also carries the groundwork every pair will use.
 - Mastery costs: both spheres' modifiers apply and multiply (opposed ×1.5, own ×0.75).
 - Caster family follows the class rule (combat Evoker, summon Conjurer, unit Enchanter, global Ritualist).
 - Spellbook icon: a new glyph per spell over a glow. A dual spell's glow is a yin-yang of its two
-  spheres' colours, the first-named sphere on the left, with the two opposite-colour dots. Glyphs,
+  spheres' colours, the first-named sphere on the left, without the two dots (owner, 2026-10-26:
+  they distracted from the glyph). Glyphs,
   glows and effects are previewed to the owner before they are written.
 - Combat effects are data: `Spells.pfs` tag `0xC` lists frame sequences from effect libraries with
   anchor offsets, and the spell's combat class decides which slot plays where. Geyser (id 118, class
@@ -1129,7 +1130,7 @@ order; undo in reverse.
 |---|---|---|
 | `build_dual_sphere.py` | AoWEPACK `0x558B6000` | side table + `dual_find` (pinned), turn-start grant, unit tier gate, two-sphere Mastery |
 | `build_dual_sphere_exe.py` | AoWz.exe `0x0062BC00` | "Death/Fire" sphere name in the book, research and tower windows; book tier |
-| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 156–158 (both twins) |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 156–158 (both twins); revised by the owner: Taint as the skull of AoW2's Death Storm icon with two swaying flames on each side (2026-10-26), Pillar without its top bar, Enmity as the face of AoW2's Damnation icon at 90 % (2026-10-26; halo and drops removed) |
 | `build_banefire_fx.py` | `Images/Effects/BANEFIRE.ILB` | palette-B flame, sparkle, spray and burst frames |
 | `build_deathfire_pfs.py` | `Spells.pfs` 90, 91 | Taint (High Prayer's record), Pillar (Geyser's) |
 | `build_deathfire_combat.py` | AoWEPACK `0x558B6800` | spells 80 and 81 registered from TDeathRay / TFireBall instances |
@@ -1155,6 +1156,491 @@ Choices made in the build, not in the design:
 Unproven: whether the hunt finder's 200-point search reaches a victim 16 hexes away over hard
 terrain; a Raid pack split by the AI loses its mark (and its recruitment block). The Next button has
 no alignment props (DFM budget), so it relies on `awNone` keeping its stored position.
+
+Changed after the build (owner, 2026-10-25): Regeneration (79) and Enmity of Nine Hells (82) are
+castable in battle, as every vanilla unit enchantment but Cosmagic Scrying is; Dwarven Satchels (84)
+was built that way. Built the same day:
+- `build_battlecast_unitspells.py` sets `SpellTypes[79]`, `[82]` and `[84]` to 7 (`AoWTCPCK.dpl`
+  data). The spells already carry the combat flag (`[spell+0xC] = 3` from their class constructors).
+- A battle cast ends in the spell's own `ExecuteSpell` (`TUnitSpell.ExecuteCA` → VMT `+0xB4`) on the
+  units behind the combat units, and its first step is `ValidTargetUnit` (VMT `+0x9C`). So every
+  hook of both spells works in battle, and a refused target fizzles.
+- Battle targeting takes its side from GetCombatInfo byte 7 (1 friendly, 2 enemy;
+  `MouseDownEvent` `0x0041F5C3`). Every unit spell reports 1, so `build_demon_curse.py`'s
+  `cave_info` makes Enmity report 2. Enmity cast in battle curses an enemy unit; its demons still
+  appear on the world map.
+- `build_spell_unit_target.py`'s `UNIT_ONLY` lists all three, so an empty hex refuses the cast. It
+  now tests a 128-bit set; its two other caves are pinned so the list can grow in place.
+- The tactical AI casts none of them in battle. Its spell loop (`0x00418740`) skips a spell whose
+  combat info byte 7 lacks bit 2. Enmity passes that test and is then valued at 0 by
+  `tcGetDamageValueEx`.
+
+### Earth/Fire — agreed design (owner, 2026-10-25; partly built, see "as built so far")
+
+The general rules above apply (grant, Spellcasting N+1, both Masteries, class caster families,
+tower research figures 80 / 160 / 240, yin-yang glow icons previewed before writing). None of the
+three is from AoWx. Inioch's Pyroclasm (AoWx Fire tier 4; `Inioch/share9/patch scripts/
+patch_pyroclasm_v1.py`, `_pyroclasm*_integration.txt`, `patch_terrain_armyhooks_v1.py`) is prior
+art for the volcano. It swaps medium and large mountains for the volcano art. It found that
+`TArmyHS.CanChangeTerrain` vetoes a terrain change under an army, and that once that veto is lifted,
+`ValidateTerrainEx 0x5578CC9C` kills units that cannot stand on the new terrain.
+
+**Dwarven Satchels** (tier 1, unit enchantment, Enchanter): 16 mana, no upkeep, castable on one of
+your units on the world map or in battle; one per unit, kept across battles until thrown.
+- In battle the unit throws it by clicking Dwarven Satchels in its ability list, then a hex within
+  4. A unit that already shoots keeps its own ranged attack.
+- The throw costs what a ranged attack costs, and using it ends the enchantment.
+- Throw Explosive Flask flies a steep lob like Hurl Boulders. Units in its path occasionally catch
+  it, and then it bursts on them instead: the game's own interception at a lob's arc.
+- Blast radius 1 (7 hexes). Every unit there is struck once, own units included: 10 ATK against
+  DEF, 15 fire damage, the normal fire chance to set Burning. Walls are unharmed.
+- The flask is unwieldy, after Myth's satchel charges (owner, after the build): it lands on the
+  aimed hex 4 times in 10 and on each of its six neighbours once in 10. Aiming shows those chances
+  as numbers on the seven hexes (40, 10, …). Both ability texts say "unwieldy" and give the
+  damage; the spell text does not.
+- AI: it casts it on its strongest units that have no ranged attack and no satchel. AI units and
+  auto-combat throw where the blast hits the most enemies.
+- Spellbook: "Gives a unit one expendable alchemical flask which can be thrown in battle."
+
+**Surtr's Chasm** (tier 2, world map, Ritualist): 35 mana, one-off, permanent, range 12.
+- It opens a jagged line of up to 6 Chasm hexes from the cast hex. Each new hex grows from the
+  last one, in a semi-random direction, and touches no other hex of this cast. The line stops early
+  when no valid next hex is left.
+- A valid hex is land with no unit or structure; forests, hills and roads are swallowed and lava
+  counts. Water, mountains and Sky are skipped.
+- Beneath each new chasm hex, Rock becomes Earth; other terrain stays.
+- Castable on the Surface and the three cave levels, never the Firmament. Faery, once it exists, is
+  to be allowed too. On the lowest enabled level the chasm is a bottomless pit: nothing climbs or
+  flies down through it.
+- The AI never casts it.
+- Spellbook: "Tears a jagged chasm into the ground. Climbers can scale its edges between map levels."
+- Added after the first cast (owner): water next to the new chasm drains to Dirt; a ship there is
+  either destroyed or stranded (the build strands it); the cast sounds as Tremors does, louder; the
+  hexes open one at a time, about 0.4 s apart.
+
+**Mountaineering climbs chasm edges** (any Chasm hex, map-placed ones included). In the path search
+these are links, as caves, teleporters and one-hex bridges are (`TMoveControl.ProcessHexagon
+0x557456F8` → `TMapField.MoveExclusive` → `ExecuteExternalMove 0x55745928`). In this list C is a
+chasm hex, C′ the hex beneath it, and A a land hex beside C.
+- Down from A to C′, and up from C′ to A.
+- Up the wall from X′ to X, where X is land beside a chasm and X′ the hex beneath X, and back down.
+- The landing hex is priced with the party's own movement table, so it needs Tunneling for Earth,
+  Swimming for water, and so on. It must be empty or hold the party's own side, as at a cave.
+- A climb needs at least 4 movement points and uses all of them; a longer path continues next turn.
+- Every moving unit needs Mountaineering, and the landing hex must suit them all. A transport carries
+  its passengers, as with flying.
+- The party is never shown on the chasm: it vanishes at the edge and reappears.
+- The AI climbs, since it routes with the same search.
+- The move is executed as cave travel; `build_fly_levels.py` already widened `ValidPath` for
+  two-node vertical paths. This replaces the click-Mountaineering idea.
+
+**Awaken Volcano** (tier 3, world map ritual, Ritualist): 40 mana, upkeep 5 from the cast until the
+spreading ends, range 12 from the caster. The AI never casts it.
+- Targets a 4-hex mountain, which becomes the small volcano (`Mountain\WL_VOLCS.ILB`, 140×96, 10
+  frames), or a 9-hex one, which becomes the large (`WL_VOLCL.ILB`, 186×134). The game has only
+  1-, 4- and 9-hex mountains; 1-hex ones are refused. The mountain's hexes turn to Wasteland.
+- Lava starts after d3 turns (rolled at the cast). Then for 10 turns it spills d2 lava hexes a
+  turn. Each new hex touches the volcano or this volcano's earlier lava, with a preference, less
+  strict than the chasm's, for linear flow lines over a rounded pool.
+- Lava forms on any land without a city or structure. Forests, hills and roads burn away and units
+  are no barrier; water, ice, mountains and Sky are skipped. Snow next to new lava becomes Steppe,
+  and Ice next to it becomes Water, permanently.
+- Units on a hex that turns to lava:
+  - Units that can stand on lava (Fire Immune, flying, floating) stay, unharmed.
+  - Each other unit loses d20 HP, rolled per unit, halved rounding down by Fire Protection and
+    ×1.5 rounding up by Fire Weakness, and is moved to an adjacent hex it can enter. That hex is
+    never lava, and must be empty or hold its own side's party with room; a friendly ship there
+    takes it aboard. A party may split across several hexes.
+  - A unit with no such hex dies.
+- The volcano and the spell's lava carry Grip of Winter's glitter while the ritual runs. When the
+  spreading ends, or the upkeep goes unpaid, the ritual ends: the lava and the volcano stay for
+  good, the glitter goes and the upkeep stops.
+- Spellbook: "Wakes a mountain into a volcano that spills lava over the land around it."
+
+Left to the build, unless the owner rules otherwise:
+- The order in which a shunted unit's hexes are tried (random).
+- Whether "touches no other hex" in Surtr's Chasm also counts chasm hexes that were already there
+  (read as: only this cast's).
+- The flask's projectile and blast art, previewed first.
+
+### Earth/Fire — as built so far (2026-10-25)
+
+All four are built.
+
+| script | where | what |
+|---|---|---|
+| `build_chasm_climb.py` | AoWEPACK `0x558B9000` | climb links at the path search's three link points, the per-unit walk's climb rule, the drain after a climb |
+| `build_surtrs_chasm.py` | AoWEPACK `0x558B9800` | spell 83 (a TLevelTerrain instance): registration, validity, one-hex cursor, the chasm line |
+| `build_surtrs_chasm_pfs.py` | `Spells.pfs` 93 | Level Terrain's record 28, re-numbered; book icon 159 |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icon 159: Tremors' glyph mirrored (owner, 2026-10-25; it replaced draft D); icon 160: a satchel with a flask cut out of it (draft B, the owner's pick, redrawn at 65 % of its first size: the first was oversized); icon 161: a volcano cone with a glowing crater, one lava stream and embers (draft A, the owner's pick) |
+| `build_satchels.py` | AoWEPACK `0x558BA800` | spell 84 (a TEnchantWeapon instance), the enchantment `0x4E` and the attack `0x4F` (run-time VMT copies), the AI's choice of target unit, the auto-combat throw |
+| `build_satchels_tc.py` | AoWTCPCK `0x0043F000` | manual combat: the attack's category, the lob, the scatter, the 7-hex burst, the satchel used up, the AI's aim, the landing chances drawn while aiming |
+| `build_satchels_pfs.py` | `Spells.pfs` 94, `Ability.pfs` 88/89 | Enchant Weapon's records 26 and 164 and Hurl Flaming Skull's 201, re-numbered, with the owner's texts; book icon 160; Hurl Boulder's sprite slots; the impact sound |
+| `build_flask_sound.py` | `Sfx\Zatk\FlaskBurst.wav` | the impact sound, mixed from `Ice.WAV` and `Explod1.wav` |
+| `build_battlecast_unitspells.py` | AoWTCPCK data | `SpellTypes[84] = 7` |
+| `build_awaken_volcano.py` | AoWEPACK `0x558BB000` | spell 85 (a TLevelTerrain instance): target test, the mountain-to-volcano swap, the ritual record (a re-typed `TSpellWardEnchantment`) with its turn hook, save block and end hook, the lava, the units' shunts, the glitter; Surtr's Chasm's TLevelTerrain caves dispatch id 85 to it |
+| `build_awaken_volcano_pfs.py` | `Spells.pfs` 95 | Level Terrain's record 28, re-numbered; Surtr's Chasm's sound; book icon 161 |
+| `build_dual_sphere.py` | its `TABLE` | rows `(83, EARTH, FIRE)`, `(84, EARTH, FIRE)`, `(85, EARTH, FIRE)` |
+
+Choices made in the build, not in the design:
+- "Touches no other hex of this cast" counts only this cast's hexes, so a new line may meet a chasm
+  that was already there. Each new hex is picked uniformly among the valid neighbours of the last
+  one that touch no earlier hex of the line. That rule alone keeps the line from curling back.
+- The cast hex must itself be valid; the cursor marks only that hex.
+- Climbing is a property of any Chasm hex, map-placed ones included. A climb is priced in the
+  path search as the rest of the current turn (or the rest plus a whole turn when fewer than 4
+  points would be left), so the path's turn markers after a climb fall where the party really
+  stops. The search only considers climbing for a party whose cost table lets it onto a mountain
+  (Mountaineering or Flying), then checks every mover for Mountaineering.
+- The drain after a climb lives in the move transaction (`TMoveArmyTE.ExecuteMove`), not in
+  `TAbstractUnit.MovedTo`: Warp Party moves armies through `MovedTo` too, and must keep its
+  movement.
+- The cast plays Level Terrain's effect (its `Spells.pfs` slots are copied unchanged) with Tremors'
+  sound made louder (`Sfx\Zsp\SurtrQk.wav`, a soft-limited copy of `Tremors.wav`, +4.7 dB RMS;
+  `build_chasm_sound.py`). Level Terrain's own sound list is empty.
+- The opening is paced by the event itself: the line is planned in `Process` and stored in the
+  event (its instance grown from 0x24 to 0x40 bytes), and the event's `Execute` keeps returning
+  "running" while it opens one hex every 12 map frames (0.4 s at the game's 30), as an army's move
+  event does. The token queue waits for it, so every peer ends in the same state.
+- The drain takes Water and underground Water alike. A water hex holding an army, a structure or a
+  bridge keeps its water, so a ship is stranded in a one-hex pool: `TArmyHS.CanChangeTerrain` vetoes
+  a change its army cannot stand on, and the engine has no ship-on-land state to fall back to.
+- The owner's first cast looked as if the chasm spread over the sea. The line refuses water by the
+  hex's terrain byte at every step (`cave_vt`, then Level Terrain's own test), so what showed was
+  most likely shore art next to new chasm hexes; the drain removes those shores.
+- The satchel is two abilities: the enchantment E (`0x4E`, "Dwarven Satchels") and the attack F
+  (`0x4F`, "Throw Explosive Flask"). E's Expand and Remove set and clear F, so F lasts exactly as
+  long as E, through saves, dispel and the throw.
+- Auto-combat has no hexes: the throw strikes its target and up to two other units of the target's
+  side, picked at random (P2 combat raw).
+- In manual combat every standing unit on the 7 hexes is struck the way vanilla strikes a missile's
+  target, with its damage icons, flinch and blood. The ground is not set alight. The satchel is
+  removed when the flask lands, if the thrower still stands. The first build sent Flame Throwing's
+  message `0x31012` to the seven fields instead: in the owner's first throw only the target was
+  hurt, and its strikes showed nothing but a flinch.
+- The AI aims as vanilla's Triple Fireball AI does: at the target unit or one of its six neighbours,
+  whichever blast is worth more, own units counting against.
+- With the flask armed, a click on one of your own units selects that unit (the attack's combat
+  info says "enemy"); any other hex in range, empty or not, is a target.
+- Extra Shots never gives the flask a second throw (`build_extrashots.py` excludes `0x4F`).
+- The scatter is one synced draw (P1) in `NextStrike`, before the path is built, so a unit in the
+  path can still catch the flask on its way to a scattered hex. A neighbour off the level, in
+  column 0, on Border terrain or under the thrower keeps the flask on the aimed hex, and the
+  numbers count that tenth on the aimed hex. Auto-combat does not scatter: a flask that lands beside
+  its target still bursts on it.
+- The numbers appear with the ranged path, after the first click on a hex, on the same round sign
+  and in the same font as vanilla's interception chances; on a hex that also shows an interception
+  sign, ours sits 12 px further right and down.
+- The flask is a category-2 missile (`AbilTypes` 2, Hurl Boulder's). The category picks the flight
+  sprite: category 1 (arrows, bolts, javelins) draws image slot [fx+0x20], the flight direction,
+  and category 2 draws slot 0. As category 1 the flask, which has only slot 0, flew unseen (the
+  owner's first test).
+- The flask flies Hurl Boulder's tumbling boulder (the owner: Fire Cannon's ball read as a
+  cannonball) and lands with `Sfx\Zatk\FlaskBurst.wav`: Ice Shards' shatter (`Ice.WAV`) over a
+  quieter `Explod1.wav`, mixed by `build_flask_sound.py`. The throw keeps Hurl Boulder's catapult
+  sound.
+
+- The volcano is the mountain object itself with the volcano resource swapped in, as
+  `TTerrainMO.ChangeTerrain` swaps resources; the object saves its resource id, so it reloads as
+  a volcano. The volcano resource is the one whose covered slots match the mountain's.
+- The ritual is a global-magic record, so the Magic window lists it, upkeep is charged by the
+  engine's own sum, unpaid upkeep, Disjunction and the Magic window's remove end it, and saves keep
+  it. It is a `TSpellWardEnchantment` re-typed to `0x56`: no vanilla code indexes anything by a
+  record's type, and type 8 or above is never refused as "already active". Its state (delay, spill
+  turns, every hex it owns) lives in the instance, grown from 0x24 to 0xA8 bytes, and is saved as
+  one block.
+- It spills on the turn the d3 delay reaches 0 and on the 9 turns after, so upkeep is paid for
+  delay + 9 turns.
+- "Linear flows": a land hex beside the ritual's hexes weighs 3 where it continues a lava hex in
+  the direction that hex was reached, otherwise 1. The volcano's own hexes count as sources with no
+  direction.
+- A hex the map refuses to turn to lava (an army there still unable to stand on it) is flagged and
+  spreads nothing.
+- Shunted units: a joining unit needs a friendly party that is not moving, with room, on a hex the
+  unit can stand on or with a transporter; a new party needs an empty hex with no owner and no
+  structure that the unit can stand on. The six neighbours are tried in a synced shuffled order.
+  Units leave by the engine's unit-selection transfer, as the vanilla split does, not by a move.
+- Fire Weakness is tested by ability `0xB3` (`build_weakness.py`); Fire Protection and Fire
+  Weakness together cancel, as in that script.
+- The glitter is Freeze Water's shimmer marker (`TFrozenWaterHS`) on every hex of the ritual, owned
+  by no player (`0xFF`), so it never melts; Grip of Winter's Show gate is bypassed for those
+  markers only. Ending the ritual removes them.
+- The cast plays Level Terrain's effect with Surtr's Chasm's louder Tremors sound.
+
+Unproven:
+- In game: neither climbing, the chasm line, a flask throw nor a volcano has run yet.
+- Awaken Volcano: the swap's redraw, where the shimmer draws against the volcano sprite, shunts
+  onto hexes `PlaceEx` refuses, and new parties of AI players (no AI group).
+- How the AI weighs a throw against walking up to melee; its scoring ignores the scatter.
+- Where the numbers sit on screen.
+- What the player's view does when a pathed climb takes the selected army to another level.
+- Road graphics next to a freed road hex.
+
+### Death/Water — agreed design (owner, 2026-10-25; Lethe and Stygia built the same day)
+
+From the owner's plan (Planned Spells: Curse of Lethe t1, Blessing of Stygia t2, Plague t3 "as
+AoWx"); the rulings below are for the first two. The general rules above apply. Proposed figures
+the owner did not change are marked (proposed).
+
+**Curse of Lethe** (tier 1, battle, Evoker): range 8, radius 1 (7 hexes), 12 mana (proposed).
+- Every unit in the area makes a Resistance check against sleep, at power 10 as against any
+  elemental status. Elves and Dark Elves get +4 on it. Own units in the area are affected too.
+- Never affected: Magic Immunity, Undead, war machines.
+- Asleep: a new status, a copy of Stunned (as Petrified is): the unit cannot act or retaliate and
+  has Stunned's −4 Defence. It lasts 4 of the unit's own combat turns (duration mode 2), and any
+  damage that lands wakes it (the damage funnel `build_panic_cleardamage.py` already hooks).
+- Auto-combat: the target and up to two other units (proposed). The AI casts it when at least two
+  more enemies than own units would be caught (proposed). Sleepers show Stunned's overhead
+  animation (proposed).
+
+**Blessing of Stygia** (tier 2, world-map global enchantment, Ritualist): 30 mana, upkeep 5
+(proposed).
+- At the start of each turn of the caster or an ally, each of that player's units that stands on
+  Water or underground Water, or beside it, on the world map gains the status Blessing of Stygia:
+  Physical Protection until that unit's next turn starts (duration mode 1, one day). Ice does not
+  count. Water on battle maps plays no part (owner, 2026-10-25). A unit that already has Physical
+  Protection gains nothing from it.
+- While it lasts, every water hex on the map has a purple-black tint, seen by every player.
+- It ends when its upkeep goes unpaid or Disjunction takes it; statuses already given run out.
+- The tint: water only slightly darker and purpler than normal, surface and cave water alike (owner,
+  2026-10-25, after rejecting three stronger and three medium drafts).
+
+### Death/Water — as built (2026-10-25)
+
+| script | where | what |
+|---|---|---|
+| `build_lethe.py` | AoWEPACK `0x558BD000` | spell 86 (a TEntangle instance: its single-target status CA and Resistance roll) with a VMT copy for the sleep filter, roll, AI values and auto-combat gate; the status Asleep `0x50` (a TStunnedAbility instance, VMT copy: 5 ticks); its grant in `TEntangleSpellCA.Execute`, being locked, the unit-panel icon, waking on damage, and its removal by Remedy and Dispel Magic |
+| `build_lethe_tc.py` | AoWTCPCK `0x0043D000` | the battle map: Geyser's class (`SpellTypes[86]=0x1E`), the class aliases, the 7-hex preview, the AI's area search and gate, the landing that applies the spell's CA to each unit on the 7 hexes |
+| `build_lethe_pfs.py` | `Spells.pfs` 96, `Ability.pfs` 90 | Geyser's record 128 re-numbered (its burst and sounds), icon 162; Asleep from Stunned's record 102 (its dazed-stars frames) |
+| `build_ankh_battlefield.py` | AoWTCPCK `0x0043C400` | the battlefield status-icon list gains `0x50` (16 entries) |
+| `build_blessing_stygia.py` | AoWEPACK `0x558BD800` | spell 87 (a TSpellWard instance) whose record is a re-typed `TSpellWardEnchantment` (type `0x57`), one per caster; the day status `0x51`; the turn grant in `TAbstractUnit.NewTurnDone`; Physical Protection through `GetAbProtectionTypesAll` |
+| `build_blessing_stygia_pfs.py` | `Spells.pfs` 97, `Ability.pfs` 91 | Astral Ward's record 75 re-numbered, icon 163; the status from Nature's Blessing's record 109 |
+| `build_stygia_tint.py` | `Waterhex.ILB` + `_Waterhex.ILB` ids 224–307, AoWEPACK `0x558BE000` | the tinted twins and the entry exchange around the world map's two scene draws |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 162 (a crescent moon over waves, mirrored 2026-10-26 so the moon sits off the glow's yin-yang border) and 163 (a goblet over waves), the owner's picks; the Water disc is icon 115's |
+| `build_dual_sphere.py` | its `TABLE` | rows `(86, DEATH, WATER)`, `(87, DEATH, WATER)` |
+
+Choices made in the build, not in the design:
+- Curse of Lethe rides Geyser's battle class as Pillar of Banefire does: Geyser's burst and spray at
+  the target hex, no target unit, so no knock-back. Its landing applies the spell's own action to
+  each unit on the 7 hexes, both sides; walls, terrain and structures are never touched.
+- Each sleeper counts its 4 turns on its own side's turns, whichever side cast it.
+- The roll is HitRole(10 − (RES + 4 for Elves and Dark Elves)) = 100 − 5·RES' %, clamped 10–90.
+  Undead means Turn Undead's test: the Undead race or the Animated ability.
+- The AI rule "at least two more enemies than own units" counts units that can sleep on the 7 hexes
+  around its chosen centre. Auto-combat casts it only when at least two enemies can sleep; its two
+  extra targets come from the target's side, and an immune pick fizzles.
+- The blow that wakes a sleeper gets no retaliation that round: who can retaliate is fixed when the
+  round starts.
+- Remedy and Dispel Magic remove Asleep, Dispel Magic without a roll, as for Petrified (owner,
+  2026-10-25, after the build).
+- Blessing of Stygia: one per caster ("is already active" otherwise). The AI never casts it.
+- The status lasts until the unit's own next turn start and is renewed then while the unit is by
+  water. It is not an enchantment, so Dispel Magic and Remedy do not remove it. A unit with
+  Physical Protection already gets no status.
+- The tint keeps no state of its own: every frame reads whether a Blessing of Stygia record is
+  active, so loads and endings need nothing. The minimap stays blue; the animated glints and the
+  ice and cave-water edges against Sky or Chasm are not tinted.
+
+- Fixed 2026-10-26: Curse of Lethe's auto-combat value override (VMT +0x98) read its out record from
+  the wall-situation argument, a write to address 0 or 1 once auto-combat weighed it against a unit that
+  cannot sleep; it now reads [esp+4] (Taint the Flame and Mist had the same slip, fixed with it).
+
+Unproven:
+- In game: neither spell has been cast yet; the tint has not been seen.
+- Whether the half-size image files ever draw the map.
+
+### Air/Water — agreed design (owner, 2026-10-26; built the same day)
+
+From the owner's plan (Planned Spells: Mistform t1, Mist t2, Static Shield t3). The general rules
+above apply. Figures marked (proposed) are mine.
+
+**Mistform** (tier 1, unit enchantment, Enchanter): 12 mana, upkeep 1, research 80. Cast on your
+unit on the world map or in battle.
+- The unit has Floating while enchanted.
+- The next damage that lands on it, in battle or on the world map (storms, map fire, holy ground and
+  the like), does nothing to it and ends Mistform instead. A miss, or a hit absorbed to nothing,
+  does not use it up. The absorbed blow carries no effects either (poison, burning, freezing,
+  stuns).
+- A unit that loses Mistform that way over water, chasm or sky falls as when Wind Walking is
+  dispelled there.
+
+**Mist** (tier 2, battle, Evoker): 15 mana, research 160. For the rest of the battle (proposed),
+every enemy unit without True Seeing sees 3 hexes less in combat, at least 1. It is line of sight
+only: the battle AI sees everything and auto-resolve has no sight, so against the AI it changes
+nothing (owner's ruling).
+
+**Static Shield** (tier 3, unit enchantment, Enchanter): 45 mana, upkeep 5, research 240. Cast on
+your unit on the world map or in battle.
+- The unit has Lightning Immunity while enchanted.
+- Each melee strike that lands on it, retaliation included, lets it stun the striker: the striker
+  resists at power 10, as against a lightning stun (Lightning Protection +4, Lightning Weakness −4,
+  Lightning Immunity never stunned). Ranged attacks and spells do not trigger it.
+- The stun lasts as a lightning stun does: a striker stunned in its own turn loses its remaining
+  strikes and its retaliations until its next turn; one stunned in the holder's turn (a retaliation)
+  also loses its next turn.
+
+### Air/Water — as built (2026-10-26)
+
+| script | where | what |
+|---|---|---|
+| `build_airwater_ench.py` | AoWEPACK `0x558BE400`, BSS `0x558FAD24`–`0x558FAD3F` | spells 88 and 90 (TWindWalking instances) and their enchantments `0x54` (a TWindWalkingEnchantment instance) and `0x55` (a TUnitEnchantmentAbility instance); Floating and Lightning Immunity through the move and immunity aggregators and `GetAbilityEnabled`; Mistform's absorb in combat damage, self-destruct and world-map damage; the absorbed blow's effects dropped; the terrain check deferred to the army's next validation |
+| `build_staticshield.py` | AoWEPACK `0x558BEC00` | the stun: `TStrikeCA`'s Generate, Execute and ReadWrite VMT slots |
+| `build_mist.py` | AoWEPACK `0x558BF400` | spell 89 (a TDeathRay instance, Taint the Flame's recipe) with a VMT copy worth nothing to either AI and never queued by auto-resolve |
+| `build_mist_tc.py` | AoWTCPCK `0x0043CC40` (entry pinned) | High Prayer's instant class (`SpellTypes[89]=0x25`); the cast marks the enemy side in `TTacticalCombat+0x4D`; the sparkle loop keeps misted units, the aura loop none; the sight cut |
+| `build_tactical_los.py` | its `csight` routine | calls Mist's entry while it starts with E9 |
+| `build_airwater_pfs.py` | `Spells.pfs` 98–100, `Ability.pfs` 94–95 | Wind Walking's record 53 (Mistform, Static Shield) and High Prayer's record 112 (Mist) re-numbered, icons 164–166; the enchantments from Wind Walking's enchantment record 175 |
+| `build_battlecast_unitspells.py`, `build_spell_unit_target.py` | AoWTCPCK | 88 and 90 castable in battle on a unit |
+| `build_panic_cleardamage.py` | its damage cave | no recovery roll on a blow Mistform absorbs |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 164 (the Holy Champion knight with five curls), 165 (five mist lines), 166 (AoW2's Static Shield flipped), the owner's picks; the Air disc is icon 0's |
+| `build_dual_sphere.py` | its `TABLE` | rows `(88, AIR, WATER)`, `(89, AIR, WATER)`, `(90, AIR, WATER)` |
+
+Choices made in the build, not in the design:
+- Enchantment levels: Mistform 2, Static Shield 4. Every dual enchantment's level is its equivalent
+  single tier, dual tier + 1, as Dwarven Satchels (2) and Enmity of Nine Hells (4) (owner,
+  2026-10-26). Dispel's chance is strength + 50 − 10 × level, clamped 10–90 %.
+- The world-map AI casts Static Shield (owner, 2026-10-26): AI weight 225, Bless's and Dark Gift's,
+  on the highest-level unit of the caster's army that is no war machine. It never casts Mistform or
+  Mist, and the battle AI casts no friendly unit spell.
+- A unit already holding the enchantment cannot be given it again. Wind Walking and Mistform can be
+  cast on each other's units (owner, 2026-10-26), so a unit can float on after Mistform absorbs a
+  hit: Wind Walking's own test asks for native Floating only.
+- Static Shield: a war machine that strikes the holder catches fire instead of being stunned, as
+  with any lightning stun (`build_lightning_ignites.py`). A killing blow on the holder still
+  stuns. A striker already stunned is not rolled again. A Round Attack sweep goes on after the
+  stun, as with a lightning stun. A blow Mistform absorbs still counts as landed.
+- Mist: a second cast in the same battle changes nothing but costs its mana. Its sparkles on the
+  misted units are Particle.ILB's pale glows.
+- The fall after an absorb over water happens at the army's next validation: right after the
+  damage on the world map; after a battle, at the first army move or map damage anywhere.
+
+Unproven:
+- In game: none of the three has been cast yet.
+- Mist's instant effect with no auras to land; the misted view in a multiplayer battle.
+- The fall's timing after a battle fought over water.
+
+### Entangle to Life/Earth, Weight of the World — agreed design (owner, 2026-10-26; built the same day)
+
+**Entangle** leaves Earth (tier 2) for Life/Earth dual tier 1, its behaviour and numbers unchanged
+(the owner's plan: "as present"). As a dual spell it is granted, never researched; research 80 only
+prices Wizard's Tower offers.
+
+**Weight of the World** (Earth tier 2, battle; AoWx's Gravity Well, an Earth/Air tier-3 spell, made a
+pure Earth spell and renamed by the owner): 10 mana, research 80. It takes Entangle's place in Earth.
+- Cast at a hex within 8. Every unit within 6 hexes of it (AoE 6, up to 127 hexes), friend and foe
+  alike, takes one strike: 14 ATK / 4 DMG Physical, +50 % damage against Flying, Floating (Mistform
+  included) and Wind Walking units. Walls, gates and structures are untouched.
+- The area stays for the rest of the battle. Inside it every unit's movement costs double, and
+  Flying, Floating and Wind Walking units are grounded while they are in it: they walk, and ground
+  units and Tremors can hit them. Overlapping areas do not stack.
+- An animation of slow-moving force lines, moving inwards and fading, marks the area.
+- The battle AI casts it when the enemy units in the area outweigh its own; auto-combat strikes
+  enemy units only.
+- The cast itself is a faint glow, no debris: it is energy manipulation (owner).
+
+### Entangle to Life/Earth, Weight of the World — as built (2026-10-26)
+
+| script | where | what |
+|---|---|---|
+| `build_entangle_dual_pfs.py` | `Spells.pfs` 121 | Entangle: sphere 7, tier 1, research 80, icon 167 (its own glyph on the Life/Earth glow) |
+| `build_wotw.py` | AoWEPACK `0x558C0000` | spell 91 (a TTremors instance) with a VMT copy: DMG 6 instead of 4 against natural flyers in the roll and both AI values |
+| `build_wotw_tc.py` | AoWTCPCK `0x00444000` | Geyser's battle class, the landing (one strike per unit within 6, the caster last; then the field mark), the AI (EvalArea to radius 6), the 127-hex preview, no spray |
+| `build_wotw_field.py` | AoWEPACK `0x558C1000` | doubled field-hex costs in every route search; the walker-table flag |
+| `build_wotw_field_tc.py` | AoWTCPCK `0x00445000` | doubled step costs in player and AI paths; grounding (flyer tests, the movement table, Tremors) |
+| `build_wotw_anim.py` | AoWTCPCK `0x00446000` | the amber contour animation |
+| `build_wotw_pfs.py` | `Spells.pfs` 101 | Geyser's record 128 re-numbered, Particle.ILB glows for the cast, MAGICC01 + TREMORS sounds, icon 168 |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 167 (Entangle, Life/Earth) and 168 (wings pressed down to the ground, Earth) |
+| `build_dual_sphere.py` | its `TABLE` | row `(111, LIFE, EARTH)` |
+
+Choices made in the build, not in the design:
+- +50 % is DMG 4 -> 6 for the roll (damage is rolled up to DMG). Airborne means the unit's own
+  Flying, Floating (Mistform counts) or Wind Walking, so a flyer already grounded by a field still
+  takes it.
+- Auto-combat: vanilla's extra-target rule with 0x7F extras -- the target and every eligible unit on
+  its side.
+- The field is marked after every strike has landed. Grounding is decided where a unit stands when it
+  moves: a grounded flyer walks its whole move (terrain costs, walls, zone of control, free swings,
+  melee from ground units, Tremors); a flyer starting outside flies and pays double on field hexes. A
+  flyer over water, chasm or lava inside a field is not grounded there, so it is never stranded.
+- Doubling applies to a hex's terrain cost, not to the zone-of-control surcharge; Skirmisher's flat
+  attack cost is not a hex and stays.
+- The animation: four contours per field, 4 s from edge to centre, phase from the centre so fields
+  drift apart; drawn under units and covered by the fog of war.
+
+Unproven:
+- In game: nothing cast yet; the AI's cost of 7 x 127 hex evaluations per aimed unit; the cast's
+  glow placement; the sound list's layout (copied from Geyser's two-cue list).
+
+### Earth/Air: Meteor Storm — agreed design (owner, 2026-10-26; built the same day)
+
+From the owner's plan ("2-turn delay to its arrival, strategic storm spell, physical damage").
+**Meteor Storm** (Earth/Air tier 2, world map): 60 mana, research 160.
+- Cast like the storms: a target hex, the storms' range and their map-level rule (surface and
+  Firmament).
+- The meteors land at the start of the caster's second turn after the cast: one strike of 16 ATK /
+  20 DMG Physical on every unit within 4 hexes, as every storm strikes.
+- Nothing shows on the map until then. When it is cast, every player's event log reads "A Meteor
+  Storm has been summoned!".
+- Only the caster's defeat stops it: it is no global spell, so Disjunction and the Magic window cannot
+  reach it.
+- The AI casts it as it casts the other storms, at armies inside the area now.
+- At impact: twelve meteors fall from the upper left and burst across the area, then a large one near
+  the centre.
+
+### Earth/Air: Meteor Storm — as built (2026-10-26)
+
+| script | where | what |
+|---|---|---|
+| `build_meteor_storm.py` | AoWEPACK `0x558C2000`, BSS `0x558FAED4` | spell 92 (a TFireStormSpell instance) on storm type 0, vanilla's unused Blast Storm slot (physical, 16/20; AI estimate 8/10; "Meteor Storm" in the army event log); the cast through a bare TBlastStorm, whose own VMT is free; the marker: a TFrozenWaterHS VMT copy registered as ClassID `0x2E001`, which counts down at its owner's turn start, strikes and draws the impact |
+| `build_meteor_storm_pfs.py` | `Spells.pfs` 102 | Fire Storm's record 13 re-numbered; MAGICC01 (cast, the caster's seat only) + BLAST (impact) sounds; slot 0 the impact chain; icon 169 |
+| `build_meteor_fx.py` | `Images\Effects\METEOR.ILB` (new) | the falling meteors, 8 frames each at two sizes, additive like the bursts (Destr, ExplBig) |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icon 169, three meteors falling (the owner's pick, B of three) |
+| `build_dual_sphere.py` | its `TABLE` | row `(92, EARTH, AIR)` |
+
+Choices made in the build, not in the design:
+- The storm tail is vanilla's: the x4 strength rule for a flyer over terrain it cannot stand on, half
+  damage under Physical Protection, no strike on an army under a magic shield.
+- The marker sits on the target hex; terrain changes there do not remove it. It is freed at the
+  owner's turn after the impact, once the animation has played. A defeated caster's marker stays,
+  unseen and inert.
+- The impact animation is drawn by the marker itself (TImageSequenceList.Show at the frame counted
+  from the impact), so it plays wherever the target hex is on screen, under the fog of war. It runs
+  69 map frames.
+
+Unproven:
+- In game: nothing cast yet; the animation's speed (the map's frame rate was not measured); loading a
+  save with a pending storm.
+
+### Imbue Altar and Imbue Spring — agreed design (owner, 2026-10-26; built the same day)
+
+From the owner's plan: Death/Earth tier 2 "Ritual: places a Bloodlust Altar on the map" and
+Life/Earth tier 2 "Ritual: places a Sacred Spring on the map" -- the game's own Blood Shrine and
+Spring of Life (the spring that gives Nature's Blessing).
+- Both: 60 mana, Ritualist, cast at a hex as Surtr's Chasm is; the structure is placed there.
+- The structure is neutral and works as a map-placed one: every army that enters it is blessed,
+  enemies included.
+- The Spring of Life is never placed on Snow or Wasteland, where it would not bless.
+
+### Imbue Altar and Imbue Spring — as built (2026-10-26)
+
+| script | where | what |
+|---|---|---|
+| `build_imbue.py` | AoWEPACK `0x558C3000` (entries pinned) | spells 93 and 94 (TLevelTerrain instances), registered on Watcher's `call RegisterSpell`; the target test (construction's site rules over the structure's footprint) and the cast (clear the footprint, then the resource's PlaceResourceUser) |
+| `build_surtrs_chasm.py` | its TLevelTerrain caves | ids 93 and 94 sent to `build_imbue.py`'s entries, with the one-hex cursor |
+| `build_imbue_pfs.py` | `Spells.pfs` 103–104 | Level Terrain's record 28 re-numbered; Magic.ILB's red burst (altar) and green sparkle (spring) for the cast; ENCHP02, the structures' own blessing sound; icons 170 and 171 |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 170 (the horned Blood Shrine, Death/Earth) and 171 (a willow over a pool, Life/Earth), the owner's picks |
+| `build_dual_sphere.py` | its `TABLE` | rows `(93, DEATH, EARTH)`, `(94, LIFE, EARTH)` |
+
+Choices made in the build, not in the design:
+- The structures are found at cast time in the set's resource list by class (TBloodShrineResource
+  `0x20131`, TSpringOfLifeResource `0x20101`); the Release set holds one of each.
+- The site follows engineers' construction rules on every footprint hex (Grass, Desert, Snow, Steppe,
+  Wasteland or Dirt; no mountain, no structure, nobody's hex) and Level Terrain's own (no army, no
+  structure on the target). Forests and decorations on the footprint are cleared, as construction
+  clears them.
+
+Unproven:
+- In game: nothing cast yet; the cast effect's position (Magic.ILB's canvas offsets measured, not
+  seen); that an army stepping onto a ritual-placed structure is blessed as on a map-placed one.
 
 ## Open items
 

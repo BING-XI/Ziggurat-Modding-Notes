@@ -6,7 +6,8 @@ AoWEPACK.dpl + AoWTCPCK.dpl.  Owner's design 2026-10-21 (25 %, chaining; missile
 
 WHICH ATTACKS -- MISSILES, every id made by the TRangedAttackAbility factory 0x5576ED48 or the
     TBoltsAbility factory 0x5576EDE8 (asserted against a scan of the whole DLL, cave registrations
-    included), minus Call Flames 0x1F (an area attack).  Breaths (TBreathAbility, own
+    included), minus Call Flames 0x1F (an area attack) and Throw Explosive Flask 0x4F (one throw,
+    build_satchels.py).  Breaths (TBreathAbility, own
     fcExecuteCombatCommand) and Flame Throwing (own class) are other classes and never reach either
     hook.  Spells cast through the tactical ranged event carry ability id 0x34 and are not in the set.
 
@@ -66,7 +67,9 @@ ABIL_ID = 0xC1
 NAME = "Extra Shots"
 MASK = 0x03FF
 CHANCE = 25                                     # percent, per shot (owner 2026-10-21)
-NOT_MISSILES = {0x1F}                           # Call Flames: two eruptions around the target
+CALL_FLAMES = 0x1F                              # two eruptions around the target
+FLASK = 0x4F                                    # Throw Explosive Flask: one throw (build_satchels.py)
+NOT_MISSILES = {CALL_FLAMES, FLASK}
 
 # AoWEPACK
 E_SLOT = (0x558B2200, 0x558B2400)
@@ -111,7 +114,7 @@ def missiles():
                         found.add(struct.unpack_from("<I", d, i - k + 1)[0])
                         break
     found = {x for x in found if x < 0x100}
-    assert NOT_MISSILES <= found, "Call Flames is no longer a TRangedAttackAbility"
+    assert CALL_FLAMES in found, "Call Flames is no longer a TRangedAttackAbility"
     return sorted(found - NOT_MISSILES)
 
 
