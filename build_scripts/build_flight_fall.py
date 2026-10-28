@@ -163,7 +163,8 @@ HAZARDS -- LOSING ITS FOOTING ANYWHERE ELSE (owner's rulings 2026-10-28)
   0x55781B37; a Mistform absorb is queued, not re-entrant) and build_firefeed.py's Living Flame heal
   (the entry) all apply; a negative result counts as 0.  The fall uses the same call, physical.
   Awaken Volcano still handles its own lava first (d20, its shunt); a unit it could not move now takes
-  the lava hazard as well before it dies.
+  the lava hazard as well before it dies.  Since 2026-10-29 its d20 goes through this same forced
+  roll (build_awaken_volcano.py sets FORCE itself), so undo that script before this one.
 
 RNG: P1 SYNCED DRAW (12-re-toolchain.md section 4.10): TAoWHSMap.Random for the dice and the
 neighbour shuffle, gated on replicated state only (the army, its units, the fields).  Flight is lost

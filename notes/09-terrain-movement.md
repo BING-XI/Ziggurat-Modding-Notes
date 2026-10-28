@@ -1622,6 +1622,8 @@ Before it, a unit that lost flight over Sky or Chasm died there ("crushed").
   `TAbstractUnit.ExecuteDamageRole` with its core roll forced to the dice total (`0x55781B0D`), so
   immunity, protection, Physical/Fire Weakness, Embrittled, Spectral Wings and Mistform apply.
   Awaken Volcano keeps its own d20 lava handling first; a unit it cannot move then takes this too.
+  Since 2026-10-29 the volcano's d20 goes through the same forced roll (it sets `FORCE` itself), so
+  ⚠ undo `build_awaken_volcano.py` before `build_flight_fall.py`.
 - **Landing on enemies starts a battle** (owner's rulings 2026-10-27/28; built 2026-10-28, same
   script, plus an `AoWTCPCK.dpl` half). Enemy = the landing hex's owner (army, city or structure) is
   independent or at war with the faller (`TArmyCombatMoveTE.Setup`'s own test); an independent faller

@@ -1535,11 +1535,13 @@ dies partway may stop there.
   `AoWE.CreateStrikeCA` (Round Attack, the free swing at a unit moving away, the touched unit's swing
   back at a failed touch), in both engines. Ranged attacks are another CA class. "Lands" is
   `CA+0x10 != 0`: manual combat never executes a missed strike.
-- **Damage:** 1–5, no to-hit roll. Physical Immunity cancels it, Embrittled (Spectral Wings
-  included) raises it by half, rounded up, Physical Protection halves it rounding up, and the two
-  together cancel — `build_embrittle.py`'s `cave_dmg` rule, copied (×2 until 2026-10-28). It is a
-  copy because `TCombatObject.ExecuteDamageRole` is a roll from ATK and DAM with no fixed-amount
-  entry; re-tune both together. The Razor Plate unit is the dealer (`DoDamage`),
+- **Damage:** 1–5, no to-hit roll, physical, through the striker's own
+  `TCombatObject.ExecuteDamageRole` with its core roll forced to the d5 (2026-10-29: hook
+  `0x55726A33` → `cave_force`, BSS byte `0x558FAED1`, as `build_flight_fall.py` forces the strategic
+  twin). Physical Immunity, Embrittled and Spectral Wings, the Weaknesses and Physical Protection
+  therefore act on the cut as on any physical hit and follow their own re-tunes. Until then the
+  cave applied a copy of those rules, whose Embrittled ×2 outlived Embrittle's ×1.5 by a day. Only
+  the AI's E[cut] (below) is still a copy. The Razor Plate unit is the dealer (`DoDamage`),
   so a kill earns it kill XP; if the strike killed it, the cut still lands, with no dealer.
 - **Storage:** the roll rides in bits `0xE0` of `CA+0x18`, the one strike-flag byte
   `TStrikeCA.ReadWrite` serialises, so the auto-resolve replay, which re-runs `Execute` from the

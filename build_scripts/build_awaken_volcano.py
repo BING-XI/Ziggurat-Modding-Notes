@@ -50,9 +50,11 @@ EACH TURN (VOLC_MSG, the record's MsgProc slot; message 0x20020003 to the caster
   record deactivates itself (TENode.SendMsg walks the list downwards, so the removal is safe).
 UNITS ON NEW LAVA (before the terrain changes): a unit that can stand on Lava
   (TAbstractUnit.ValidTerrain(9, -1)) stays, and the whole party stays if its transporter can.
-  Every other unit loses d20 HP (no to-hit roll), halved rounding down by Fire Protection
-  (GetProtectionTypes bit 0) and x1.5 rounding up by Fire Weakness (ability 0xB3, VMT +0x148), the
-  two cancelling (owner 2026-10-25, build_weakness.py's rule); TArmy.Validate then kills the fallen.
+  Every other unit takes d20 fire damage (no to-hit roll) through TAbstractUnit.ExecuteDamageRole
+  with build_flight_fall.py's FORCE set to the d20, so Fire Immunity, Fire Protection (halved,
+  rounded up), build_weakness.py's Fire Weakness, Living Flame and Mistform apply as to any map fire
+  hit; TArmy.Validate then kills the fallen.  Until 2026-10-29 the cave applied Protection (rounding
+  down) and Weakness itself and set the hit points directly.
   Each survivor tries the six neighbours in a synced shuffled order, skipping this ritual's hexes
   and lava: it joins a friendly party there (same player, not moving, TArmy.AddUnitSelection's
   room check) where it can stand or the party has a transporter (a ship: owner 2026-10-25), or
@@ -94,8 +96,12 @@ Couplings
     alone (without this script spell 85 is not registered, so the dispatch is never taken).
   * build_globalench_active.py restores the active bit of every global record after a load.
   * build_blazing_moon.py chains the record's MsgProc slot in front of ENTRY["msg"].  Its entry
-    there reads as this script's applied state; --apply and --undo refuse while it is there: undo
-    build_blazing_moon.py first.
+    there reads as this script's applied state; --undo refuses while it is there (undo
+    build_blazing_moon.py first), and --apply only re-tunes the core in place (every hook already
+    ours or the Moon's).
+  * The lava damage depends on build_flight_fall.py: its FORCE dword (BSS 0x558FAEFC) and its
+    retarget of TAbstractUnit.ExecuteDamageRole's core roll (0x55781B0D).  Without them the d20
+    becomes a to-hit roll of up to 20 points; undo this script before build_flight_fall.py.
   * build_gripofwinter.py / build_raiseterrain_ug_earth.py own the other TFrozenWaterHS caves.
 
 Unproven, static checks cannot reach it: the swap's redraw, the shimmer's draw order against the
@@ -118,7 +124,13 @@ MANA, RESEARCH, UPKEEP, SPHERE, TIER = 40, 240, 5, 7, 3
 REC_TYPE = 0x56
 DELAY_DIE, SPILL_TURNS, SPILL_DIE, DAMAGE_DIE = 3, 10, 2, 20
 STRAIGHT_W, OTHER_W = 3, 1
-FIRE_WEAKNESS = 0xB3                       # build_weakness.py
+FIRE = 0x01                                # TDamageType dtFire, the mask the lava hit carries
+# build_flight_fall.py's forced core roll: TAbstractUnit.ExecuteDamageRole returns FORCE in place
+# of its to-hit roll while FORCE (BSS) is non-zero, so the d20 meets every map-damage modifier.
+EXECDMGROLE, FORCE = 0x55781AC4, 0x558FAEFC
+# The routed block is 22 bytes shorter than the inline maths it replaced (2026-10-29); the pad keeps
+# every later address in the core -- the entries' targets, RNG_SITES -- where it was.
+SH_PAD = "        nop\n" * 22
 SLOT = (0x558BB000, 0x558BD000)
 # the six synced draws in the assembled core (rng_audit --owners reads these literals)
 RNG_SITES = {"d2": 0x558BB043, "pick": 0x558BB1DA, "d20": 0x558BB39F, "shuffle": 0x558BB4D6,
@@ -498,30 +510,20 @@ def build_core(va):
         call {RANDOM:#x}
         inc  eax
         mov  dword ptr [ebp + 0x64], eax
+        mov  dword ptr [ebx + {{FORCE}}], eax
+        mov  ecx, eax
+        mov  eax, {FIRE:#x}
+        push eax
         mov  eax, edi
-        mov  edx, dword ptr [eax]
-        call dword ptr [edx + 0xf0]
-        and  eax, 1
-        mov  dword ptr [ebp + 0x68], eax
-        mov  eax, edi
-        mov  edx, {FIRE_WEAKNESS:#x}
-        mov  ecx, dword ptr [eax]
-        call dword ptr [ecx + 0x148]
-        test al, al
-        setne al
-        movzx eax, al
-        mov  ecx, dword ptr [ebp + 0x64]
-        cmp  eax, dword ptr [ebp + 0x68]
-        je   sh_d2
+        xor  edx, edx
+        call {EXECDMGROLE:#x}
+        mov  dword ptr [ebx + {{FORCE}}], 0
         test eax, eax
-        jne  sh_weak
-        shr  ecx, 1
-        jmp  sh_d2
-    sh_weak:
-        lea  ecx, [ecx + ecx*2 + 1]
-        shr  ecx, 1
+        jge  sh_d2
+        xor  eax, eax
+{SH_PAD}
     sh_d2:
-        push ecx
+        push eax
         mov  eax, edi
         mov  edx, dword ptr [eax]
         call dword ptr [edx + 0xe0]
@@ -1292,7 +1294,7 @@ def build_core(va):
         pop  esi
         ret
     """
-    return pic(src, va, "ebx", {"MAP": AOWHSMAP, "SET": AOWHSSET, "SEED": SEED_CELL,
+    return pic(src, va, "ebx", {"MAP": AOWHSMAP, "SET": AOWHSSET, "SEED": SEED_CELL, "FORCE": FORCE,
                                 "LTCELL": LT_CELL, "WARD": WARD_CELL, "FW": FW_CELL,
                                 "ROAD": ROAD_IAT, "STRUCT": STRUCT_CELL, "ARMYHS": ARMYHS_CELL,
                                 "NAME": ("TAIL", 8)}, ansistr(SPELL_NAME))
@@ -1364,8 +1366,11 @@ if __name__ == "__main__":
     MOON_MSG = 0x558C51C0
     _d = open(P.TARGET, "rb").read()
     if _d[P.va2off(_d, SLOT_MSG):P.va2off(_d, SLOT_MSG) + 4] == pk(MOON_MSG):
-        if "--apply" in sys.argv or "--undo" in sys.argv:
-            sys.exit("REFUSED: build_blazing_moon.py chains through %08X; undo it first." % SLOT_MSG)
         HOOKS = [(va, van, pk(MOON_MSG) if va == SLOT_MSG else new) for va, van, new in HOOKS]
+        # A re-tune of the core in place (every hook already ours or the Moon's, the pinned entries
+        # unmoved) rewrites only the slot, so the chain survives it. Anything else would break it.
+        retune = all(_d[P.va2off(_d, va):P.va2off(_d, va) + len(new)] == new for va, _v, new in HOOKS)
+        if "--undo" in sys.argv or ("--apply" in sys.argv and not retune):
+            sys.exit("REFUSED: build_blazing_moon.py chains through %08X; undo it first." % SLOT_MSG)
         print("  chained: build_blazing_moon.py holds %08X (accepted as applied)" % SLOT_MSG)
     run("build_awaken_volcano", HOOKS, CAVES, SLOT, INTERIOR, reloc_ok=RELOC_OK)

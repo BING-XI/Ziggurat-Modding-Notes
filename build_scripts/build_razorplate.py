@@ -12,12 +12,12 @@ RULES (owner's rulings 2026-10-09/10)
     Landed     CA+0x10 != 0 after Generate.  A miss never executes in manual combat (the TEs skip the
                CA), so this is the only rule both engines share.  A strike fully absorbed by the
                Razor Plate unit's own immunity also rolls 0 and does not cut.
-    Damage     1..5 uniform, no to-hit roll.  Physical, in ExecuteDamageRole's own order: Physical
-               Immunity (bit 0x80 of GetImmunityTypes) -> 0; Embrittled (0xB2; Spectral Wings
-               answers it too) x1.5 rounded up, (3d+1)>>1, as build_embrittle.py's cave_dmg;
-               Physical Protection (bit 0x80 of GetProtectionTypes) halves, rounding up, as
-               vanilla's (dmg+1)>>1; Embrittled and Physical Protection together cancel (the cut
-               is unchanged), as cave_dmg's doubling before the halve does.  x2 until 2026-10-28.
+    Damage     1..5 uniform, no to-hit roll, physical, through the striker's own
+               TCombatObject.ExecuteDamageRole (0x557269F0) with its core roll forced to the d5
+               (cave_force, below), so whatever acts on a physical hit acts on the cut and follows
+               every re-tune: Physical Immunity, Embrittled and Spectral Wings (build_embrittle.py's
+               cave_dmg), the Weaknesses, the protection halve.  Until 2026-10-29 cave_apply
+               applied a copy of those rules itself (its Embrittled x2 outlived Embrittle's x1.5).
     Dealer     the Razor Plate unit, through DoDamage (VMT +0x108), so a kill earns it kill XP.  If
                the strike killed the Razor Plate unit, the cut lands through ExecuteDamage (+0x124)
                with no dealer and no XP.
@@ -102,6 +102,10 @@ HOOKS (vanilla bytes asserted, no .reloc under any but the VMT slot)
     SH  0x55729E34  ShowObject striker branch (35 B) -> jmp cave_show
     PL  0x5571E398  TStrikeCA VMT +0x54 Play 0x55766860 -> cave_play (.reloc kept: in-image value)
     DV  0x55768045  CalculateDV epilogue pop edx/edi/esi/ebx/ret -> jmp cave_dv
+    F   0x55726A33  TCombatObject.ExecuteDamageRole's `call AoWE.ExecuteDamageRole` (the core to-hit
+                    roll) -> call cave_force: FORCE_C (BSS byte 0x558FAED1) non-zero -> return it,
+                    drawing nothing; else the vanilla roll.  cave_apply sets it around its one call
+                    and clears it, so every other damage roll in the game is the vanilla one.
   AoWTCPCK.dpl
     T0  0x004096CD  15 B post-execute test, melee side 0 -> jmp cave_tc
     T1  0x00409726  15 B post-execute test, melee side 1 -> jmp cave_tc
@@ -112,16 +116,16 @@ HOOKS (vanilla bytes asserted, no .reloc under any but the VMT slot)
     RT  0x0040A5B1  Round Attack sweep, after the blow (11 B) -> jmp cave_rat
   Every jump into the TCPCK hook starts comes from the same state block, with the CA in [TE+0x34].
 
-Slots: AoWEPACK 0x5589A000-0x5589A7FF exclusive (above build_sky_anim.py's reservation);
+Slots: AoWEPACK 0x5589A000-0x5589A7FF exclusive (above build_sky_anim.py's reservation), and the
+BSS byte 0x558FAED1 (FORCE_C);
 AoWTCPCK 0x0043AE40-0x0043B03F exclusive.  PIC: rel32, register-relative and call/pop anchors; the
 only absolutes are AoWz.exe's (0x40003C, 0x60D0xx, 0x45B2E0), fixed-base, as in the combat log.
 
 Couplings.  build_lifesteal_roundattack.py owns CA+0x18 bits 08/10 and the 0x5576678C hook in the same
-function.  The Embrittled rule is a COPY of build_embrittle.py's cave_dmg, so re-tune both together
-(cave_apply and dv_body's E[cut]).  It is a copy because TCombatObject.ExecuteDamageRole, where
-Embrittle and the Weaknesses live, is a damage ROLL from ATK and DAM with no fixed-amount entry;
-build_flight_fall.py's forced core roll (0x55781B0D, the strategic twin) is the pattern that would
-let the cut go through it instead.
+function.  Only dv_body's E[cut] (30 / 18 Protection / 48 Embrittled / 30 both, in tenths) still
+COPIES build_embrittle.py's rule: re-tune it with Embrittle.  The cut itself follows on its own.
+Hook F sits between build_livingflame.py's 0x55726A0A and build_embrittle.py's 0x55726A3A, overlapping
+neither; it is build_flight_fall.py's forced core roll (0x55781B0D) on the battle twin of the routine.
 build_panic_cleardamage.py's ExecuteDamage hook clears Panic on a striker that takes the cut.  The log
 lines depend on build_combatlog_exe.py's ring and RING_TACTICAL and on build_replaylog.py's memo chain
 (checked at run time); with either absent the guards make them silent.  build_simfly.py's raze
@@ -152,8 +156,18 @@ ABIL_ID = 0xBD
 NAME = "Razor Plate"
 MASK = 0x03FF
 DIE = 5                       # RandInt(DIE)+1; the 3-bit field holds at most 7
-EMBRITTLED = 0xB2
+EMBRITTLED = 0xB2             # dv_body's E[cut] only: the cut itself goes through the routine
 PHYS = 0x80                   # physical damage-type bit
+# The cut goes through the combat damage routine with its core roll forced (2026-10-29):
+TCO_EDR = 0x557269F0          # TCombatObject.ExecuteDamageRole (VMT +0x110; EAX obj, EDX atk, ECX dam,
+                              # [esp+4] type mask; ret 4) -- immunity, Embrittled, Weaknesses,
+                              # Spectral Wings and the protection halve all live in or on it
+CORE_ROLL = 0x55725EAC        # AoWE.ExecuteDamageRole, the to-hit roll it calls ...
+FORCE_SITE = 0x55726A33       # ... from here: `call CORE_ROLL`, retargeted to cave_force
+FORCE_C = 0x558FAED1          # BSS byte (page slack): non-zero = the amount the roll returns
+# Routing the cut made cave_apply 22 bytes shorter; the pad keeps its end past 0x5589A110, so the
+# 16-byte layout puts every later cave -- and every hook's target -- where it was.
+APPLY_PAD = "        nop\n" * 12
 LINE_CUT, LINE_DMG, LINE_UNK = " is cut by Razor Plate for ", " damage", "?"
 
 E_SLOT = (0x5589A000, 0x5589A800)
@@ -327,32 +341,22 @@ def build_apply(va, at):
         call dword ptr [edx + 0x60]
         test al, al
         je   a_out
-        mov  eax, edi
-        mov  edx, dword ptr [eax]
-        call dword ptr [edx + 0x7c]
-        test al, {PHYS:#x}
-        jne  a_out
-        mov  eax, edi
-        mov  edx, {EMBRITTLED:#x}
-        mov  ecx, dword ptr [eax]
-        call dword ptr [ecx + 0xa8]
+        call {at['cave_fptr']:#x}
+        mov  edx, ebp
+        mov  byte ptr [eax], dl
+        push eax
+        mov  eax, {PHYS:#x}
         push eax
         mov  eax, edi
-        mov  edx, dword ptr [eax]
-        call dword ptr [edx + 0x80]
+        xor  edx, edx
+        mov  ecx, ebp
+        call {TCO_EDR:#x}
         pop  ecx
-        test al, {PHYS:#x}
-        jne  a_halve
-        test cl, cl
-        je   a_deal
-        lea  ebp, [ebp + ebp*2 + 1]
-        jmp  a_shr
-    a_halve:
-        test cl, cl
-        jne  a_deal
-        inc  ebp
-    a_shr:
-        shr  ebp, 1
+        mov  byte ptr [ecx], 0
+        mov  ebp, eax
+        test ebp, ebp
+        jle  a_out
+{APPLY_PAD}
     a_deal:
         mov  eax, ebp
         mov  byte ptr [ebx + 0x16], al
@@ -815,6 +819,36 @@ def build_dv(va, at):
     """, va)
 
 
+def build_fptr(va, at):
+    """EAX := the address of FORCE_C, position-independently (the pop lands at va + 5).  Clobbers
+    EAX only."""
+    return asm(f"""
+        call f_anc
+    f_anc:
+        pop  eax
+        add  eax, {FORCE_C - (va + 5):#x}
+        ret
+    """, va)
+
+
+def build_force(va, at):
+    """TCombatObject.ExecuteDamageRole's `call CORE_ROLL` at FORCE_SITE, retargeted here: while
+    FORCE_C is non-zero return it as the roll, drawing nothing; else the vanilla roll, EAX (damage)
+    and EDX (attack - defence) untouched.  ECX is free at the site."""
+    return asm(f"""
+        push eax
+        call {at['cave_fptr']:#x}
+        movzx ecx, byte ptr [eax]
+        pop  eax
+        test ecx, ecx
+        jne  f_forced
+        jmp  {CORE_ROLL:#x}
+    f_forced:
+        mov  eax, ecx
+        ret
+    """, va)
+
+
 def build_reg(va, at):
     code = bytearray(asm(f"call {REGISTER:#x}", va))
     at_ = va + len(code)
@@ -861,7 +895,9 @@ def layout(slot, specs):
 E_SPECS = [("cave_roll", lambda va, at: build_roll(va)), ("cave_s0", build_s0), ("cave_s1", build_s1),
            ("cave_s2", build_s2), ("cave_apply", build_apply), ("cave_loop", build_loop),
            ("cave_rnd", build_rnd), ("cave_show", build_show), ("cave_play", build_play),
-           ("cave_line", build_line), ("cave_dv", build_dv), ("cave_reg", build_reg)]
+           ("cave_line", build_line), ("cave_dv", build_dv), ("cave_reg", build_reg),
+           # appended 2026-10-29, so no earlier cave moves
+           ("cave_fptr", build_fptr), ("cave_force", build_force)]
 
 
 # --- AoWTCPCK caves --------------------------------------------------------------------------
@@ -1066,7 +1102,8 @@ E_HOOKS = [(R_SITE, call_to(R_SITE, REGISTER), call_to(R_SITE, E_AT["cave_reg"])
            (RA_SITE, call_to(RA_SITE, CREATESTRIKE), call_to(RA_SITE, E_AT["cave_rnd"])),
            (SH_SITE, SH_VAN, jmp_to(SH_SITE, E_AT["cave_show"], len(SH_VAN))),
            (PL_SLOT, struct.pack("<I", STRIKE_PLAY), struct.pack("<I", E_AT["cave_play"])),
-           (DV_SITE, DV_VAN, jmp_to(DV_SITE, E_AT["cave_dv"], len(DV_VAN)))]
+           (DV_SITE, DV_VAN, jmp_to(DV_SITE, E_AT["cave_dv"], len(DV_VAN))),
+           (FORCE_SITE, call_to(FORCE_SITE, CORE_ROLL), call_to(FORCE_SITE, E_AT["cave_force"]))]
 E_INTERIOR = [(S0_SITE, S0_SITE + 5, 0x55767E68, 0x55767F51),
               (S1_SITE, S1_BACK, 0x55767E68, 0x55767F51),
               (S2_SITE, S2_SITE + 5, 0x557665E4, 0x5576670C),
@@ -1074,7 +1111,8 @@ E_INTERIOR = [(S0_SITE, S0_SITE + 5, 0x55767E68, 0x55767F51),
               (L_SITE, L_SITE + 6, 0x55766FCC, 0x5576710F),
               (RA_SITE, RA_SITE + 5, 0x55769458, 0x557696A0),
               (SH_SITE, SH_END, 0x55729E1C, 0x55729F14),
-              (DV_SITE, DV_SITE + 5, 0x55767F58, 0x5576804A)]
+              (DV_SITE, DV_SITE + 5, 0x55767F58, 0x5576804A),
+              (FORCE_SITE, FORCE_SITE + 5, TCO_EDR, 0x55726A6C)]
 
 LASTMOVE = (0x004090B5, 0x00409896)          # TCMeleeMoveTE.LastMove past its jump table
 DEFAULTMOVE = (0x004088C2, 0x00408F44)       # TCombatMoveTE.DefaultMove past its jump table

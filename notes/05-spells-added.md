@@ -119,9 +119,11 @@ Weakness abilities do (owner, 2026-10-27; it was ×2):
 
 The cave reads the protection mask itself to choose: doubling when the halve will fire (every type in
 the hit protected), ×1.5 otherwise. Spectral Wings (`0x97`) answers the Embrittled query, so winged
-units take the same in battle. ⚠ Forward hazard: `build_razorplate.py` copies this rule for its cut
-(`cave_apply`, and `dv_body`'s E[cut] of 48), so a re-tune here needs the same there; it trailed at ×2
-from 2026-10-27 to 2026-10-28.
+units take the same in battle. ⚠ Forward hazard — the same ×1.5 lives in other caves, so a re-tune
+here needs them too: `build_razorplate.py`'s AI estimate (`dv_body`'s E[cut] of 48; the cut itself
+goes through this routine since 2026-10-29, after its copy trailed at ×2 for a day), and `build_airwater_ench.py`'s
+`cave_pw` is Spectral Wings' own world-map ×1.5 (in battle it borrows this cave through the
+Embrittled query). `build_weakness.py`'s seven Weaknesses use the same factor in both engines.
 
 Design decisions were the user's (2026-09-01): Earth sphere, tier 3 research, a physical weakness on any
 hit carrying a physical component, cancels exactly against Physical Protection, refused (fizzles) on Physical Immunity
@@ -1269,8 +1271,10 @@ spreading ends, range 12 from the caster. The AI never casts it.
   and Ice next to it becomes Water, permanently.
 - Units on a hex that turns to lava:
   - Units that can stand on lava (Fire Immune, flying, floating) stay, unharmed.
-  - Each other unit loses d20 HP, rolled per unit, halved rounding down by Fire Protection and
-    ×1.5 rounding up by Fire Weakness, and is moved to an adjacent hex it can enter. That hex is
+  - Each other unit takes d20 fire damage, rolled per unit, through the map damage routine with
+    the roll forced (`build_flight_fall.py`'s `FORCE`, 2026-10-29), so Fire Immunity, Protection
+    (rounded up), Weakness, Living Flame and Mistform apply as to any fire hit; until then the cave
+    halved rounding down and applied Weakness itself. It is moved to an adjacent hex it can enter. That hex is
     never lava, and must be empty or hold its own side's party with room; a friendly ship there
     takes it aboard. A party may split across several hexes.
   - A unit with no such hex dies.
