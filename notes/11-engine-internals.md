@@ -2787,7 +2787,8 @@ walled templates (73 checks), `--test` checks the line-walk model. Revert: `--un
 - Combat-log lines name hidden units. Not filtered: four independent ring writers build their own
   names (`build_combatlog_dll.py`'s worker, `build_effectroll.py`, `build_razorplate.py`, and
   `build_combatlog_lib.py`'s `cl_emit` for seven more scripts), so there is no single place to drop
-  a line.
+  a line. Kept by the owner (2026-10-28), who chose this over renaming hidden units or dropping
+  their lines.
 - **Observers** (a third player watching a live-MP battle): the battle-start seat loop
   (`TTacticalCombat.Execute` `0x429845`–`0x429940`) seats the first local human combat player and
   `NewTurn` seats only local players, so an observer stays at seat `0xFF` and sees the whole battle
