@@ -369,21 +369,21 @@ damaging (2026-09-02, confirmed). A prerequisite crash fix, `build_abiltypes_rel
 see `03-abilities-added.md`), is **✅ CONFIRMED WORKING 2026-09-02** and must stay applied; it is not otherwise
 covered here.
 
-### A. Damage = 0.5 × level × casterRES
+### A. Damage = level × casterRES
 
-**Status: ✅ CONFIRMED WORKING (2026-07-16)**, user-validated in-game. Script `build_turnundead_res.py`
-(no `--undo`). Binary `AoWEPACK.dpl`.
+**Status: ✅ CONFIRMED WORKING (2026-07-16)**, user-validated in-game. Scripts `build_turnundead_res.py`
+(no `--undo`), then `build_turnundead_double.py` (2026-08-27). Binary `AoWEPACK.dpl`.
 
-> **DAM = clamp( round(0.5 × level × casterRES), 127 )** — integer maths `(level·RES + 1) >> 1`
-> (round half-up; RES 0 ⇒ 0). ATK is deliberately left on the vanilla level table (9/10/11/12). Two
-> parts patched: the damage actually dealt, and the info card's displayed DAM, so the shown number
-> matches what is rolled.
+> **DAM = clamp( 2 × ((level·RES + 1) >> 1), 127 )** = level × RES, rounded up to even (RES 0 ⇒ 0);
+> byte-read 2026-10-28 at `0x5580E2B0`. ATK is 18/20/22/24 (the doubled level table). Two parts
+> patched: the damage actually dealt (`0x5580E2A0`), and the info card's displayed DAM
+> (`0x5580E300`), so the shown number matches what is rolled. The clamp binds at level 4 from RES 32.
 
 | RES | L1 | L2 | L3 | L4 |
 |---|---|---|---|---|
-| 2 | 1 | 2 | 3 | 4 |
-| 8 | 4 | 8 | 12 | 16 |
-| 15 | 8 | 15 | 23 | 30 |
+| 2 | 2 | 4 | 6 | 8 |
+| 8 | 8 | 16 | 24 | 32 |
+| 15 | 16 | 30 | 46 | 60 |
 
 Turn Undead is a touch attack, class `TTurnUndeadAbility` (VMT ptr `0x5571FDFC`, **ends at `+0x124`** —
 no room for the Command-family slots, a fact that shapes feature C below). `GetTurnUndeadDamage

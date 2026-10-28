@@ -716,6 +716,12 @@ FIXES = [
      "Heals the unit by +5 HP per combat round.\r\n",
      "Heals the unit by +4 HP per combat round.\r\n",
      "record 187 = Reforming Flesh (ability 0xB1)"),
+
+    # Typo, owner 2026-10-28. Same length, so no offset moves.
+    ("Ability.pfs", 169,  5,
+     "Leaves a trail of parched desert in the wave of the unit's passing.\r\n",
+     "Leaves a trail of parched desert in the wake of the unit's passing.\r\n",
+     "record 169 = Path of Sand (ability 0x9F)"),
 ]
 
 

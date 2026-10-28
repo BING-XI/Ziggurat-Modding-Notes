@@ -418,6 +418,28 @@ _LEVELS_CACHE = {}
 VANILLA_DLL = os.path.join(GAME, "Modding Resources", "AoWEPACK_original_backup.dpl")
 
 
+def _cave_levelled(d):
+    """{ability id: (cap, cost per level)} for levelled abilities registered by a CAVE.
+
+    A cave has no export symbol, so neither levels()'s ctor scan nor costs()'s can bound it, and
+    Mirror Image (0xC6, cap 20 at 4 points) printed no levels. build_mirrorimage.py's registration
+    -- the idiom for a new TMultiLevelAbility -- writes `mov [esi+0xC], id`, a few bytes later
+    `mov [esi+0x28], cap`, then `mov ecx, cost` before each TIntegerList.Put. Callers take an id
+    from here only when their own scan did not find it: the pattern also matches one vanilla ctor
+    (0x20), which both scans already read."""
+    out = {}
+    for m in re.finditer(rb"\xC7\x46\x0C(.)\x00\x00\x00", d, re.S):
+        tail = d[m.end():m.end() + 24]
+        j = tail.find(b"\xC7\x46\x28")
+        if j < 0:
+            continue
+        cap = struct.unpack_from("<I", tail, j + 3)[0]
+        k = d.find(b"\xB9", m.end() + j + 7, m.end() + j + 60)
+        if 1 <= cap <= 255 and k >= 0:
+            out[m.group(1)[0]] = (cap, struct.unpack_from("<I", d, k + 1)[0])
+    return out
+
+
 def levels(dll=None):
     """{ability id: max level} for every LEVELLED ability, read from the live DLL.
 
@@ -556,6 +578,8 @@ def levels(dll=None):
             out[aid] = hard[stem]
         elif start in multi:
             out[aid] = cap_of(start) or MULTILEVEL_DEFAULT_CAP
+    for aid, (cap, _cost) in _cave_levelled(d).items():     # family 3: registered by a cave
+        out.setdefault(aid, cap)
     _LEVELS_CACHE[dll] = out
     return dict(out)
 
@@ -690,6 +714,9 @@ def costs(dll=None):
                 break
         if got:
             out[aid] = got[0] if len(set(got)) == 1 else max(got)
+    for aid, (_cap, c) in _cave_levelled(d).items():         # a cave-registered ability's Puts
+        if aid in lv and aid not in out:
+            out[aid] = c
     _COSTS_CACHE[dll] = out
     return dict(out)
 
@@ -722,11 +749,12 @@ def names():
 # Caps are mod-tunable immediates read live out of the DLL, so this must not be sized to whatever
 # the current data happens to use -- indexing it raised IndexError the moment Vision's cap went
 # 4 -> 9. 15 is the real ceiling anywhere sight is involved (TArmy.UpdateVisibilityRanges packs
-# base+level into a nibble), and roman() falls back to the digits beyond that rather than raising.
+# base+level into a nibble); Mirror Image (0xC6) goes to 20, so the table runs to XX. roman()
+# falls back to the digits beyond that rather than raising.
 # ⚠ Both must stay ABOVE the __main__ block: they used to sit below it, where the self-test could
 # never see them (NameError, not the IndexError it looked like).
 _ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX",
-          "X", "XI", "XII", "XIII", "XIV", "XV"]
+          "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX"]
 
 
 def roman(n):

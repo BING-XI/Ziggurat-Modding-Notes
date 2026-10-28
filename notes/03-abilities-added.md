@@ -1535,8 +1535,11 @@ dies partway may stop there.
   `AoWE.CreateStrikeCA` (Round Attack, the free swing at a unit moving away, the touched unit's swing
   back at a failed touch), in both engines. Ranged attacks are another CA class. "Lands" is
   `CA+0x10 != 0`: manual combat never executes a missed strike.
-- **Damage:** 1–5, no to-hit roll. Physical Immunity cancels it, Embrittled doubles it before the
-  halve, Physical Protection halves it rounding up. The Razor Plate unit is the dealer (`DoDamage`),
+- **Damage:** 1–5, no to-hit roll. Physical Immunity cancels it, Embrittled (Spectral Wings
+  included) raises it by half, rounded up, Physical Protection halves it rounding up, and the two
+  together cancel — `build_embrittle.py`'s `cave_dmg` rule, copied (×2 until 2026-10-28). It is a
+  copy because `TCombatObject.ExecuteDamageRole` is a roll from ATK and DAM with no fixed-amount
+  entry; re-tune both together. The Razor Plate unit is the dealer (`DoDamage`),
   so a kill earns it kill XP; if the strike killed it, the cut still lands, with no dealer.
 - **Storage:** the roll rides in bits `0xE0` of `CA+0x18`, the one strike-flag byte
   `TStrikeCA.ReadWrite` serialises, so the auto-resolve replay, which re-runs `Execute` from the
@@ -1560,7 +1563,8 @@ dies partway may stop there.
   back", in both the combat and the prediction mode, so every melee estimate the AI reads includes
   it. Round Attack and touch estimates do not.
 - **Hero level-up (2026-10-10):** mask `0x03FF` (units, items, leader customisation, level-up),
-  cost 8 (12 at first), Melee column; per-race Hero Offers in `heroskill_races.json`.
+  cost 12 (the live record, which also carries the owner's longer card text), Melee column;
+  per-race Hero Offers in `heroskill_races.json`.
 - **Registration:** splice `0x557BCD98` (High Prayer Blessing), mask `0x03FF`. Proved by launching
   `AoWz.exe` to its main window, 2026-10-09 and again for v2 2026-10-10. LADDER `0xBE`;
   `ability_names.py` `MODDED`.

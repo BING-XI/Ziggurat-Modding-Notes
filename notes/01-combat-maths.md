@@ -479,8 +479,10 @@ spinner sites, **cannot be re-applied or undone** until `EXES` names the editors
 `(level × casterRES + 1) >> 1` (vanilla) → 2026-08-20: re-rounded to `(level × RES + 2) >> 2`
 (`DMG_ROUND=2, DMG_SHIFT=2`, closing the RES-doubling identity) → 2026-08-24: an **exact ×2** appended
 (`add eax,eax` after the shift, `build_turnundead_res.py` `DMG_SCALE=2`) so there is no rounding
-drift. Current live formula: `2 × ((level × RES + 2) >> 2)`, caves `0x5580E2A0` (combat damage) /
-`0x5580E300` (info-card display) — both scaled together.
+drift → 2026-08-27: `build_turnundead_double.py` set the pair back to `+1 / >>1`. Current live
+formula (byte-read 2026-10-28): `2 × ((level × RES + 1) >> 1)` = level × RES rounded up to even,
+clamped to 127, caves `0x5580E2A0` (combat damage) / `0x5580E300` (info-card display) — both scaled
+together.
 
 ### Charge and Self-Destruct: re-proven complete by enumeration
 

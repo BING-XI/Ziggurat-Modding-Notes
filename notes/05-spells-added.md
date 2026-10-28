@@ -119,7 +119,9 @@ Weakness abilities do (owner, 2026-10-27; it was ×2):
 
 The cave reads the protection mask itself to choose: doubling when the halve will fire (every type in
 the hit protected), ×1.5 otherwise. Spectral Wings (`0x97`) answers the Embrittled query, so winged
-units take the same in battle.
+units take the same in battle. ⚠ Forward hazard: `build_razorplate.py` copies this rule for its cut
+(`cave_apply`, and `dv_body`'s E[cut] of 48), so a re-tune here needs the same there; it trailed at ×2
+from 2026-10-27 to 2026-10-28.
 
 Design decisions were the user's (2026-09-01): Earth sphere, tier 3 research, a physical weakness on any
 hit carrying a physical component, cancels exactly against Physical Protection, refused (fizzles) on Physical Immunity

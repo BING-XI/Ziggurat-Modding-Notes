@@ -13,9 +13,11 @@ RULES (owner's rulings 2026-10-09/10)
                CA), so this is the only rule both engines share.  A strike fully absorbed by the
                Razor Plate unit's own immunity also rolls 0 and does not cut.
     Damage     1..5 uniform, no to-hit roll.  Physical, in ExecuteDamageRole's own order: Physical
-               Immunity (bit 0x80 of GetImmunityTypes) -> 0; Embrittled (0xB2) doubles BEFORE the
-               halve, as build_embrittle.py's cave_dmg; Physical Protection (bit 0x80 of
-               GetProtectionTypes) halves, rounding up, as vanilla's (dmg+1)>>1.
+               Immunity (bit 0x80 of GetImmunityTypes) -> 0; Embrittled (0xB2; Spectral Wings
+               answers it too) x1.5 rounded up, (3d+1)>>1, as build_embrittle.py's cave_dmg;
+               Physical Protection (bit 0x80 of GetProtectionTypes) halves, rounding up, as
+               vanilla's (dmg+1)>>1; Embrittled and Physical Protection together cancel (the cut
+               is unchanged), as cave_dmg's doubling before the halve does.  x2 until 2026-10-28.
     Dealer     the Razor Plate unit, through DoDamage (VMT +0x108), so a kill earns it kill XP.  If
                the strike killed the Razor Plate unit, the cut lands through ExecuteDamage (+0x124)
                with no dealer and no XP.
@@ -69,7 +71,7 @@ HOW
          P(land) x E[cut] to the striker's side's "damage taken back" DV (+0x1C for an attacker's
          strike, +0x18 for a defender's).  P(land)x100 = StatisticsToDV(atk+mod, 1, ...), the engine's
          own estimator at damage 1, so immunity counts.  E[cut] in tenths: 30, 18 with Physical
-         Protection, 60 Embrittled, 30 both, 0 Physical Immunity.  Combat objects (+0x10/+0x14) and
+         Protection, 48 Embrittled (60 until 2026-10-28), 30 both, 0 Physical Immunity.  Combat objects (+0x10/+0x14) and
          prediction (+0x20/+0x24, strategic slots) both covered, so every consumer of
          GetAttackerDV/GetDefenderDV sees it.  Melee rounds only.
 
@@ -115,7 +117,11 @@ AoWTCPCK 0x0043AE40-0x0043B03F exclusive.  PIC: rel32, register-relative and cal
 only absolutes are AoWz.exe's (0x40003C, 0x60D0xx, 0x45B2E0), fixed-base, as in the combat log.
 
 Couplings.  build_lifesteal_roundattack.py owns CA+0x18 bits 08/10 and the 0x5576678C hook in the same
-function.  The Embrittled doubling is a copy of build_embrittle.py's rule: re-tune both together.
+function.  The Embrittled rule is a COPY of build_embrittle.py's cave_dmg, so re-tune both together
+(cave_apply and dv_body's E[cut]).  It is a copy because TCombatObject.ExecuteDamageRole, where
+Embrittle and the Weaknesses live, is a damage ROLL from ATK and DAM with no fixed-amount entry;
+build_flight_fall.py's forced core roll (0x55781B0D, the strategic twin) is the pattern that would
+let the cut go through it instead.
 build_panic_cleardamage.py's ExecuteDamage hook clears Panic on a striker that takes the cut.  The log
 lines depend on build_combatlog_exe.py's ring and RING_TACTICAL and on build_replaylog.py's memo chain
 (checked at run time); with either absent the guards make them silent.  build_simfly.py's raze
@@ -330,16 +336,22 @@ def build_apply(va, at):
         mov  edx, {EMBRITTLED:#x}
         mov  ecx, dword ptr [eax]
         call dword ptr [ecx + 0xa8]
-        test al, al
-        je   a_prot
-        add  ebp, ebp
-    a_prot:
+        push eax
         mov  eax, edi
         mov  edx, dword ptr [eax]
         call dword ptr [edx + 0x80]
+        pop  ecx
         test al, {PHYS:#x}
+        jne  a_halve
+        test cl, cl
         je   a_deal
+        lea  ebp, [ebp + ebp*2 + 1]
+        jmp  a_shr
+    a_halve:
+        test cl, cl
+        jne  a_deal
         inc  ebp
+    a_shr:
         shr  ebp, 1
     a_deal:
         mov  eax, ebp
@@ -726,7 +738,7 @@ def dv_body(M, tag):
         mov  eax, 30
         test cl, cl
         je   {tag}_eout
-        mov  eax, 60
+        mov  eax, 48
         jmp  {tag}_eout
     {tag}_eprot:
         mov  eax, 18

@@ -226,7 +226,7 @@ def touch(path):
             tgt = TURNUNDEAD_CALL + 5 + struct.unpack_from("<i", d, co + 1)[0]
             hooked = tgt != TURNUNDEAD_DAMFN
         if hooked:
-            dam = "Res x level"
+            dam = "RES × level"         # build_turnundead_res.py + _double.py: 2*((L*RES+1)>>1)
         else:
             dv = [_off(secs, v) for v in TURNUNDEAD_DAM]
             dam = "/".join(str(d[x]) for x in dv) if all(x is not None for x in dv) else "-"

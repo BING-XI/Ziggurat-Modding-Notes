@@ -87,6 +87,16 @@ DISPLAY = {
 }
 
 
+# Statuses this project builds at RUN TIME as VMT copies of a vanilla status class, so the static
+# image holds no VMT for extract() to find. (display, parent class, {stat: own getter VA}, a VA
+# that is non-zero only where the feature is applied). Addresses from the cave-ownership table in
+# 12-re-toolchain.md; a getter that stops decoding raises, as every other one does.
+RUNTIME_STATUSES = [
+    ("Asleep", "TStunnedAbility", {}, 0x558BD000),                 # build_lethe.py, Stunned's -4
+    ("Petrified", "TStunnedAbility", {"DEF": 0x558B5180}, 0x558B5180),  # build_stonegaze.py cave_pdef
+]
+
+
 class Entry(object):
     __slots__ = ("cls", "display", "kind", "mods", "sites", "vmt")
 
@@ -236,6 +246,21 @@ def extract(path=None, include_zero=False, kinds=("enchantment", "status")):
             sites[stat] = (fn, imm, form)
         out.append(Entry(name, DISPLAY.get(name, re.sub(r"^T|Ability$|Enchantment$", "", name)),
                          kind, mods, sites, vmt))
+    for disp, parent, own, present in RUNTIME_STATUSES:
+        b = pe.read(present, 4)
+        if "status" not in kinds or parent not in vmts or not b or not any(b):
+            continue                                    # not in this binary (vanilla, or undone)
+        mods, sites = OrderedDict(), OrderedDict()
+        for stat, slot in SLOTS.items():
+            fn = own.get(stat) or pe.dw(vmts[parent] + slot)
+            if not fn or (fn in base and stat not in own):
+                continue
+            val, imm, form = decode_getter(pe, fn)
+            if val == 0 and not include_zero:
+                continue
+            mods[stat] = val
+            sites[stat] = (fn, imm, form)
+        out.append(Entry(parent + " (run-time copy)", disp, "status", mods, sites, None))
     out.sort(key=lambda e: (e.kind != "enchantment", e.display.lower()))
     return out
 

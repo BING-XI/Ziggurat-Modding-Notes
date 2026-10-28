@@ -276,7 +276,7 @@ file carries the specific checklist for its own rows.
   LADDERs `0xC1`. `03-abilities-added.md`, "Wheeled".
 - **Razor Plate** (`0xBD`): every melee strike that lands on the unit costs the striker d5 physical
   damage — attack, retaliation, Round Attack, free swing, touch swing (Physical Protection halves,
-  Immunity cancels, Embrittled doubles). Flinch and blood, a combat-log line, the replay number and
+  Immunity cancels, Embrittled ×1.5 as Embrittle itself). Flinch and blood, a combat-log line, the replay number and
   the AI's melee estimate all include it. Melee rounds now end when either combatant falls; ⚠ a unit
   dying in manual combat has its HS freed on the spot. `build_razorplate.py` (`AoWEPACK.dpl` +
   `AoWTCPCK.dpl`) + `build_razorplate_pfs.py`, applied 2026-10-09, v2 2026-10-10.
