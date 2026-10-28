@@ -20,7 +20,7 @@ container-format documentation beyond the splicing rules both features actually 
 |---|---|---|---|
 | Regeneration spell (id 79, Water tier 1) + its enchantment (ability `0x53`) | applied 2026-10-22, launch-proved | `build_regen_spell.py`, `build_regen_spell_pfs.py`, `build_regen_spell_icon.py` | `AoWEPACK.dpl`, `Release\Spells.pfs` record 89, `Release\Ability.pfs` record 93, `Images\SpellIcn.ILB` entry 129 |
 | Embrittle spell (id 109) + Embrittled status (ability `0xB2`) — mechanics | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle.py` | `AoWEPACK.dpl` (7 hooks + 1 cave), `AoWTCPCK.dpl` (1 byte) |
-| Embrittle spellbook icon (broken-bone stamp, reuses dead entry 128) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle_icon.py` | `Images/SpellIcn.ILB` |
+| Embrittle spellbook icon (cracked-bone stamp, reuses dead entry 128) | 🔨 APPLIED, UNTESTED (2026-09-01; v3 art and the half-res twin 2026-10-27) | `build_embrittle_icon.py` | `Images/SpellIcn.ILB`, `Images/_SpellIcn.ILB` |
 | Embrittle `Spells.pfs` record 119 + `Ability.pfs` record 188 | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_embrittle_pfs.py` | `Release/Spells.pfs`, `Release/Ability.pfs` |
 | Ability-id ceiling ladders extended `0xB2`→`0xB3` (forced by Embrittled's new id) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_abilityid_ceilings.py`, `build_tcablist_ceiling.py` | `AoWTCPCK.dpl`, `AoWz.exe` |
 | Grip of Winter binary rework (cooling ladder, land targeting, temporary-terrain marker) | 🔨 APPLIED, UNTESTED (2026-09-01) | `build_gripofwinter.py` | `AoWEPACK.dpl` |
@@ -72,6 +72,12 @@ is a serialised object. Neither script does that. The recipe, in the order you a
 8. **The spell/ability's tunables live in a `.pfs` record keyed off the id**, not in the cave. Clone an
    existing record of the same class/tactical-type and re-key it; see "The `.pfs` / `.ail`
    record-splicing rules" near the end of this file.
+9. **The auto-combat overrides take different EDX objects.** `+0x90 fcPrefetchCombatCommands` gets a
+   `TFastCombatCommandList` (`TFastCombatCommandList.Create @0x5574390C`: `+4` caster, `+8` own side,
+   `+0xC` enemy side, `+0x10` TFastCombat). `+0x94 fcExecuteCombatCommand` and `+0x98
+   fcGetDamageValueEx` get the acting combat object, whose `+8` is the TFastCombat; `+0x98`'s out
+   record is `[esp+4]`, the wall situation `[esp+8]`. Reading the list's `+8` as the TFastCombat
+   crashed every auto-resolved battle with Taint the Flame in the hero's book (fixed 2026-10-28).
 
 Both features below instantiate this recipe end to end; read them for the byte-level version.
 
@@ -88,7 +94,7 @@ restoring it would silently undo that too.
 python build_scripts/build_embrittle.py            # dry run + verify + disassembly
 python build_scripts/build_embrittle.py --apply     # write it
 python build_scripts/build_embrittle.py --undo      # restore all 7 hooks, zero the cave
-python build_scripts/build_embrittle_icon.py --apply    Images/SpellIcn.ILB    ) run icon
+python build_scripts/build_embrittle_icon.py --apply    Images/(_)SpellIcn.ILB ) run icon
 python build_scripts/build_embrittle_pfs.py  --apply    Release/Spells.pfs    ) BEFORE pfs
 ```
 
@@ -101,18 +107,22 @@ below — run any of the three `--undo`s in any order, or just the one you need.
 
 Cast in tactical combat at a single enemy unit, opposed by the target's Resistance exactly like Slow. On
 a hit the target gains the **Embrittled** passive for the rest of that combat; while it holds, every
-incoming damage roll whose damage-type mask includes the physical bit is **doubled**. It is the
-deliberate mirror of Physical Protection (which halves):
+incoming damage roll whose damage-type mask includes the physical bit does **×1.5, rounded up**, as the
+Weakness abilities do (owner, 2026-10-27; it was ×2):
 
 | target has | result |
 |---|---|
-| Embrittled only | `2 × dmg` |
-| Embrittled **+ Physical Protection** | `(2·dmg + 1) >> 1` = **dmg**, exact cancellation |
+| Embrittled only | `(3·dmg + 1) >> 1` |
+| Embrittled **+ Physical Protection** (the halve fires) | doubled, then `(2·dmg + 1) >> 1` = **dmg**, exact cancellation |
 | Physical Protection only | `(dmg + 1) >> 1` (vanilla, unchanged) |
 | Physical **Immunity** | 0, as vanilla — and the cast fizzles rather than applying (below) |
 
-Design decisions were the user's (2026-09-01): Earth sphere, tier 3 research, doubles any hit carrying a
-physical component, cancels exactly against Physical Protection, refused (fizzles) on Physical Immunity
+The cave reads the protection mask itself to choose: doubling when the halve will fire (every type in
+the hit protected), ×1.5 otherwise. Spectral Wings (`0x97`) answers the Embrittled query, so winged
+units take the same in battle.
+
+Design decisions were the user's (2026-09-01): Earth sphere, tier 3 research, a physical weakness on any
+hit carrying a physical component, cancels exactly against Physical Protection, refused (fizzles) on Physical Immunity
 targets, resisted the same way as Slow. `SPELL_POWER` (`= 9`, `[spell+0x34]`) is the one-line tuning
 knob if it lands too often or too rarely — already on the Ziggurat scale, left at Slow's own value
 deliberately. Every hook re-derives Slow's own ability id `0x84` for any spell id that is not
@@ -320,19 +330,22 @@ banner popup, the unit hover popup, and `CreateTCAbList`.
 Two more scripts, both data-only. **Apply order matters — icon before `.pfs`** — the record's icon field
 points at the ILB entry the icon script rewrites.
 
-#### The icon — a broken-bone stamp, reusing a dead entry, no format surgery
+#### The icon — a cracked-bone stamp, reusing a dead entry, no format surgery
 
-`SpellIcn.ILB` holds 111 entries (ids 0–155), of which only 108 are referenced by any spell; **128, 129
-and 155 are dead.** Entry 128 (a Dragon on a Cosmos-purple disc, cut content) is reused rather than
-appended — appending a 112th entry would mean rewriting the directory, every `off` field after the
-insertion point and the file length; overwriting a dead entry needs none of that, because all three
-writes below are exact-size:
+The shipped `SpellIcn.ILB` held 111 entries (ids 0–155), of which only 108 were referenced by any spell;
+**128, 129 and 155 were dead.** Entry 128 (a Dragon on a Cosmos-purple disc, cut content) is reused
+rather than appended, in `SpellIcn.ILB` and in its half-resolution twin `_SpellIcn.ILB` (since
+2026-10-27; the twin had kept the Dragon). All three writes per twin are exact-size:
 
-| offset | length | write |
-|---|---|---|
-| `0x8B4C5` | 2800 B | frame pixels ← icon 52 (Slow), the real `SI-Earth.BMP` disc, read live so it always matches whatever Earth frame is installed |
-| `0x4FFD` | 4 B | frame `transparent` field: `0x00000000` → `0x00004148` |
-| `0x8BFB5` | 1972 B | sub-entry pixels (34×29) ← the broken-bone artwork |
+| write | length (full / half twin) |
+|---|---|
+| frame pixels ← the same twin's icon 52 (Slow), the real `SI-Earth.BMP` disc, read live | 2800 B / 720 B |
+| frame `transparent` field (directory record, `clip_off + 16` = `0x4FFD` in both): `0x00000000` → `0x00004148` | 4 B |
+| sub-entry pixels (34×29 at (2, 3), the same size in both twins) ← the cracked-bone artwork | 1972 B |
+
+⚠ The pixel offsets are found by walking the file on every run. `build_dual_spell_icons.py` inserts
+directory records, which moves all pixel data; the first version stored offsets (`0x8B4C5`, `0x8BFB5`)
+and read FOREIGN by 2026-10-27.
 
 ⚠ **The `transparent` write is not cosmetic.** Entry 128's frame declares `0x0000` (pure black) while
 the real Earth frame contains 113 pure-black pixels; any blitter honouring the colour key would punch
@@ -349,14 +362,14 @@ are off-grey" as *not black or white*, when it actually means *off-neutral* (off
 measurement across all 110 vanilla spell overlays (133,984 px) found black/mid-tone/white shares of
 17.3% / 14.1% / 68.6%, with the mid-tone band running 8–17% per icon (Slow 8.1%, Entangle 7.9%, Tremors
 10.1%, Stone Skin 11.9%) — those mid-tones are the soft anti-aliased outline every vanilla icon has, so a
-hard-edged 1-bit stamp reads as visibly foreign next to them. The shipped v2 stamp sits inside that band
-(verified live 2026-09-03: 16% black / 8.0% mid-tone), with the end lobes re-proportioned (≈2.3× the
-shaft width, not v1's ≈3.2×) and a visible notch between the lobes so it reads as a bone rather than a
-blob at this size. The background stays exactly `0xFFFF`, the sub-entry's own declared transparent
-value.
+hard-edged 1-bit stamp reads as visibly foreign next to them. v3 (2026-10-27, the owner's pick, draft C
+of four, after v2 ran edge to edge with a break that was hard to see) is a whole bone at about 80 % of
+v2's span with a white branching crack along the shaft: 16.0% black / 10.9% mid-tone. The background
+stays exactly `0xFFFF`, the sub-entry's own declared transparent value.
 
-`--undo` restores the vanilla Dragon/Cosmos entry from a zlib+base64 blob embedded in the script, so the
-revert path needs no backup file.
+`--undo` restores the vanilla Dragon/Cosmos entry: `SpellIcn.ILB`'s from a zlib+base64 blob embedded in
+the script (the GOG root's `SpellIcn.ILB` has no entry 128), `_SpellIcn.ILB`'s from the root's
+`_SpellIcn.ILB`.
 
 #### `Spells.pfs` record 119 and `Ability.pfs` record 188
 
@@ -1157,6 +1170,13 @@ Unproven: whether the hunt finder's 200-point search reaches a victim 16 hexes a
 terrain; a Raid pack split by the AI loses its mark (and its recruitment block). The Next button has
 no alignment props (DFM budget), so it relies on `awNone` keeping its stored position.
 
+Fixed 2026-10-28: an auto-resolved battle crashed ("Exception occured during TArmyCombatMoveTE",
+`AoWEPACK.dpl at 001B68D9`, read of `0x26`; reported by a player on an AI turn under hidden
+movement) whenever a hero's player knew Taint the Flame and had the mana for it. Its `+0x90`
+override took the caster's side from the command list's `+8` as if it were the TFastCombat
+(`build_deathfire_combat.py`, one byte at `0x558B6941`). Releases 2026.10.25 and 2026.10.27 carry the
+bug.
+
 Changed after the build (owner, 2026-10-25): Regeneration (79) and Enmity of Nine Hells (82) are
 castable in battle, as every vanilla unit enchantment but Cosmagic Scrying is; Dwarven Satchels (84)
 was built that way. Built the same day:
@@ -1641,6 +1661,88 @@ Choices made in the build, not in the design:
 Unproven:
 - In game: nothing cast yet; the cast effect's position (Magic.ILB's canvas offsets measured, not
   seen); that an army stepping onto a ritual-placed structure is blessed as on a map-placed one.
+
+### Air/Fire: Blazing Moon — agreed design (owner, 2026-10-27)
+
+From the owner's plan (Air/Fire tier 3: "Causes the Moon to shine almost as brightly as the sun,
+gradually turning the lands to desert and granting females +4 Dam"; AoWx's Drought).
+**Blazing Moon** (Air/Fire tier 3, world-map global enchantment): 80 mana, upkeep 20.
+- Each turn while it lasts, on the Surface and the Firmament, every hex rolls on its own: Snow 10 %
+  to Grass; Grass and Dirt 10 % to Steppe; Steppe 10 % to Desert; Wasteland 5 % to Desert; Ice 25 %
+  to Water. Water, lava and the other levels are untouched. The land stays changed after the spell
+  ends.
+- Every female unit and hero on the map, every player's, has +4 DAM.
+- While it lasts the Surface and Firmament views have a warm light, seen by every player: red ×1.11,
+  green ×0.98, blue ×0.78 (option F of six).
+- It ends when its upkeep goes unpaid, Disjunction takes it or its caster removes it in the Magic
+  window.
+- Proposed: Ritualist; one per caster; the hexes roll once a day however many Blazing Moons are
+  active; a hex the map refuses (an army that cannot stand on the new terrain) keeps its terrain that
+  turn; the AI never casts it.
+
+### Air/Fire: Blazing Moon — as built (2026-10-27)
+
+| script | where | what |
+|---|---|---|
+| `build_blazing_moon.py` | AoWEPACK `0x558C5000`, BSS `0x558FAED8`–`0x558FAEDF` | spell 95 (a TSpellWard instance, registered on Water Mastery's `call RegisterSpell`) whose record is a re-typed `TSpellWardEnchantment` (type `0x58`), one per caster; the daily drying in the record's MsgProc; +4 DAM in `TUnit.GetDamage` and `THero.GetDamage` before their clamps; the warm light over the drawn map frame |
+| `build_blazing_moon_pfs.py` | `Spells.pfs` 105 | Astral Ward's record 75 re-numbered (its cast effect and sound), Ritualist, icon 172 |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icon 172, a full moon with three craters ringed by twelve sun rays (the owner's pick, A of three) |
+| `build_dual_sphere.py` | its `TABLE` | row `(95, AIR, FIRE)` |
+
+Choices made in the build, not in the design:
+- The day's rolls run at the turn start of the caster of the first active Blazing Moon in the global
+  magic list, after upkeep, field by field in row order (one synced roll per eligible hex). A level
+  the map lacks is skipped.
+- Forests and other terrain objects on a changed hex re-skin to the new terrain or remove themselves,
+  as under any terrain change; roads and rivers stay.
+- The +4 is added when DAM is read, not cached, so it starts and ends with the spell with nothing to
+  refresh. It still meets each getter's clamp (units 2–60, heroes 2–40).
+- The light is applied to the finished map frame after armies are drawn and before fog, the grid
+  and the selection markers, through a 64K colour table built on first use (RGB565 or RGB555; other
+  screen formats are left alone).
+- Chained in front of Blessing of Stygia's create and CanActivate caves and Awaken Volcano's message
+  cave; those scripts accept the chain as their applied state and refuse `--apply`/`--undo` while it
+  is in place.
+
+Unproven:
+- In game: nothing cast yet; how the light looks; how long a day's drying takes on a large map;
+  forests' re-skins.
+
+### Life/Air: Spectral Wings — agreed design (owner, 2026-10-27)
+
+From the owner's plan (Life/Air tier 3: "Enchantment: Physical Weakness and Flying"; AoWx's Angel
+Wings, which the owner's version strips to these two; the plan's "Size-cost" note is dropped).
+**Spectral Wings** (Life/Air tier 3, unit enchantment): 50 mana, upkeep 5, cast on the world map or
+in battle on one of your own units that cannot fly.
+- The unit has Flying while enchanted.
+- It has Physical Weakness: physical hits on it do ×1.5, rounded up, as the other Weaknesses do;
+  Physical Protection cancels it.
+- The AI never casts it.
+- With it, Embrittled is cut from ×2 to ×1.5 (owner, 2026-10-27).
+
+### Life/Air: Spectral Wings — as built (2026-10-27)
+
+| script | where | what |
+|---|---|---|
+| `build_airwater_ench.py` | AoWEPACK `0x558BE400` (re-laid out) | spell 96 (a TWindWalking instance) and enchantment `0x97` (a TWindWalkingEnchantment instance), beside Mistform and Static Shield; the target test; Flying through `GetAbMoveTypesAll`'s Wind Walking query; the query widening (Flying and Embrittled answer for `0x97`); the world-map physical ×1.5 |
+| `build_embrittle.py` | its `cave_dmg` | ×1.5 instead of ×2; Physical Protection still cancels exactly |
+| `build_airwater_pfs.py` | `Spells.pfs` 106, `Ability.pfs` 161 | Wind Walking's records re-numbered; Enchanter; icon 173 |
+| `build_battlecast_unitspells.py`, `build_spell_unit_target.py` | AoWTCPCK | castable in battle, on a unit only |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icon 173, spread wings with a pale quill down each feather (the owner's pick, B of three) |
+| `build_dual_sphere.py` | its `TABLE` | row `(96, LIFE, AIR)` |
+
+Choices made in the build, not in the design:
+- "Cannot fly" refuses Flying (natural, or these wings) and Wind Walking; a floater (Mistform included)
+  may take the wings.
+- A winged unit counts as a flyer for every Flying test (Weight of the World's +50 % and its grounding
+  included) and as Embrittled for damage; Embrittle cast on it is refused as already applied.
+- The physical ×1.5 also applies on the world map (Meteor Storm and other physical map damage), where
+  Embrittled never lasts.
+- Ability `0x97` was a nil registry slot no binary used as a constant; the launch proved it free.
+- Embrittle's texts in `Spells.pfs` 119 and `Ability.pfs` 188 were edited in place for ×1.5.
+
+Unproven:
+- In game: nothing cast yet; flight gained and lost mid-battle; the fall when the wings end over water.
 
 ## Open items
 

@@ -1,87 +1,74 @@
 # -*- coding: utf-8 -*-
 r"""
-build_embrittle_icon.py — a "broken bone" spell icon for Embrittlement, written into
-Images/SpellIcn.ILB by REUSING a dead entry, with no format surgery.
+build_embrittle_icon.py — a "cracked bone" spell icon for Embrittlement, written into
+Images/SpellIcn.ILB and its half-resolution twin Images/_SpellIcn.ILB by REUSING the dead
+entry 128 in each, with no format surgery.
 
     python build_scripts/build_embrittle_icon.py            dry run + verify
     python build_scripts/build_embrittle_icon.py --apply     write it
     python build_scripts/build_embrittle_icon.py --undo      restore the vanilla entry
     python build_scripts/build_embrittle_icon.py --png <dir> render before/after previews
 
-TARGET: Images/SpellIcn.ILB ONLY. No binary is touched.
+TARGETS: Images/SpellIcn.ILB and Images/_SpellIcn.ILB. No binary is touched.
 
 ────────────────────────────────────────────────────────────────────────────────────────────
 WHY ENTRY 128, AND WHY THIS IS NOT AN APPEND
 ────────────────────────────────────────────────────────────────────────────────────────────
-SpellIcn.ILB holds 111 top-level entries with ids 0..155. Exactly 108 are referenced by a
-spell (Spells.pfs tag 0x0C -> "SPELLICN.ILB" + a u32 index). **Three are dead: 128, 129, 155.**
-128 is a Dragon silhouette on a Cosmos-purple disc — cut content, referenced by nothing.
+In the shipped SpellIcn.ILB, 108 entries were referenced by a spell (Spells.pfs tag 0x0C ->
+"SPELLICN.ILB" + a u32 index) and three were dead: 128, 129, 155. 128 is a Dragon silhouette
+on a Cosmos-purple disc — cut content, referenced by nothing. Overwriting it in place keeps
+every write exact-size: the directory and the file length are untouched, and it is reversible.
 
-Appending a 112th entry would mean rewriting the directory, every `off` field after the
-insertion point and the `imgdir` header — a format-surgery project. Overwriting a dead entry
-in place needs **none of that**: the three writes below are all exact-size, so the directory,
-every offset and the file length are untouched. It is also trivially reversible.
-
-⚠ `Images/SpellIcn.ILB` has no other owner — `grep -rlni spellicn build_scripts/` was empty
-on 2026-09-01. That is what makes a whole-entry rewrite safe here; do not assume it for any
-other data file.
+⚠ ENTRY 128'S PIXELS MOVE. build_dual_spell_icons.py inserts directory records, which pushes
+the image data (and so every pixel offset) further into the file; build_regen_spell_icon.py
+owns entry 129. The offsets are therefore found by walking the file (re_tools/spell_icons.py)
+on every run, never stored. The 2026-09-01 version stored them and read FOREIGN by 2026-10-27.
+The directory record itself (and its transparent dword) has not moved: inserted records go
+after it.
 
 ────────────────────────────────────────────────────────────────────────────────────────────
-THE THREE WRITES
+THE THREE WRITES, PER TWIN
 ────────────────────────────────────────────────────────────────────────────────────────────
-An icon is a COMPOSITE: a 40x35 frame (the sphere-coloured disc) plus one sub-entry holding
-the artwork, inset at the sub's clip origin. Both are Sprite16 (type 22): pixel data is
-UNCOMPRESSED RGB565 of the clip rectangle, exactly clipw*cliph*2 bytes. See
-re_tools/spell_icons.py for the full format derivation.
+An icon is a COMPOSITE: a frame (the sphere-coloured disc; 40x35 in SpellIcn.ILB, 20x18 in
+_SpellIcn.ILB) plus one sub-entry holding the artwork, a 34x29 clip at (2, 3) of a 40x35 box
+in BOTH twins. Both are Sprite16 (type 22): UNCOMPRESSED RGB565 of the clip rectangle.
 
-  1. frame pixels   @0x8B4C5, 2800 B  <- copied verbatim from icon 52 (Slow), i.e. the real
-                                         SI-Earth.BMP disc. Read from the live file at apply
-                                         time rather than embedded, so it always matches
-                                         whatever Earth frame is actually installed.
-  2. frame transparent field @0x4FFD, 4 B   0x00000000 -> 0x00004148
-  3. sub pixels     @0x8BFB5, 1972 B (34x29) <- the broken bone from ART below.
+  1. frame pixels  <- copied from the SAME twin's icon 52 (Slow), the real SI-Earth.BMP disc,
+                      read at apply time so it matches whatever Earth frame is installed.
+  2. frame transparent dword (directory record, clip_off + 16) <- 0x00004148.
+  3. sub pixels    <- the cracked bone from ART below.
 
 ⚠ WRITE 2 IS NOT COSMETIC. Icon 128's frame declares transparent = 0x0000 (pure black) while
-the Earth frame contains **113 pure-black pixels**. Any blitter that honours the colour key
-would punch 113 holes through the disc. Every Earth icon declares 0x4148 — a value absent
-from its own pixels, i.e. "key nothing, this is an opaque background" — so matching it makes
-the new entry behave byte-for-byte like a known-good Earth icon instead of relying on an
-assumption about whether the game honours the field. (re_tools/spell_icons.py concluded the
-field is unusable for RENDERING and ignores it; that is a statement about the tool, not a
-guarantee about the engine. Don't rely on it.)
+the Earth frame contains pure-black pixels; a blitter that honours the key would punch holes
+through the disc. Every Earth icon declares 0x4148, a value absent from its own pixels, so
+matching it makes the entry behave like a known-good Earth icon.
 
 The sub keeps its own transparent = 0xFFFF: the artwork's background is exactly that value,
-so it drops out and the disc shows through. The ink itself is anti-aliased greyscale --
-see THE ART below, and do not "clean it up" to 1-bit.
+so it drops out and the disc shows through.
+
+Revert: the SpellIcn.ILB originals are embedded below (the vanilla root's SpellIcn.ILB has no
+entry 128); the _SpellIcn.ILB originals are read from the vanilla root's _SpellIcn.ILB.
 
 ────────────────────────────────────────────────────────────────────────────────────────────
 THE ART
 ────────────────────────────────────────────────────────────────────────────────────────────
 ART below is the literal 34x29 stamp, one character per pixel, using the RAMP table: '.' is
 white (keyed transparent), '#' is solid black, and ':' '-' '+' '*' are the intermediate greys
-that produce the soft outline. It is deliberately stored as text rather than regenerated from
-drawing code: it is reviewable in the diff, editable by hand with any text editor, and immune
-to a PIL version changing its resampling and silently altering the shipped artwork.
+that produce the soft outline. It is stored as text so it is reviewable in the diff and immune
+to a PIL version changing its resampling.
 
-⚠ **THE ART IS ANTI-ALIASED, AND MUST BE.** v1 of this script shipped a 1-bit stamp on the
-strength of spell_icons.py's note that "25 pixels in the entire file are off-grey" — that says
-off-NEUTRAL (not on the r=g=b axis), NOT "not black or white", and reading it the second way is
-what produced a hard-edged icon that visibly did not match its neighbours. Measured over all
-110 vanilla overlays (133,984 px):
+⚠ **THE ART IS ANTI-ALIASED, AND MUST BE.** Over all 110 vanilla overlays: black (<32) 17.3%,
+mid (32-223) 14.1%, white 68.6%; per-icon mid runs 8-17%. A 1-bit stamp (v1) visibly did not
+match its neighbours. v3 is 16.0% black / 10.9% mid.
 
-    black (<32)   23,200   17.3%
-    MID (32-223)  18,835   14.1%      <- the soft, semi-black outline
-    white (>223)  91,949   68.6%
+⚠ White must stay EXACTLY 0xFFFF — the sub-entry's declared transparent value. RAMP['.'] = 255
+does (r=31, g=63, b=31).
 
-Per-icon the mid-tone share runs 8-17% (Slow 8.1, Entangle 7.9, Tremors 10.1, Stone Skin 11.9).
-This stamp is 16% black / 8.0% mid, inside that band. The engine evidently composites these by
-luminance rather than by a pure colour key, which is also why spell_icons.py's ink_alpha()
-renders them correctly.
-
-⚠ White must stay EXACTLY 0xFFFF — that is the sub-entry's declared transparent value, so any
-pixel meant to disappear has to hit it exactly. RAMP['.'] = 255 does (r=31,g=63,b=31).
+History (the owner's picks): v1 2026-09-01 hard-edged, knobs too broad. v2 anti-aliased, but
+edge to edge and the break hard to see. v3 2026-10-27, draft C of four: a smaller whole bone
+with a white branching crack along the shaft.
 """
-import os, sys, struct, shutil, zlib, base64, hashlib
+import os, sys, struct, shutil, zlib, base64, hashlib, importlib.util
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -91,19 +78,18 @@ except Exception:                                                        # noqa:
 
 GAME = os.environ.get("AOW_GAME_DIR") or os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+ROOT = os.path.dirname(GAME)                 # the vanilla install, reference for the half twin
+TOOLS = os.path.join(GAME, "Modding Resources", "re_tools")
 BACKUP_DIR = os.path.join(GAME, "backups")   # rule 2026-09-03: snapshots live here, never the game root
-ILB = os.path.join(GAME, "Images", "SpellIcn.ILB")
-BACKUP = os.path.join(BACKUP_DIR, os.path.basename(ILB) + ".pre-embrittleicon")
+TWINS = [os.path.join(GAME, "Images", "SpellIcn.ILB"), os.path.join(GAME, "Images", "_SpellIcn.ILB")]
+ILB = TWINS[0]
+SUFFIX = ".pre-embrittleicon"
 
 ICON_ID = 128               # the dead entry being reused
 DONOR_ID = 52               # icon 52 = Slow: the real SI-Earth.BMP disc
-
-# --- patch points, measured with re_tools/spell_icons.py (walk() reports clip_off) ---------
-FRAME_PIX_OFF, FRAME_PIX_LEN = 0x8B4C5, 2800        # 40x35 RGB565
-FRAME_TRANSP_OFF = 0x4FFD                           # the frame's transparent dword
-SUB_PIX_OFF, SUB_PIX_LEN = 0x8BFB5, 1972            # 34x29 RGB565
 SUB_W, SUB_H = 34, 29
-DONOR_FRAME_PIX_OFF = 0x3E8F5                       # icon 52's frame pixels
+SUB_CLIP = [SUB_W, SUB_H, 2, 3]
+SUB_PIX_LEN = SUB_W * SUB_H * 2
 
 TRANSP_VANILLA = 0x00000000
 TRANSP_EARTH = 0x00004148                           # what every real Earth frame declares
@@ -113,6 +99,57 @@ RAMP = {"#": 0, "*": 56, "+": 112, "-": 160, ":": 208, ".": 255}
 
 # --- the stamp: 34 wide, 29 tall. See THE ART above -- greys are the soft outline. ----------
 ART = [
+    "..................................",
+    "........--........................",
+    "......:###*:......................",
+    "......*####+......................",
+    ".....:#####*......................",
+    "......#####+......................",
+    "....::-####-......................",
+    "...+##*+####+.....................",
+    "..-##########*:...................",
+    "..*########*-##-..................",
+    "..+########*.+##+.................",
+    "..:####+*###::####-...............",
+    "...:+*-..+##+.-+++::..............",
+    "..........-##.....-#*:............",
+    "...........:+:###::###-...........",
+    ".............:###-.####+..........",
+    "..............:*#*.:--*#*:.:+*+...",
+    "................+#:::.+###+*###+..",
+    ".................-:*############:.",
+    "...................*############:.",
+    "....................+###########..",
+    ".....................:*####+###:..",
+    ".......................*###*::....",
+    "......................:#####-.....",
+    "......................-#####+.....",
+    "......................:#####-.....",
+    ".......................-###+......",
+    "........................:-:.......",
+    "..................................",
+]
+# Earlier builds, so verify-before-write recognises an installed older one and REWRITES IT IN
+# PLACE rather than refusing. Append here whenever the art changes; never replace.
+PRIOR_ART = [[
+    "..................................", "........####......................",
+    ".......######.....................", ".......######.....................",
+    ".......######.....................", ".......######.....................",
+    "...##########.....................", "..##########......................",
+    "..##########......................", "..###########.....................",
+    "..############....................", "...#####..#####...................",
+    "...........#####..................", "............#####.................",
+    ".............#####................", "..................##..............",
+    "...............#######....#####...", "................########..######..",
+    ".................###############..", "...................#############..",
+    ".....................###########..", "......................#########...",
+    ".......................#####......", "......................######......",
+    "......................#######.....", "......................######......",
+    ".......................#####......", "........................###.......",
+    "..................................",
+]]
+PRIOR_ART.append(
+[
     "..................................",
     "..................................",
     "..................................",
@@ -142,28 +179,14 @@ ART = [
     "..................................",
     "..................................",
     "..................................",
-]
+])
 
-# v1's 1-bit stamp, kept so verify-before-write recognises an already-installed older build and
-# REWRITES IT IN PLACE rather than refusing. Append here whenever the art changes; never replace.
-#   v1 (2026-09-01): hard-edged, and the knobs were too broad. Both noted by the author on sight.
-PRIOR_ART = [[
-    "..................................", "........####......................",
-    ".......######.....................", ".......######.....................",
-    ".......######.....................", ".......######.....................",
-    "...##########.....................", "..##########......................",
-    "..##########......................", "..###########.....................",
-    "..############....................", "...#####..#####...................",
-    "...........#####..................", "............#####.................",
-    ".............#####................", "..................##..............",
-    "...............#######....#####...", "................########..######..",
-    ".................###############..", "...................#############..",
-    ".....................###########..", "......................#########...",
-    ".......................#####......", "......................######......",
-    "......................#######.....", "......................######......",
-    ".......................#####......", "........................###.......",
-    "..................................",
-]]
+
+def si():
+    spec = importlib.util.spec_from_file_location("spell_icons", os.path.join(TOOLS, "spell_icons.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
 
 
 def stamp(art):
@@ -192,24 +215,33 @@ def read(path):
         return bytearray(f.read())
 
 
+def locate(d):
+    """Walk the file -> (frame off, frame len, transparent off, sub off, donor frame off)."""
+    entries, base = si().walk(bytes(d))
+    by = {t["id"]: (t, s) for t, s in entries}
+    top, subs = by[ICON_ID]
+    donor = by[DONOR_ID][0]
+    assert len(subs) == 1 and subs[0]["clip"] == SUB_CLIP and subs[0]["size"] == SUB_PIX_LEN, \
+        "entry %d's sub is not the %dx%d clip at (2, 3)" % (ICON_ID, SUB_W, SUB_H)
+    assert top["size"] == donor["size"] and (top["w"], top["h"]) == (donor["w"], donor["h"]), \
+        "entry %d's frame and icon %d's differ in size" % (ICON_ID, DONOR_ID)
+    return base + top["off"], top["size"], top["clip_off"] + 16, base + subs[0]["off"], base + donor["off"]
+
+
 def wanted(d):
     """-> [(offset, new bytes, description)] for the three writes, given the live file."""
+    fo, fl, to, so, do = locate(d)
     return [
-        (FRAME_PIX_OFF, bytes(d[DONOR_FRAME_PIX_OFF:DONOR_FRAME_PIX_OFF + FRAME_PIX_LEN]),
-         "frame pixels <- icon %d (SI-Earth.BMP disc)" % DONOR_ID),
-        (FRAME_TRANSP_OFF, struct.pack("<I", TRANSP_EARTH),
-         "frame transparent %#010x -> %#010x (match the Earth icons)"
-         % (TRANSP_VANILLA, TRANSP_EARTH)),
-        (SUB_PIX_OFF, art_pixels(), "sub pixels <- the broken-bone stamp (%dx%d)"
-         % (SUB_W, SUB_H)),
+        (fo, bytes(d[do:do + fl]), "frame pixels <- icon %d (SI-Earth.BMP disc)" % DONOR_ID),
+        (to, struct.pack("<I", TRANSP_EARTH),
+         "frame transparent %#010x -> %#010x (match the Earth icons)" % (TRANSP_VANILLA, TRANSP_EARTH)),
+        (so, art_pixels(), "sub pixels <- the cracked-bone stamp (%dx%d)" % (SUB_W, SUB_H)),
     ]
 
 
-# --- the vanilla entry, so --undo needs no backup file -------------------------------------
+# --- SpellIcn.ILB's vanilla entry, so --undo needs no backup file ---------------------------
 # zlib+base64 of icon 128's original frame pixels (2800 B) followed by its original sub
-# pixels (1972 B) -- the Cosmos disc and the Dragon silhouette. Embedded rather than restored
-# from .pre-embrittleicon so the revert path survives the backup being pruned, which is this
-# project's standing rule for every feature.
+# pixels (1972 B) -- the Cosmos disc and the Dragon silhouette.
 ORIG_B64 = (
 "eNqdmE9oE9sex0e4i1l426O4GOxdTKuLBHza8XXxht6F0z+LuSA46VU7FuGNtS1BBGPSppNcF5WqjYhQTf8kKUIuVG9SrtC8"
     "V8GU66IXXp+1VVBw0YJd3EUXavPARcEu+r6/M5kmscp71/mRZmZyzmd+/8+Z1gnuIQtC2bks1AnHhBaxVexiXeyp1MXOiy2Q"
@@ -248,106 +280,112 @@ ORIG_B64 = (
     "t77qeBG1xEOdWd9V9mriRfTrGKMzydcrb/ZN7syuUtf/L1hu6p4="
 )
 
+def originals(path, d):
+    fo, fl, to, so, _do = locate(d)
+    if os.path.basename(path).startswith("_"):
+        r = read(os.path.join(ROOT, "Images", os.path.basename(path)))
+        rfo, rfl, rto, rso, _r = locate(r)
+        assert rfl == fl, "the vanilla root's half-res frame is another size"
+        assert bytes(r[rto:rto + 4]) == struct.pack("<I", TRANSP_VANILLA)
+        frame, sub = bytes(r[rfo:rfo + rfl]), bytes(r[rso:rso + SUB_PIX_LEN])
+    else:
+        raw = zlib.decompress(base64.b64decode(ORIG_B64))
+        assert hashlib.sha256(raw).hexdigest().startswith("742620b2329b1434"), \
+            "embedded vanilla blob failed its own hash check"
+        assert len(raw) == fl + SUB_PIX_LEN
+        frame, sub = raw[:fl], raw[fl:]
+    return [(fo, frame, "frame pixels <- vanilla Cosmos disc"),
+            (to, struct.pack("<I", TRANSP_VANILLA), "frame transparent restored"),
+            (so, sub, "sub pixels <- vanilla Dragon silhouette")]
 
-def originals():
-    raw = zlib.decompress(base64.b64decode(ORIG_B64))
-    assert len(raw) == FRAME_PIX_LEN + SUB_PIX_LEN
-    assert hashlib.sha256(raw).hexdigest().startswith("742620b2329b1434"), \
-        "embedded vanilla blob failed its own hash check"
-    return [(FRAME_PIX_OFF, raw[:FRAME_PIX_LEN], "frame pixels <- vanilla Cosmos disc"),
-            (FRAME_TRANSP_OFF, struct.pack("<I", TRANSP_VANILLA), "frame transparent restored"),
-            (SUB_PIX_OFF, raw[FRAME_PIX_LEN:], "sub pixels <- vanilla Dragon silhouette")]
 
-
-def state(d):
+def state(path, d):
     """'applied' | 'vanilla' | 'stale' (an older build of ours) | 'FOREIGN'.
 
     'stale' exists so re-cutting the artwork is a REWRITE IN PLACE. Only FOREIGN aborts --
     that means something outside this feature edited the entry.
     """
-    if all(bytes(d[o:o + len(b)]) == b for o, b, _ in wanted(d)):
+    match = lambda ws: all(bytes(d[o:o + len(b)]) == b for o, b, _ in ws)
+    w = wanted(d)
+    if match(w):
         return "applied"
-    if all(bytes(d[o:o + len(b)]) == b for o, b, _ in originals()):
+    if match(originals(path, d)):
         return "vanilla"
-    frame_ok = (bytes(d[FRAME_PIX_OFF:FRAME_PIX_OFF + FRAME_PIX_LEN])
-                == bytes(d[DONOR_FRAME_PIX_OFF:DONOR_FRAME_PIX_OFF + FRAME_PIX_LEN]))
-    transp_ok = bytes(d[FRAME_TRANSP_OFF:FRAME_TRANSP_OFF + 4]) == struct.pack("<I", TRANSP_EARTH)
-    cur = bytes(d[SUB_PIX_OFF:SUB_PIX_OFF + SUB_PIX_LEN])
-    if frame_ok and transp_ok and any(cur == stamp(a) for a in PRIOR_ART):
+    so = w[2][0]
+    if match(w[:2]) and any(bytes(d[so:so + SUB_PIX_LEN]) == stamp(a) for a in PRIOR_ART):
         return "stale"
     return "FOREIGN"
 
 
 def show():
-    d = read(ILB)
-    st = state(d)
-    print("build_embrittle_icon -- broken-bone icon in SpellIcn.ILB entry %d" % ICON_ID)
+    print("build_embrittle_icon -- cracked-bone icon in entry %d of both SpellIcn twins" % ICON_ID)
     print("target: %s" % GAME)
-    print()
-    for o, b, desc in wanted(d):
-        cur = "applied" if bytes(d[o:o + len(b)]) == b else "not applied"
-        print("  %08X  %-11s  %s" % (o, cur, desc))
-    print()
-    print("  entry %d state: %s   (file %d B, unchanged by this patch)" % (ICON_ID, st.upper(), len(d)))
+    states = {}
+    for path in TWINS:
+        d = read(path)
+        print()
+        print("  %s" % os.path.basename(path))
+        for o, b, desc in wanted(d):
+            cur = "applied" if bytes(d[o:o + len(b)]) == b else "not applied"
+            print("    %08X  %-11s  %s" % (o, cur, desc))
+        states[path] = state(path, d)
+        print("    entry %d state: %s" % (ICON_ID, states[path].upper()))
     n = SUB_W * SUB_H
     lv = [RAMP[c] for r in ART for c in r]
     blk = sum(1 for v in lv if v < 32)
     mid = sum(1 for v in lv if 32 <= v <= 223)
+    print()
     print("  art: %dx%d, black %d (%.0f%%), anti-aliased mid-tone %d (%.1f%%)"
           % (SUB_W, SUB_H, blk, 100.0 * blk / n, mid, 100.0 * mid / n))
     print("       vanilla overlays pooled: 17.3% black / 14.1% mid; per-icon mid runs 8-17%")
-    return st
+    return states
 
 
 def preview(outdir):
-    """Render the entry as the game composites it, before and after, at 8x."""
-    sys.path.insert(0, os.path.join(GAME, "Modding Resources", "re_tools"))
-    import spell_icons as si
+    """Render the full-size entry as the game composites it, before and after, at 8x."""
+    S = si()
     from PIL import Image
     os.makedirs(outdir, exist_ok=True)
     d = read(ILB)
-    for label, patches in (("before", originals()), ("after", wanted(d))):
+    for label, patches in (("before", originals(ILB, d)), ("after", wanted(d))):
         t = bytearray(d)
         for o, b, _ in patches:
             t[o:o + len(b)] = b
         t = bytes(t)
-        entries, base = si.walk(t)
+        entries, base = S.walk(t)
         top, subs = next((a, b) for a, b in entries if a["id"] == ICON_ID)
-        img = si.render(t, top, subs, base)
+        img = S.render(t, top, subs, base)
         p = os.path.join(outdir, "icon128_%s.png" % label)
         img.resize((img.width * 8, img.height * 8), Image.NEAREST).save(p)
         print("  wrote %s" % p)
 
 
 def apply(undo=False):
-    d = read(ILB)
-    st = state(d)
-    if st == "FOREIGN":
-        sys.exit("ABORT: entry %d holds neither the vanilla art nor ours -- someone else "
-                 "edited SpellIcn.ILB (verify-before-write)" % ICON_ID)
+    files = {p: read(p) for p in TWINS}
+    for p, d in files.items():
+        if state(p, d) == "FOREIGN":
+            sys.exit("ABORT: %s entry %d holds neither the vanilla art nor ours -- someone else "
+                     "edited it (verify-before-write)" % (os.path.basename(p), ICON_ID))
     want = "vanilla" if undo else "applied"
-    if st == want:
-        print("  already %s -- nothing to do" % want)
-        return
-    if not os.path.exists(BACKUP):
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-        shutil.copy2(ILB, BACKUP)
-        print("  backup -> %s" % os.path.basename(BACKUP))
-    before = len(d)
-    for o, b, desc in (originals() if undo else wanted(d)):
-        d[o:o + len(b)] = b
-    assert len(d) == before, "file length changed -- this patch must be size-neutral"
-    with open(ILB, "wb") as f:
-        f.write(d)
-    print("  SpellIcn.ILB entry %d %s (%d B, length unchanged)"
-          % (ICON_ID, "REVERTED" if undo else "PATCHED", before))
-    print()
-    if not undo:
-        print("  The icon is in the file. It is NOT yet attached to the spell: that needs")
-        print("  Spells.pfs record 119 (= spell 109 + 10) with tag 0x0C -> SPELLICN.ILB, %d."
-              % ICON_ID)
-        print("  Rebuild the contact sheet to see it in place:")
-        print("      python \"Modding Resources/re_tools/spell_icons.py\"")
+    for p, d in files.items():
+        name = os.path.basename(p)
+        if state(p, d) == want:
+            print("  %s already %s -- nothing to do" % (name, want))
+            continue
+        backup = os.path.join(BACKUP_DIR, name + SUFFIX)
+        if not undo and not os.path.exists(backup):
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            shutil.copy2(p, backup)
+            print("  backup -> %s" % os.path.basename(backup))
+        before = len(d)
+        for o, b, _desc in (originals(p, d) if undo else wanted(d)):
+            d[o:o + len(b)] = b
+        assert len(d) == before, "file length changed -- this patch must be size-neutral"
+        with open(p, "wb") as f:
+            f.write(d)
+        assert state(p, read(p)) == want, "%s did not read back %s" % (name, want)
+        print("  %s entry %d %s (%d B, length unchanged)"
+              % (name, ICON_ID, "REVERTED" if undo else "PATCHED", before))
 
 
 if __name__ == "__main__":

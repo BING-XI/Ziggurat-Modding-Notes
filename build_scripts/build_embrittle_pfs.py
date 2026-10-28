@@ -112,15 +112,17 @@ SPHERE = 3                   # tag 0x10  -- msEarth (0 Cosmos 1 Life 2 Death 3 E
                              #                       5 Fire 6 Water)
 TIER = 3                     # tag 0x11  -- research tier
 
-SPELL_DESC = ("Makes a target's body brittle, causing it to suffer double damage "
-              "from physical attacks for the duration of combat.")
+SPELL_DESC = ("Makes a target's body brittle, causing it to suffer half again as much damage from "
+              "physical attacks for the duration of combat.")    # x1.5 since 2026-10-27 (was double)
 
 # The status the spell applies, shown on the afflicted unit. Deliberately the exact mirror of
 # vanilla Physical Protection's own wording -- "Reduces the damage inflicted upon the unit by
 # physically-based attacks by 50%." -- because the two abilities are exact mirrors and a player
 # comparing them should see that at a glance.
-ABIL_DESC = ("Doubles the damage inflicted upon the unit by physically-based attacks, "
+ABIL_DESC = ("Increases the damage inflicted upon the unit by physically-based attacks by 50%, "
              "for the duration of combat.")
+# 2026-10-27: both texts were edited in place in the live records (x2 -> x1.5); the records also carry
+# later scripts' edits, so this script's rebuild DIFFERS from them -- do not --apply it to "fix" that.
 # ===========================================================================
 
 TAG_DESC, TAG_IMG, TAG_MANA, TAG_RESEARCH, TAG_SPHERE, TAG_TIER = 0x0A, 0x0C, 0x0D, 0x0F, 0x10, 0x11

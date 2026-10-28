@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 r"""
 build_airwater_ench.py -- the two Air/Water dual unit enchantments, Mistform (spell 88, ability 0x54)
-and Static Shield (spell 90, ability 0x55), and Mistform's absorb.  AoWEPACK.dpl.  Static Shield's
+and Static Shield (spell 90, ability 0x55), and Mistform's absorb; and the Life/Air one, Spectral Wings
+(spell 96, ability 0x97; owner's design 2026-10-27, 05-spells-added.md "Life/Air: Spectral Wings"),
+which shares their TWindWalking plumbing.  AoWEPACK.dpl.  Static Shield's
 stun: build_staticshield.py.  Data: build_airwater_pfs.py.  Battle casting:
 build_battlecast_unitspells.py + build_spell_unit_target.py.  Owner's design 2026-10-26
 (05-spells-added.md, "Air/Water -- agreed design").
@@ -16,6 +18,7 @@ THE SPELLS  TWindWalking INSTANCES (a friendly unit enchantment castable on the 
   Mistform keeps Create's -1, which the AI skips.  The battle AI casts no friendly unit spell.
     88 Mistform       12 mana, upkeep 1, tier 1, enchantment level 2
     90 Static Shield  45 mana, upkeep 5, tier 3, enchantment level 4
+    96 Spectral Wings 50 mana, upkeep 5, tier 3, enchantment level 4 (Life/Air; the AI never casts it)
   A dual enchantment's level is its equivalent single tier, dual tier + 1 (owner, 2026-10-26; as
   Dwarven Satchels 2 and Enmity of Nine Hells 4); Dispel's chance is strength + 50 - 10 x level.  TWindWalking hard-codes its enchantment 0xA5; the spell id picks:
     X1  0x557E7F59  ExecuteSpell `mov edx,0xa5` (5 B) -> call cave_sel   EBX = the spell
@@ -25,24 +28,37 @@ THE SPELLS  TWindWalking INSTANCES (a friendly unit enchantment castable on the 
         Wind Walking unit).  Wind Walking keeps vanilla's tests -- refuse a flyer (0x01), a Wind
         Walker (0xA5) or a floater (0x3B) -- but asks for Floating through cave_raw, which skips Q's
         widening, so a Mistform unit can take Wind Walking (owner, 2026-10-26: it floats on after
-        the absorb).  Vanilla's body after 0x557E7FAE is no longer reached.
+        the absorb).  Vanilla's body after 0x557E7FAE is no longer reached.  Spectral Wings: TUnitSpell.
+        ValidTargetUnit, then refuse a flyer (0x01, which the widening below answers for 0x97 too, so
+        a winged unit is refused) or a Wind Walker (0xA5); a floater (Mistform included) may take it.
 THE ENCHANTMENTS  registered at 0x557BCBFA (RegisterPassiveAbilities' last free direct `call
   RegisterAbility`, replayed first).
     0x54 Mistform       a TWindWalkingEnchantment instance: its Remove is the base Remove, then
                         TArmy.ValidateTerrain -- a unit that loses it over water, chasm or sky
                         falls as when Wind Walking is dispelled there.
     0x55 Static Shield  a TUnitEnchantmentAbility instance (Regeneration's recipe).
+    0x97 Spectral Wings a TWindWalkingEnchantment instance: losing it over water, chasm or sky falls
+                        as Wind Walking does (vanilla Remove).  0x97 was a nil registry slot that no
+                        binary uses as a constant (checked 2026-10-27; the launch proves the id).
   Both are unit enchantments: dispellable, counted by Magebane, upkeep through the Magic window.
 THE GRANTS
   F   0x5574F7B6  GetAbMoveTypesAll's `call [ecx+0x88]` for Floating 0x3B (6 B; ESI = the owner) ->
       call cave_f + nop: 0x3B, else 0x54.  The unit's move types (Floating = the Flying bit).
+  W   0x5574F7A3  GetAbMoveTypesAll's `call [ecx+0x88]` for Wind Walking 0xA5 (6 B; ESI = the owner)
+      -> call cave_w + nop: 0xA5, else 0x97 -- Flying's move bit, as Flying and Wind Walking set it.
   L   0x5574FB7B  GetAbImmunityTypesAll's `call [ecx+0x88]` for Lightning Immunity 0x09 (6 B; EBX
       = the owner) -> call cave_l + nop: 0x09, else 0x55.  Both combat systems and map storms.
   Q   0x5577F5E0  TAbstractUnit.GetAbilityEnabled's entry (6 B) -> jmp cave_q + nop: a query for
       0x3B is has(0x3B) or has(0x54); for 0x09, has(0x09) or has(0x55).  It is +0x148 for every unit
       and hero, and TCombatUnit's +0xA8 forwards to it: Wind Walking's / Water Walking's / Liquid
       Form's target tests, Geyser, Winds of Fury, AoWTCPCK's CanMoveOn tests and the lightning stun
-      roll (0x55781C65).
+      roll (0x55781C65).  For 0x01 (Flying) and 0xB2 (Embrittled), has(id) or has(0x97): a winged unit
+      counts as a flyer everywhere (Weight of the World included), and build_embrittle.py's combat
+      damage cave gives it the physical x1.5 (refusing Embrittle on it, which would do the same).
+  PW  0x55781B1E  TAbstractUnit.ExecuteDamageRole's `not eax / and ax,si` (5 B, after the roll and
+      build_weakness.py's T cave, before the protection halve) -> jmp cave_pw: the same x1.5 on the
+      world map (storms, Meteor Storm): doubled when the halve fires (exact cancel), else (3d+1)>>1,
+      capped at 126.
 MISTFORM'S ABSORB  the next damage above 0 that lands ends Mistform instead; a miss or a hit already
   reduced to 0 leaves it.  mist_end = RemoveAbility(0x54) on the unit with DEFER set.
   D   0x55726C7D  TCombatObject.ExecuteDamage's GetHitPoints call (10 B; EBX = the final damage
@@ -95,10 +111,13 @@ from piccave import pic, ansistr
 
 MF_ID, MF, MF_NAME = 88, 0x54, "Mistform"
 SS_ID, SS, SS_NAME = 90, 0x55, "Static Shield"
+SW_ID, SW, SW_NAME = 96, 0x97, "Spectral Wings"
 SPELLS = (   # id, ability, mana, research, upkeep, tier, enchantment level, AI weight (None: never)
     (MF_ID, MF, 12, 80, 1, 1, 2, None),
     (SS_ID, SS, 45, 240, 5, 3, 4, 225),
+    (SW_ID, SW, 50, 240, 5, 3, 4, None),
 )
+EMBRITTLED, PHYS_BIT, DMG_CLAMP = 0xB2, 0x80, 126
 SPHERE = 7
 FLOATING, LIGHTNING_IMM, WW_ENCH = 0x3B, 0x09, 0xA5
 SLOT = (0x558BE400, 0x558BEC00)
@@ -130,10 +149,13 @@ SITES = {   # name: (va, vanilla, function lo, hi)
     "s":    (0x557689F4, "8bc68b10ff9288000000", 0x557689A0, 0x55768A14),
     "m":    (0x55781B37, "8bc75f5e5b", 0x55781AC4, 0x55781B48),
     "val":  (0x5578CF7C, "535657558bf8", 0x5578CF7C, 0x5578D034),
+    "w":    (0x5574F7A3, "ff9188000000", 0x5574F764, 0x5574F920),
+    "pw":   (0x55781B1E, "f7d06623c6", 0x55781AC4, 0x55781B48),
 }
-CALLS = ("sel1", "sel2", "f", "l", "d", "s")       # call cave (+ nops); the rest jmp
+CALLS = ("sel1", "sel2", "f", "l", "w", "d", "s")  # call cave (+ nops); the rest jmp
 FLYING = 0x01
-RESUME = {"vtu": 0x557E7FAE, "q": 0x5577F5E6, "fx": 0x55724C23, "m": 0x55781B3C, "val": 0x5578CF82}
+RESUME = {"vtu": 0x557E7FAE, "q": 0x5577F5E6, "fx": 0x55724C23, "m": 0x55781B3C, "val": 0x5578CF82,
+          "pw": 0x55781B23}
 TARGET_OF = {"sel1": "sel", "sel2": "sel"}
 A = {}
 
@@ -147,8 +169,13 @@ def c_sel(va):
         ret
     s_ss:
         cmp  dword ptr [ebx + 0x10], {SS_ID}
-        jne  s_out
+        jne  s_sw
         mov  edx, {SS:#x}
+        ret
+    s_sw:
+        cmp  dword ptr [ebx + 0x10], {SW_ID}
+        jne  s_out
+        mov  edx, {SW:#x}
     s_out:
         ret
     """, va)
@@ -166,6 +193,8 @@ def c_vtu(va):
         mov  ebx, {SS:#x}
         cmp  dword ptr [eax + 0x10], {SS_ID}
         je   v_ours
+        cmp  dword ptr [eax + 0x10], {SW_ID}
+        je   v_wings
         mov  ecx, esi
         call {UNITSPELL_VTU:#x}
         test al, al
@@ -185,6 +214,25 @@ def c_vtu(va):
         mov  eax, esi
         mov  edx, {FLOATING:#x}
         call {A['raw']:#x}
+        test al, al
+        jne  v_no
+        mov  al, 1
+        jmp  v_out
+    v_wings:
+        mov  ecx, esi
+        call {UNITSPELL_VTU:#x}
+        test al, al
+        je   v_no
+        mov  eax, esi
+        mov  edx, {FLYING:#x}
+        mov  ecx, dword ptr [eax]
+        call dword ptr [ecx + 0x148]
+        test al, al
+        jne  v_no
+        mov  eax, esi
+        mov  edx, {WW_ENCH:#x}
+        mov  ecx, dword ptr [eax]
+        call dword ptr [ecx + 0x148]
         test al, al
         jne  v_no
         mov  al, 1
@@ -227,15 +275,23 @@ def c_or(va, owner, alias):
 
 
 def c_q(va):
-    """GetAbilityEnabled(EAX unit, EDX id) -> AL, with 0x3B / 0x09 widened."""
+    """GetAbilityEnabled(EAX unit, EDX id) -> AL, with 0x3B / 0x09 / 0x01 / 0xB2 widened (Spectral
+    Wings answers Flying, and Embrittled for build_embrittle.py's physical weakness)."""
     return asm(f"""
         cmp  edx, {FLOATING:#x}
         je   q_mf
         cmp  edx, {LIGHTNING_IMM:#x}
         je   q_ss
+        cmp  edx, {FLYING:#x}
+        je   q_sw
+        cmp  edx, {EMBRITTLED:#x}
+        je   q_sw
         jmp  q_orig
     q_mf:
         mov  ecx, {MF:#x}
+        jmp  q_alias
+    q_sw:
+        mov  ecx, {SW:#x}
         jmp  q_alias
     q_ss:
         mov  ecx, {SS:#x}
@@ -402,6 +458,45 @@ def c_m(va):
     """, va)
 
 
+def c_pw(va):
+    """TAbstractUnit.ExecuteDamageRole after the roll and the Weaknesses (EAX = the protection mask,
+    SI = the hit's types minus immunities, EDI = the damage, EBX = the unit): Spectral Wings'
+    Physical Weakness on the world map.  Doubled when the protection halve will fire (exact
+    cancel), else x1.5 rounded up; capped at 126.  Then the displaced `not eax / and ax,si`."""
+    return asm(f"""
+        test edi, edi
+        jle  p_go
+        test si, {PHYS_BIT:#x}
+        je   p_go
+        push eax
+        mov  eax, ebx
+        mov  edx, {SW:#x}
+        call {A['raw']:#x}
+        test al, al
+        pop  eax
+        je   p_go
+        push eax
+        not  eax
+        and  ax, si
+        pop  eax
+        jne  p_15
+        add  edi, edi
+        jmp  p_cap
+    p_15:
+        lea  edi, [edi + edi*2]
+        inc  edi
+        sar  edi, 1
+    p_cap:
+        cmp  edi, {DMG_CLAMP}
+        jle  p_go
+        mov  edi, {DMG_CLAMP}
+    p_go:
+        not  eax
+        and  ax, si
+        jmp  {RESUME['pw']:#x}
+    """, va)
+
+
 def c_vt(va):
     """Replaces Remove's `call TArmy.ValidateTerrain` (EAX = the army, DL / CL = the hex's terrain
     bytes, ESI = the unit)."""
@@ -530,12 +625,14 @@ def c_val(va):
 def names_tail():
     a = ansistr(MF_NAME)
     a += b"\x90" * (-len(a) % 4)
-    return a + ansistr(SS_NAME), 8, len(a) + 8
+    b = ansistr(SS_NAME)
+    b += b"\x90" * (-len(b) % 4)
+    return a + b + ansistr(SW_NAME), 8, len(a) + 8, len(a) + len(b) + 8
 
 
 def c_reg_ab(va):
-    """`call RegisterAbility` replayed (EBX = the control), then 0x54 and 0x55."""
-    tail, mf_at, ss_at = names_tail()
+    """`call RegisterAbility` replayed (EBX = the control), then 0x54, 0x55 and 0x97."""
+    tail, mf_at, ss_at, sw_at = names_tail()
     src = f"""
         call {REGISTER_ABIL:#x}
         push esi
@@ -566,18 +663,31 @@ def c_reg_ab(va):
         mov  edx, eax
         mov  eax, ebx
         call {REGISTER_ABIL:#x}
+        lea  eax, [esi + {{WWE}}]
+        xor  ecx, ecx
+        mov  dl, 1
+        call {WWE_CREATE:#x}
+        push eax
+        lea  eax, [eax + 8]
+        lea  edx, [esi + {{SWN}}]
+        call {LSTRASG:#x}
+        pop  eax
+        mov  dword ptr [eax + 0xc], {SW:#x}
+        mov  edx, eax
+        mov  eax, ebx
+        call {REGISTER_ABIL:#x}
         pop  esi
         ret
     """
     return pic(src, va, "esi", {"WWE": WWE_VMT, "TUEA": TUEA_VMT, "MFN": ("TAIL", mf_at),
-                                "SSN": ("TAIL", ss_at)}, tail)
+                                "SSN": ("TAIL", ss_at), "SWN": ("TAIL", sw_at)}, tail)
 
 
 def c_reg_spell(va):
-    """`call RegisterSpell` replayed (EBX = the control), then spells 88 and 90."""
-    tail, mf_at, ss_at = names_tail()
+    """`call RegisterSpell` replayed (EBX = the control), then spells 88, 90 and 96."""
+    tail, mf_at, ss_at, sw_at = names_tail()
     body = ""
-    for (sid, _ab, mana, research, upkeep, tier, level, ai), nm in zip(SPELLS, ("MFN", "SSN")):
+    for (sid, _ab, mana, research, upkeep, tier, level, ai), nm in zip(SPELLS, ("MFN", "SSN", "SWN")):
         body += f"""
         mov  eax, dword ptr [esi + {{{{CELL}}}}]
         xor  ecx, ecx
@@ -609,12 +719,14 @@ def c_reg_spell(va):
         pop  esi
         ret
     """
-    return pic(src, va, "esi", {"CELL": WW_CELL, "MFN": ("TAIL", mf_at), "SSN": ("TAIL", ss_at)}, tail)
+    return pic(src, va, "esi", {"CELL": WW_CELL, "MFN": ("TAIL", mf_at), "SSN": ("TAIL", ss_at),
+                                "SWN": ("TAIL", sw_at)}, tail)
 
 
 BUILDERS = [
     ("sel", c_sel), ("vtu", c_vtu),
     ("f", lambda va: c_or(va, "esi", MF)), ("l", lambda va: c_or(va, "ebx", SS)),
+    ("w", lambda va: c_or(va, "esi", SW)), ("pw", c_pw),
     ("q", c_q), ("raw", c_raw), ("owner", c_owner), ("end", c_end), ("d", c_d), ("fx", c_fx), ("s", c_s),
     ("m", c_m), ("vt", c_vt), ("check", c_check), ("drain", c_drain), ("val", c_val),
     ("reg_ab", c_reg_ab), ("reg_spell", c_reg_spell),
@@ -655,14 +767,14 @@ def checks(d):
         if rb(va, len(want) // 2).hex() != want:
             sys.exit("ABORT: %s is not at %08X" % (what, va))
     _e, secs = P.sections(d)
-    for vs, sva, rs, ra in secs:            # nobody else creates spell 88 / 90 or ability 0x54 / 0x55
+    for vs, sva, rs, ra in secs:            # nobody else creates spell 88 / 90 / 96 or ability 0x54 / 0x55 / 0x97
         for i in range(ra, ra + rs - 7):
             src = P.IMAGE_BASE + sva + (i - ra)
             if SLOT[0] <= src < SLOT[1]:
                 continue
             if d[i] == 0xC7 and d[i + 1] in range(0x40, 0x48):
                 v = struct.unpack_from("<I", d, i + 3)[0]
-                if (d[i + 2] == 0x10 and v in (MF_ID, SS_ID)) or (d[i + 2] == 0x0C and v in (MF, SS)):
+                if (d[i + 2] == 0x10 and v in (MF_ID, SS_ID, SW_ID)) or (d[i + 2] == 0x0C and v in (MF, SS, SW)):
                     sys.exit("ABORT: %08X also stores %#x at +%#x" % (src, v, d[i + 2]))
 
 
@@ -682,7 +794,7 @@ def main():
         hooks.append((va, van, new))
         interior.append((va, va + len(van), lo, hi))
     print("  layout: " + ", ".join("%s %08X" % (n, v) for n, v in A.items()))
-    run("build_airwater_ench -- Mistform + Static Shield enchantments (AoWEPACK)", hooks, blobs, SLOT,
+    run("build_airwater_ench -- Mistform, Static Shield, Spectral Wings (AoWEPACK)", hooks, blobs, SLOT,
         interior)
 
 

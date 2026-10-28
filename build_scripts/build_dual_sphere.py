@@ -87,6 +87,8 @@ DUALS = [
     (92, EARTH, AIR),       # Meteor Storm         (build_meteor_storm.py)
     (93, DEATH, EARTH),     # Imbue Altar          (build_imbue.py)
     (94, LIFE, EARTH),      # Imbue Spring         (build_imbue.py)
+    (95, AIR, FIRE),        # Blazing Moon         (build_blazing_moon.py)
+    (96, LIFE, AIR),        # Spectral Wings       (build_airwater_ench.py)
 ]
 DUAL_SPHERE = 7             # the sphere byte every dual spell carries
 MAX_DUALS = 63

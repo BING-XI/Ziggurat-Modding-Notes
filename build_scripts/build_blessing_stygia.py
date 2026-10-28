@@ -45,6 +45,9 @@ THE STATUS (0x51)  a TDurationAbility instance (as Nature's Blessing is: mode 1 
 STY_ANY  (pinned, this slot +0): AL = 1 when any active 0x57 record exists (build_stygia_tint.py).
 
 RNG: none.  Every peer grants the same statuses from replicated state.
+Coupling: build_blazing_moon.py chains CREATE and CANACT in front of cave_create / cave_canact (at
+their current addresses).  Its entries in those slots read as this script's applied state; --apply
+and --undo refuse while they are there: undo build_blazing_moon.py first.
 Slot 0x558BD800-0x558BDFFF, exclusive.  PIC.  Surgical --undo.  The two registrations run at
 package init: proved only by launching the exe.
 
@@ -555,6 +558,17 @@ def main():
         sys.exit("ABORT: jumps into a hook's interior: " + ", ".join("%08X->%08X" % x for x in bad))
     print("  interior sweep: no branch lands inside a displaced range")
     print("  layout: " + ", ".join("%s %08X" % (n, v) for n, v in A.items()))
+    # build_blazing_moon.py's cave_create / cave_canact (pinned there) chain in front of ours: an
+    # accepted applied state; --apply and --undo refuse while they are in place.
+    moon = {S_CREATE: 0x558C5100, S_CANACT: 0x558C5160}
+    held = [va for va, m in moon.items() if d[P.va2off(d, va):P.va2off(d, va) + 4] == pk(m)]
+    if held:
+        if "--apply" in sys.argv or "--undo" in sys.argv:
+            sys.exit("REFUSED: build_blazing_moon.py chains through %s; undo it first."
+                     % ", ".join("%08X" % v for v in held))
+        hooks = [(va, van, pk(moon[va]) if va in held else new) for va, van, new in hooks]
+        print("  chained: build_blazing_moon.py holds %s (accepted as applied)"
+              % ", ".join("%08X" % v for v in held))
     run("build_blessing_stygia -- Blessing of Stygia (AoWEPACK)", hooks, blobs, SLOT, [],
         reloc_ok=(S_CREATE, S_CANACT))
 

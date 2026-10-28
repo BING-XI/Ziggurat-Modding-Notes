@@ -493,6 +493,8 @@ FLAG_RAZEGUARD = 0x558FA805   # BSS: set by cave_lossgarrison around PlaceRazeDe
                               #      hook makes the loss-garrison a GUARD AG (kind 2) not the vanilla WANDER (0xD)
 FLAG_RAZENOFLEE= 0x558FA806   # BSS: set around the fast raze lifecycle so the fcExecute hook suppresses the side-0
                               #      (razer) TFleeCA -> razers "count as defenders", fight to a decisive result.
+                              #      build_flight_fall.py also sets it (and clears it) around a fall battle's
+                              #      ExecuteCombat, so fallers never withdraw in auto-combat.
 FLAG_RAZESURVIVORS = 0x558FA808  # BSS DWORD (survivor-army ptr): set by cave_rehome on a result==4 loss = the off-map
                               #      TDefendersArmy holding the LITERAL surviving (damaged/XP-carrying) militia; read+cleared
                               #      by cave_genraze (GenerateRazeDefenders entry hook) to SUBSTITUTE the fresh roster.

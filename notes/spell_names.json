@@ -892,5 +892,21 @@
   "spell_id": 94,
   "unit": "GlobalTargetSpells",
   "vanilla": null
+ },
+ "105": {
+  "class": "TSpellWard",
+  "name": "Blazing Moon",
+  "note": "added by build_blazing_moon.py 2026-10-27 -- a TSpellWard instance whose record (type 0x58) dries the surface and sky each day, gives females +4 DAM and lights the map warm (Air/Fire, tier 3)",
+  "spell_id": 95,
+  "unit": "GlobalEnchantmentSpells",
+  "vanilla": null
+ },
+ "106": {
+  "class": "TWindWalking",
+  "name": "Spectral Wings",
+  "note": "added by build_airwater_ench.py 2026-10-27 -- a TWindWalking instance whose enchantment 0x97 gives Flying and Physical Weakness (Life/Air, tier 3)",
+  "spell_id": 96,
+  "unit": "UnitSpells",
+  "vanilla": null
  }
 }

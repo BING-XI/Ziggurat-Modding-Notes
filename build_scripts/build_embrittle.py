@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 r"""
 build_embrittle.py — new tactical combat spell "Embrittle" (id 109) + new passive
-ability "Embrittled" (id 0xB2): the afflicted unit takes DOUBLE physical damage.
+ability "Embrittled" (id 0xB2): the afflicted unit takes x1.5 physical damage (x2 until
+2026-10-27; see build_dmg).
 
     python build_scripts/build_embrittle.py            dry run + verify + disassembly
     python build_scripts/build_embrittle.py --apply     write it
@@ -561,7 +562,62 @@ def build_absel(va):
 
 # ------------------------------------------------------------------ cave_dmg
 def build_dmg(va):
-    """The doubling. Shared by ExecuteDamageRole and ExecuteDamageRoleEx.
+    """Physical Weakness x1.5 (owner, 2026-10-27; it was x2). Shared by ExecuteDamageRole and
+    ExecuteDamageRoleEx. Entry and exit as build_dmg_x2 below.
+
+    When the target answers Embrittled (0xB2; Spectral Wings' 0x97 answers it too, through
+    build_airwater_ench.py's query widening) and the hit carries the physical bit:
+      - the protection halve that follows will fire ((~prot & ESI) == 0): EDI is DOUBLED, so the
+        halve gives (2d+1)>>1 = d -- weakness and protection cancel exactly, as the Weaknesses do;
+      - otherwise EDI = (3d+1)>>1, x1.5 rounded up, capped at 126.
+    GetProtectionTypes is a pure getter; it is called here and again by the tail.
+    """
+    src = """
+        test edi, edi
+        jle  orig
+        test al, 0x%X
+        jz   orig
+        push esi
+        push edi
+        mov  edx, %d
+        mov  eax, ebx
+        mov  ecx, dword ptr [eax]
+        call dword ptr [ecx + 0x%X]
+        pop  edi
+        pop  esi
+        test al, al
+        jz   orig
+        push esi
+        push edi
+        mov  eax, ebx
+        mov  edx, dword ptr [eax]
+        call dword ptr [edx + 0x%X]
+        pop  edi
+        pop  esi
+        not  eax
+        and  ax, si
+        jne  w15
+        add  edi, edi
+        jmp  clamp
+    w15:
+        lea  edi, [edi + edi*2]
+        inc  edi
+        sar  edi, 1
+    clamp:
+        cmp  edi, %d
+        jle  orig
+        mov  edi, %d
+    orig:
+        mov  eax, ebx
+        mov  edx, dword ptr [eax]
+        jmp  dword ptr [edx + 0x%X]
+    """ % (PHYS_BIT, ABILITY_ID, VMT_ABIL_ENABLED, VMT_PROTECTION, DMG_CLAMP, DMG_CLAMP, VMT_PROTECTION)
+    return asm(src, va)
+
+
+def build_dmg_x2(va):
+    """The doubling, v4 and earlier (x2, to 2026-10-27). Shared by ExecuteDamageRole and
+    ExecuteDamageRoleEx.
 
     Entry:  AX = damage-type mask (loaded by the 4-byte prologue each hook site emits,
                 because the two functions carry it at different EBP displacements)
@@ -608,7 +664,8 @@ def build_dmg(va):
 
 
 # ------------------------------------------------------------------ cave zone
-def build_zone(name_ptr_bias=8, spell_name=None, abil_name=None, abil_zero_ecx=True):
+def build_zone(name_ptr_bias=8, spell_name=None, abil_name=None, abil_zero_ecx=True,
+               weak15=True):
     """Lay every cave out back to back from CAVE, 16-byte aligned, and return
     (blob, [(label, va, code), ...]).
 
@@ -668,7 +725,7 @@ def build_zone(name_ptr_bias=8, spell_name=None, abil_name=None, abil_zero_ecx=T
     place("cave_reg_spell", lambda va: build_reg_spell(va, sp_name_va + name_ptr_bias))
     place("cave_createca", build_createca)
     place("cave_absel", build_absel)
-    place("cave_dmg", build_dmg)
+    place("cave_dmg", build_dmg if weak15 else build_dmg_x2)
 
     assert len(blob) <= CAVE_ZONE_LEN, "zone overflow: %d > %d" % (len(blob), CAVE_ZONE_LEN)
 
@@ -711,10 +768,13 @@ ZONE, PARTS = build_zone()
 #                          contain spell 109 or ability 0xB2, so there is nothing to migrate.
 #   v3 (to 2026-10-21):    cave_reg_abil called the constructor with ECX = the class cell
 #                          (a garbage owner); fits the same 16-byte slot, no cave moved.
+#   v4 (to 2026-10-27):    cave_dmg doubled physical damage; now x1.5 (owner), the last cave,
+#                          so nothing moved.
 PRIOR_ZONES = [
     build_zone(name_ptr_bias=0, spell_name=b"Embrittlement", abil_zero_ecx=False)[0],  # v1
     build_zone(spell_name=b"Embrittlement", abil_zero_ecx=False)[0],                   # v2
     build_zone(abil_zero_ecx=False)[0],                                                # v3
+    build_zone(weak15=False)[0],                                                       # v4
 ]
 assert all(l == "cave_reg_abil" or v == next(pv for pl, pv, _ in build_zone(abil_zero_ecx=False)[1]
                                              if pl == l)
@@ -805,6 +865,14 @@ def read(path):
         return bytearray(f.read())
 
 
+def weakness_chained(va, cur, new):
+    """A cave_dmg hook whose padding nop build_weakness.py (2026-09-25) has overwritten with the
+    first byte of its own 6-byte jmp (S1 0x55726A43 / S2 0x55726AD8): ours, chained.  It is
+    never rewritten (that would cut the weakness chain) and --undo refuses while it is there."""
+    return (any(va == s for s, _d, _x in DMG_INJS) and cur[:len(new) - 1] == new[:-1]
+            and cur[-1] == 0xE9)
+
+
 def state_of(d, patches, base):
     """-> 'applied' | 'vanilla' | 'stale' | 'mixed', plus a per-site verdict list.
 
@@ -818,9 +886,10 @@ def state_of(d, patches, base):
         cur = bytes(d[o:o + len(new)])
         priors = PRIOR_ZONES if va == CAVE else ()
         verdicts.append((va, desc,
-                         "applied" if cur == new else
+                         "applied" if cur == new or weakness_chained(va, cur, new) else
                          "vanilla" if cur == orig[:len(new)] or cur == orig else
-                         "stale" if any(cur == p[:len(cur)] for p in priors) else "FOREIGN"))
+                         "stale" if any(cur[:len(p)] == p and set(cur[len(p):]) <= {0}
+                                        for p in priors) else "FOREIGN"))
     kinds = {v for _, _, v in verdicts}
     if kinds == {"applied"}:
         return "applied", verdicts
@@ -908,6 +977,9 @@ def apply(undo=False):
         sys.exit("aborted: another feature owns a site (verify-before-write)")
 
     want = "vanilla" if undo else "applied"
+    if undo and any(weakness_chained(va, bytes(d[va2off(d, va, DLL_BASE):va2off(d, va, DLL_BASE) + len(new)]), new)
+                    for va, new, _o, _d in DLL_PATCHES):
+        sys.exit("REFUSED: build_weakness.py chains through the cave_dmg hooks; undo it first.")
     if st == want:
         print("  AoWEPACK already %s -- nothing to do" % want)
     else:
@@ -930,7 +1002,9 @@ def apply(undo=False):
             os.makedirs(BACKUP_DIR, exist_ok=True)
             shutil.copy2(DLL, DLL_BACKUP)
             print("  backup -> %s" % os.path.basename(DLL_BACKUP))
-        for va, new, orig, desc in DLL_PATCHES:
+        for (va, new, orig, desc), (_va, _desc, v) in zip(DLL_PATCHES, verdicts):
+            if not undo and v == "applied":
+                continue                  # ours already (a chained cave_dmg hook stays as it is)
             o = va2off(d, va, DLL_BASE)
             blob = orig if undo else new
             d[o:o + len(blob)] = blob

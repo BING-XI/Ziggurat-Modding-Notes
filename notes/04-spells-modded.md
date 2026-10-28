@@ -38,6 +38,7 @@ jumps/calls, or the `call $+5; pop; sub` load-delta idiom for absolute data).
 | Lethargy (ex Slow) — halved movement, 50% chance of one strike fewer, AI value in both combat modes (Embrittle too); Haste 50% chance of +1 strike each way | 🔨 APPLIED, UNTESTED (2026-09-25; 50% roll 2026-10-14) | `build_lethargy.py` (+ `build_resstr_names.py`, `build_pfs_typos.py`, `build_ziggurat_manual.py`) | `AoWEPACK.dpl`, `Dict\ResStr.mld`+`.txt`, `Release\Spells.pfs`, `Release\Ability.pfs` |
 | Warp Party ban — per-map "Disable Warp Party" switch (cast only; research untouched) | 🔨 APPLIED 2026-09-27; editor half driven live | `build_warpban.py` (+ `build_zigeditor.py`) | `AoWEPACK.dpl`, `AoWDevEd.exe` → `AoWzEd.exe` |
 | Living Flame (ex Fire Halo) — fire heals the enchanted unit, map and battle | applied 2026-10-22, launch-proved | `build_livingflame.py`, `build_firefeed.py` v3 (+ `build_resstr_names.py`, `build_pfs_typos.py`) | `AoWEPACK.dpl`, `Dict/ResStr`, `Release\Spells.pfs`, `Release\Ability.pfs` |
+| Tremors — ×4 damage to walls and gates, manual and auto-combat | applied 2026-10-27 | `build_tremors_walls.py` | `AoWTCPCK.dpl`, `AoWEPACK.dpl` |
 | Per-unit intrinsic spellbook | SPECULATIVE (feasible/hard, 72%) | none | `AoWEPACK.dpl` + `AoWz.exe` |
 | HP/MV casting cost (extra sacrifice on top of points) | SPECULATIVE (85% "in addition", 60% "instead of") | none | `AoWEPACK.dpl` |
 | Unit-enchantment cost/upkeep scaled by target level | SPECULATIVE (85% upkeep, 55% cast-cost) | none | `AoWEPACK.dpl` |
@@ -2147,6 +2148,8 @@ drops a zero-value target. Embrittle, a `TSlow` instance, inherited both.
   `TMeleeRound.Calculate` (the real round, tactical and auto-resolve) and `CalculateUnit` (the
   prediction twin the AI and predictor use).
 - **The +2 hex cost is gone** (the `je` over the `0x84` block is now a `jmp`).
+- **Mana 5** (owner, 2026-10-27; was 1): `Spells.pfs` record 120, tag `0x0D`, edited in place with no
+  script.
 - **Haste (`0x98`) is the mirror: one melee strike more attacking and defending** (a side with 0
   keeps 0), in the same two caves, applied before Lethargy's. Its movement effect is the next
   section's. Texts: `Spells.pfs` record 25, `Ability.pfs` record 162 (`build_pfs_typos.py`).
@@ -2309,6 +2312,22 @@ enchantment keeps fire immunity, fire strike and lava crossing. The creatures' p
   @0x55780A4C` adds `0xA3` (data `[+0xC]` = `0xFE`, which `ResetFireMasteryProtection` removes), so
   every unit Fire Mastery covers now heals from fire too. Not yet ruled on by the owner.
 - RNG: P2 (12-re-toolchain §4.8). Unproven: the in-game heal itself in both systems.
+
+## Tremors — ×4 damage to walls and gates (2026-10-27)
+
+Owner's ruling after a manual siege log showed Tremors doing 2–4 a hit to walls. `build_tremors_walls.py`
+(its docstring has the sites). The damage dealt is multiplied, not DMG: 0, 4, 8, 12 or 16 at DMG 4, the
+to-hit roll unchanged. City buildings ("Structure") keep ×1 (owner).
+- **Manual battles.** Tremors' landing sends map-field message `0x31004`, only for spell `0x70`.
+  `TCityWall.MapFieldMsgProc @0x405D04` (walls and gates) reaches its case through a `msg − 0x31000`
+  jump table, so a search for the literal finds only the unit handler. A call after the
+  `ExecuteDamageRole` roll at `0x406274` shifts the result left by 2. `TCombatStructure` has its own
+  handler and is untouched.
+- **Auto-combat.** `TDamageCA.GenerateEx` stores the roll at `[CA+0x10]` (`0x55729CD0`); a
+  `TCombatSpellCA` for spell `0x70` against a `TCombatWall` stores it ×4 (127 cap). Replays and both
+  combat logs read the stored figure.
+- Weight of the World (a `TTremors` instance) reaches neither: no `0x31004`, spell id 91, no `dtWall`.
+- Unproven: the AI still values a Tremors hit on a wall at ×1.
 
 ## Open items
 

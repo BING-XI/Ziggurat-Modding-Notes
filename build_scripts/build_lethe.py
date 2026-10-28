@@ -273,7 +273,8 @@ def c_zeroed(va, orig, out_at, popn):
 
 
 def c_fcpre(va):
-    """+0x90 (eax spell, edx context: +4 caster, +8 TFastCombat, +0xC enemy side)."""
+    """+0x90 (eax spell, edx TFastCombatCommandList: +4 caster, +8 own side, +0xC enemy side,
+    +0x10 TFastCombat)."""
     return asm(f"""
         push ebx
         push esi

@@ -93,6 +93,9 @@ Couplings
   * build_surtrs_chasm.py dispatches id 85 into this slot (VOLC_VT, VOLC_EXEC); either can be undone
     alone (without this script spell 85 is not registered, so the dispatch is never taken).
   * build_globalench_active.py restores the active bit of every global record after a load.
+  * build_blazing_moon.py chains the record's MsgProc slot in front of ENTRY["msg"].  Its entry
+    there reads as this script's applied state; --apply and --undo refuse while it is there: undo
+    build_blazing_moon.py first.
   * build_gripofwinter.py / build_raiseterrain_ug_earth.py own the other TFrozenWaterHS caves.
 
 Unproven, static checks cannot reach it: the swap's redraw, the shimmer's draw order against the
@@ -1356,4 +1359,13 @@ if __name__ == "__main__":
     print("  core %08X, %d of %d B; entries %s" % (SLOT[0], len(CAVES[0][2]), SLOT[1] - SLOT[0],
           ", ".join("%s %08X" % (n, v) for n, v in ENTRY.items())))
     checks()
+    # build_blazing_moon.py's cave_msg (pinned there) chains in front of ENTRY["msg"]: an accepted
+    # applied state for SLOT_MSG; --apply and --undo refuse while it is in place.
+    MOON_MSG = 0x558C51C0
+    _d = open(P.TARGET, "rb").read()
+    if _d[P.va2off(_d, SLOT_MSG):P.va2off(_d, SLOT_MSG) + 4] == pk(MOON_MSG):
+        if "--apply" in sys.argv or "--undo" in sys.argv:
+            sys.exit("REFUSED: build_blazing_moon.py chains through %08X; undo it first." % SLOT_MSG)
+        HOOKS = [(va, van, pk(MOON_MSG) if va == SLOT_MSG else new) for va, van, new in HOOKS]
+        print("  chained: build_blazing_moon.py holds %08X (accepted as applied)" % SLOT_MSG)
     run("build_awaken_volcano", HOOKS, CAVES, SLOT, INTERIOR, reloc_ok=RELOC_OK)

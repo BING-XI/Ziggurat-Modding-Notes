@@ -83,6 +83,9 @@ TWO ENGINE GATES THE MOVE HAS TO PASS
      (`8B C3 59 5A 5D 5F`, 6 B) -> cave_vp: when vanilla said no, a two-node path whose nodes
      share x,y, whose levels are UP_T / DN_T neighbours and whose terrain obeys the rule above
      is accepted.  Map state only, so every peer agrees.  Everything else is untouched.
+     FORWARD HAZARD: build_flight_fall.py's fall battles queue a TArmyCombatMoveTE on exactly such
+     a path (Sky/Chasm hex -> the hex below); undo this and every fall battle fails Validate and
+     the fallers drop as blocked.
   B. The charge.  TArmy.MovedTo calls each unit's TAbstractUnit.MovedTo(old, new, stepCost)
      @0x55780328, which charges min(terrain cost, stepCost) and clamps at 0.  The clamp block
      @0x55780343..0x55780355 (19 B, register-only, no .reloc) is replaced by cave_mv: the same

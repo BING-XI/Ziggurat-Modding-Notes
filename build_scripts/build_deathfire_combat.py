@@ -30,6 +30,16 @@ SITE  0x557FA828  RegisterCombatSpells' last direct `call RegisterSpell` (Shock 
       A package-init cave: proved only by launching the exe.
 Slot 0x558B6800-0x558B6FFF, exclusive.  PIC.  No RNG (the CAs roll in combat: P2 COMBAT RAW).
 
+FIXED 2026-10-28 (player crash: "Exception occured during TArmyCombatMoveTE ... AoWEPACK.dpl at
+001B68D9 ... Read of address 00000026", in releases 2026.10.25 and 2026.10.27).  fcpre's EDX is a
+TFastCombatCommandList (TFastCombatCommandList.Create 0x5574390C: +4 caster, +8 own side, +0xC enemy
+side, +0x10 TFastCombat), not a combat object.  fcpre took the caster's side from [[list+8]+idx*4
++0x1C], a field of the own TCombatSide, so `count` dereferenced a small integer at 0x558B68D9.
+TSpellCastingAbility.fcPrefetchCombatCommands 0x5576E2BC calls +0x90 for every combat spell the
+hero's player knows and can cast instantly, so every auto-resolved battle with such a hero crashed.
+Now [[list+0x10]+idx*4+0x1C] (0x558B6941: 08 -> 10), the TFastCombat's sides array as Create reads
+it.  fcexec is unaffected: its EDX is the acting combat object, whose +8 is the TFastCombat.
+
     python build_scripts/build_deathfire_combat.py            dry run + state
     python build_scripts/build_deathfire_combat.py --apply
     python build_scripts/build_deathfire_combat.py --undo
@@ -188,7 +198,8 @@ def c_count(va):
 
 
 def c_fcpre(va):
-    # +0x90 (eax spell, edx context: +4 caster, +8 TFastCombat, +0xC enemy side).
+    # +0x90 (eax spell, edx TFastCombatCommandList: +4 caster, +8 own side, +0xC enemy side,
+    # +0x10 TFastCombat; laid out by TFastCombatCommandList.Create 0x5574390C).
     return asm(f"""
         push ebx
         push esi
@@ -202,7 +213,7 @@ def c_fcpre(va):
         call {GETSIDE:#x}
         movzx eax, al
         and  eax, 0x7f
-        mov  edx, dword ptr [edi + 8]
+        mov  edx, dword ptr [edi + 0x10]
         mov  eax, dword ptr [edx + eax*4 + 0x1c]
         call {A['count']:#x}
         cmp  ebx, eax

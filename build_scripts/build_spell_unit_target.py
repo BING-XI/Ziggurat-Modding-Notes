@@ -93,12 +93,12 @@ V_SCREEN = 0x0046C064               # AoWTCPCK BSS: the combat screen object
 
 AB_CAST = 0x34
 UNIT_ONLY = (8, 15, 16, 17, 32, 33, 35, 36, 37, 39, 40, 42, 43, 49, 55, 56, 77, 79, 82, 84,
-             88, 90, 101, 109, 110, 111, 121)
+             88, 90, 96, 101, 109, 110, 111, 121)
 #            Dispel Magic, Haste, Enchant Weapon, Stone Skin, Free Movement, Fury, Remedy,
 #            Holy Champion, Unholy Champion, Concealment, Fire Halo, Water Walking, Wind Walking,
 #            Liquid Form, Healing Water, Bless, Dark Gift, Regeneration, Enmity of Nine Hells,
 #            Dwarven Satchels (battle-castable since 2026-10-25, build_battlecast_unitspells.py),
-#            Mistform, Static Shield (2026-10-26),
+#            Mistform, Static Shield (2026-10-26), Spectral Wings (2026-10-27),
 #            Turn Undead,
 #            Embrittle, Lethargy, Entangle, Vaporize
 CALL_FLAMES = 113

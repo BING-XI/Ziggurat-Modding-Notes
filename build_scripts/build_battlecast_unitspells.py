@@ -17,7 +17,8 @@ THE BYTE
     84  Dwarven Satchels      (build_satchels.py; a TEnchantWeapon instance)
     88  Mistform              (build_airwater_ench.py; TWindWalking instances, as is 90)
     90  Static Shield
-  build_spell_unit_target.py's UNIT_ONLY lists all five, so an empty hex refuses the cast.
+    96  Spectral Wings        (build_airwater_ench.py, 2026-10-27)
+  build_spell_unit_target.py's UNIT_ONLY lists all six, so an empty hex refuses the cast.
 
 THE AI: the tactical AI's spell loop (0x00418740) skips any spell whose combat info byte 7 lacks
   bit 2, i.e. every friendly unit spell (Regeneration, Satchels, Mistform, Static Shield); Enmity passes it and is then valued by
@@ -39,7 +40,7 @@ P.IMAGE_BASE = 0x00400000
 
 SPELLTYPES = 0x004672F4
 CLASS_UNIT = 7
-SPELLS = (79, 82, 84, 88, 90)
+SPELLS = (79, 82, 84, 88, 90, 96)
 
 HOOKS = [(SPELLTYPES + i, b"\x00", bytes([CLASS_UNIT])) for i in SPELLS]
 

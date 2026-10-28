@@ -2,11 +2,12 @@
 r"""
 build_airwater_pfs.py -- the data of the Air/Water dual spells: Spells.pfs records 98 (Mistform,
 spell 88), 99 (Mist, 89) and 100 (Static Shield, 90); Ability.pfs records 94 (Mistform, 0x54) and
-95 (Static Shield, 0x55).  Code: build_airwater_ench.py, build_staticshield.py, build_mist.py,
+95 (Static Shield, 0x55); and of Life/Air's Spectral Wings (spell 96, ability 0x97, which share
+build_airwater_ench.py): Spells.pfs 106 (icon 173) and Ability.pfs 161.  Code: build_airwater_ench.py, build_staticshield.py, build_mist.py,
 build_mist_tc.py.
 
     python build_scripts/build_airwater_pfs.py            dry run + state
-    python build_scripts/build_airwater_pfs.py --apply     write the five records
+    python build_scripts/build_airwater_pfs.py --apply     write the seven records
     python build_scripts/build_airwater_pfs.py --undo      remove them
 
 Splice machinery is build_embrittle_pfs.py's (sorted insert, wide index, CRC repaired, every other
@@ -53,12 +54,17 @@ SPELLS = [
          research=240, tier=3, family=3,
          desc="Grants Lightning Immunity. Striking this unit in melee has a chance to inflict "
               "Stunned."),
+    dict(rec=106, donor=WW_SPELL, donor_desc=b"Bestows flight", icon=173, mana=50, upkeep=5,
+         research=240, tier=3, family=3,
+         desc="Grants the unit Flying. Physical damage against it is increased by half."),
 ]
 ABILS = [
     dict(rec=0x54 + 10, desc="Mistform: the unit floats. The next damage it suffers ends Mistform "
                              "instead of wounding it."),
     dict(rec=0x55 + 10, desc="Static Shield: Lightning Immunity. A unit that strikes it in melee may "
                              "be stunned."),
+    dict(rec=0x97 + 10, desc="Spectral Wings: the unit flies. Physical damage against it is increased "
+                             "by half."),
 ]
 
 

@@ -32,6 +32,8 @@ combat damage/terrain rendering; or unit-stacking/army mechanics.
 | **Firmament map level** — a 4th map level (index 3) filled with SKY terrain `0x0E`; surface-like vision, global-target spells, storm spells and Bird's View, `TCave.PlaceHX` guarded. Full record in `11-engine-internals.md` §"Firmament map level" | 🔨 APPLIED, UNTESTED (2026-09-06, v2) | `build_maplevel4.py` (+ in-place re-tunes of `build_shipyard_income.py`, `build_waterheal.py` v6; UI half `build_skylevel_ui.py`) | AoWEPACK.dpl + AoWz.exe |
 | **Abyss map level** — a 5th map level (index 4), an ordinary cave level below Depths; caves link Depths↔Abyss through the level order instead of level±1. Full record in `11-engine-internals.md` §"Abyss map level" | 🔨 APPLIED, UNTESTED (2026-09-27) | `build_maplevel4.py` v3 (+ in-place re-tunes of `build_skylevel_ui.py` v4, `build_deved_levelnav.py` v2, `build_shipyard_income.py`, `build_townquake_retune.py`) | AoWEPACK.dpl + AoWz.exe + AoWDevEd.exe → AoWzEd.exe |
 | Flying between map levels — click Flying to fly the party up/down; Sky/Chasm rule, all movement spent; clickable only when a flight is possible | 🔨 APPLIED (2026-09-26) · broke in game (AV on click), fixed 2026-10-13 | `build_fly_levels.py` | AoWEPACK.dpl |
+| Spectral Wings flies up/down as Flying does | applied 2026-10-27 | `build_wings_fly.py` | AoWEPACK.dpl |
+| Falling — a unit that loses flight over Sky/Chasm falls to the level below ((size+1)×2d10 physical per level); an airship's passengers fall when it is destroyed there, in battle or on the map; landing on enemies starts a battle (no retreat, inside the walls); losing footing on water / lava / mountain / Earth / Rock is 3d10 / 4d10 fire / 2d10 and a shunt, passengers of sunk ships included | applied 2026-10-27; battle and hazards 2026-10-28 | `build_flight_fall.py` | AoWEPACK.dpl + AoWTCPCK.dpl |
 | Terrain rolls draw from the synced RNG (3 sites) | 🔨 APPLIED, UNTESTED (2026-08-31) | `build_rng_lockstep.py` (owned by the RNG/core-engine doc; two of the three sites are caves this file covers) | AoWEPACK.dpl |
 | Ice Storm: Lava → Wasteland + per-proc gate | 🔨 APPLIED, UNTESTED — base redirect + 50% skip ✅ confirmed 2026-07-07. Since 2026-09-25 each proc **takes effect** 25% of the time (owner ruling; one byte, `0x5580DB4E` `je`→`jne`) | `build_icestorm_lava.py` — **⚠ never run `--apply` again**, see below; the rate flip is `build_icestorm_gate25.py` | AoWEPACK.dpl |
 | Raise Terrain: lava → 50% dirt, no mountain (surface) | ✅ CONFIRMED WORKING (2026-07-08) | `build_raiseterrain_lavadirt.py` | AoWEPACK.dpl |
@@ -1577,6 +1579,86 @@ The move half (path, `MoveArmyEx`, prompt, ValidPath widening, MP drain) first r
   selection from `TSelectedArmy.GetArmyHS([map+0xD8])`.
 - The AI never uses it; its pathfinder has no vertical links outside caves.
 - Revert: `build_fly_levels.py --undo` (surgical).
+- Spectral Wings (enchantment `0x97`) flies up and down the same way since 2026-10-27
+  (`build_wings_fly.py`): its row is clickable through the same two caves, and `fly_check` already
+  counts a winged unit (the query widening in `build_airwater_ench.py` answers Flying for it).
+
+## Falling, and losing footing elsewhere (2026-10-27/28)
+
+Owner's design 2026-10-27; `build_flight_fall.py` (its docstring holds the hook and the rules).
+Before it, a unit that lost flight over Sky or Chasm died there ("crushed").
+- It falls to the same x, y on the next level down (Firmament → Surface → Caverns → Depths → Abyss,
+  disabled levels skipped), and on through Sky or Chasm below; with no level below it dies as before.
+- Damage: (size + 1) × 2d10 per level fallen (size 0–3; heroes 1), physical since 2026-10-28: no to-hit
+  roll, but immunity, protection and weakness apply (see the hazard bullet).
+- A unit that cannot stand on the landing terrain takes that terrain's hazard too (below; until
+  2026-10-28 it died) and, if it lives, is shunted alone first. The survivors land together as a new party on
+  an empty, unowned hex without a structure, or join their own party there; otherwise each is shunted
+  as Awaken Volcano shunts (a neighbour on the landing level, synced shuffled order) or dies.
+- Hook: `TArmy.ValidateTerrainEx` before its kill loop (`0x5578CD44`), so every loss of flight that
+  validates terrain falls: a dispel, unpaid upkeep, a caster's death, Mistform's absorb.
+- **An airship's passengers fall too when it is destroyed over Sky or Chasm** (owner, 2026-10-27):
+  - In battle, cargo (`[cu+0x54]`, a unit riding a transporter that cannot stand on the battle
+    terrain, never a conquer object) used to be destroyed with its transport. Since 2026-10-28 it
+    stays aboard on every terrain (`TCombatUnit.ObjectDestroyed`'s destroy call at `0x557252DB` is
+    skipped). Fleeing, the first version over Sky/Chasm, turned result 4 into 9 ("Battle Drawn").
+  - After the battle, `TCombatUnit.Finalize` puts survivors back with `TAbstractUnit.Place` on their
+    party's hex in two passes; a pass-1 refusal (a pass-0 refusal can be a passenger placed before
+    its ship) of a unit that cannot stand there now falls over Sky or Chasm (same levels and damage,
+    the hazard if it cannot stand below, then `Place` on the hex below or a neighbour), or elsewhere
+    takes the hazard (below) and is placed on a neighbour (`0x55724E25`).
+  - On the world map, vanilla re-checks nobody when a transport dies (a storm, map fire, Meteor
+    Storm): only terrain changes, Vortex and the removal of Water Walking, Wind Walking, Liquid Form
+    or Fire Aura call `TArmy.ValidateTerrain`. At the end of `TArmy.Validate` (`0x5578D028`) a party
+    with units that cannot stand on its hex and no transporter that can now runs
+    `TArmy.ValidateTerrain` (on Sky/Chasm always, elsewhere unless the party is moving: boarding
+    validates mid-step), so a sunk ship's passengers fall or take the hazard.
+- **Hazards: losing footing on water, lava, a mountain, Earth or Rock** (owner's rulings 2026-10-28).
+  Vanilla's `ValidateTerrainEx` set every unit that cannot stand to 0 HP and sent "Units drowned"
+  (Water, Cave Water), "burned" (Lava) or "crushed" (anything else), listing each unit's remaining HP
+  as damage. Now each takes Water 3d10 physical, Lava 4d10 fire, anything else (mountain, Earth,
+  Rock, border) 2d10 physical, not size-dependent; survivors are shunted as falls are (a neighbour on
+  the same level), else they die. The same message lists the real damage. Typed through
+  `TAbstractUnit.ExecuteDamageRole` with its core roll forced to the dice total (`0x55781B0D`), so
+  immunity, protection, Physical/Fire Weakness, Embrittled, Spectral Wings and Mistform apply.
+  Awaken Volcano keeps its own d20 lava handling first; a unit it cannot move then takes this too.
+- **Landing on enemies starts a battle** (owner's rulings 2026-10-27/28; built 2026-10-28, same
+  script, plus an `AoWTCPCK.dpl` half). Enemy = the landing hex's owner (army, city or structure) is
+  independent or at war with the faller (`TArmyCombatMoveTE.Setup`'s own test); an independent faller
+  never attacks (vanilla would end its TE in `CanMoveNext`), so it is shunted as before.
+  - The fallers take their damage, then attack the hex below from the hex above, as through a cave
+    entrance: a vanilla `TArmyCombatMoveTE` with the two-node path [landing, above], queued with
+    `TTokenExecuter.AddSystemEvent` (vanilla's own way of queuing a winner's move-in).
+    `build_fly_levels.py`'s `cave_vp` validates the vertical path. The TE is filled by a copy of
+    `TMoveArmyTE.Setup` without its MP cut (`build_patch.py`'s TrueReachPos refuses a faller with no
+    MP). A one-level fall waits in its own party; a longer one forms a party on the last Sky/Chasm
+    hex above, which must be empty. A pending table (heap, 8 entries, each lapses after 8 completed
+    token events) stops a re-validation dropping a waiting party.
+  - From there vanilla decides auto / manual / ask (Combat Resolve Mode), the hot-seat "You are being
+    attacked" hand-over, network seats, a walkover and capture of an empty city or structure. Auto is
+    forced in a network game and for a human faller who is not the local seat (another human's turn
+    in hot-seat or PBEM). A cancelled choice fights in auto-combat. In single-player a human fights
+    manually whenever they are on either side, also during an AI's turn.
+  - A fall battle is recognised by geometry: the attacker stands on Sky/Chasm at the defender's x, y
+    on another level. `TCombat.InitDefaultArmies` keeps it combat kind 0 (kind 2 would load the
+    cave-entrance map variant), so a city gets its siege map.
+  - No retreat: auto-combat's attacker flee gate is shut with `build_razebattle_tower.py`'s
+    `FLAG_RAZENOFLEE`; manually the flee-hex test (class `0x220528`) finds nothing and Surrender
+    returns at once. The flee hexes are still drawn.
+  - Inside the walls: auto-combat already puts no wall between a party at position 7 and anyone.
+    Manually, when the battle has walls (`[cd+0x50]`), each faller takes the defender formation's
+    slot for direction 4 (`0x467024`/`0x4670E4`, index 24 + slot) — inside the city, on the far side
+    from the defenders — facing them. Without walls they deploy at edge 1, as vanilla does.
+  - Afterwards `TCombatUnit.Finalize` puts the fallers back on the hex above without a terrain test.
+    A winner moves in (auto-combat: the same TE; manual: `CombatExecuted`'s path-found move-in is
+    replaced by the two-node move with `[te+0x3A]` = 1, so a city is entered and captured). A draw or
+    a loss drops the survivors again with NOBATTLE: no second damage, the enemy counts as blocked.
+  - An attacker's airship passenger over enemies is put back on its party's hex and falls into a
+    battle after that one; a defender's passenger keeps the step-one rule.
+- Unproven: a fall in game; how a new party on another level is drawn and revealed; no event-log or
+  combat-log line is written for a fall or for a passenger that stays aboard; every hazard in game;
+  every step-two path in game (the queued TE, the dialog, the manual battle, the inside-the-walls
+  deployment, a draw's drop), and none of hot-seat, PBEM or network.
 
 ## Mountaineering climbs chasm edges (path links)
 
