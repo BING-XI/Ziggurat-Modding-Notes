@@ -14,7 +14,8 @@ subclass field can be overlapped (scanned 2026-10-21).
     byte 0  B_MIRROR    Mirror Image: images used this battle
     byte 1  B_SKIRMISH  Skirmisher: 1 = attacked this round (manual combat only)
     byte 2  B_MIRROR_DRAW  the draw marks of build_mirrorimage.py's Show wrapper (manual combat):
-                   bit 0 the images are being drawn, bit 1 the unit is a statue (Stone Gaze)
+                   bit 0 the images are being drawn, bit 1 the unit is a statue (Stone Gaze),
+                   bit 2 build_unit_vfx.py's header is present (Invisibility / Mistform look)
     byte 3  B_LUCKY     Lucky: 1 = its cheat-death is spent this battle
 
 All four bytes are taken: the next stateful feature must grow the dword (build_combatunit_slot.py).

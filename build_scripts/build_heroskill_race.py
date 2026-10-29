@@ -45,9 +45,12 @@ Hash inputs, in this fixed order:
                             -- the value is 0 until TPlayerControl.NewDay runs on day 1, and
                             FNV mixes 0 perfectly well.
     2  [hero+0x18]          the network unit id, dword.  Per-hero, serialised.
-    3  movzx [hero+0x4C]    the level cache, ONE BYTE (not four).  Included deliberately:
-                            the offer re-rolls at every level, so the variable band changes
-                            shape each time the dialog opens at a new level.
+    3  movzx [hero+0x4D]    the level whose offer the hero keeps (2026-10-29), ONE BYTE, or
+       else [hero+0x4C]     the level cache when that byte is 0.  `build_heroskill_keep.py`
+                            (AoWEPACK.dpl) owns and streams +0x4D: a level-up stores the new
+                            level there unless the hero spent nothing at the previous level-up,
+                            so an unspent offer comes back unchanged.  With that script undone
+                            the byte stays 0 and this input is the level cache, as before.
     4  ability id
 
 `mul` (inside range_n) clobbers EDX:EAX, so the pct and the ability id are pushed across the
@@ -219,6 +222,7 @@ HERO_RES = 0x40                       # THero  -> chassis resource
 RES_RACE = 0x20                       # resource -> race byte
 HERO_UNITID = 0x18                    # TUnit  -> network unit id (dword)
 HERO_LEVEL = 0x4C                     # THero  -> level cache (byte)
+HERO_OFFER = 0x4D                     # THero  -> level of the kept offer (byte, build_heroskill_keep.py)
 FRAME_ABILITY = -0x0C                 # cave_fill's [ebp-0x0C] = the TAbility
 ABILITY_ID = 0x0C                     # TAbility -> ability id
 
@@ -462,8 +466,12 @@ def build_code():
     """)
     raw("rngstd.mix", rngstd.mix())
 
-    asm("input 3: hero level (1 byte)", f"""
+    asm("input 3: kept offer level, else the level cache (1 byte)", f"""
+        movzx edx, byte ptr [ecx + 0x{HERO_OFFER:X}]
+        test  dl, dl                            /* not a nil guard: 0 = no kept offer */
+        jne   rg_lvl
         movzx edx, byte ptr [ecx + 0x{HERO_LEVEL:X}]
+    rg_lvl:
     """)
     raw("rngstd.mix", rngstd.mix())
 
@@ -542,6 +550,11 @@ def _assert_cave_sane(code):
     tests = sum(1 for i in ins if i.mnemonic == "test"
                 and i.op_str in ("edx, edx", "ecx, ecx"))
     require(tests == 4, "expected 4 nil guards (hero, hero+0x40, map slot, map), found %d" % tests)
+    # input 3: the kept offer level (build_heroskill_keep.py's byte), falling back to the cache
+    lv = [i.op_str for i in ins if i.mnemonic == "movzx" and i.op_str.startswith("edx, byte ptr [ecx + ")]
+    require(lv == ["edx, byte ptr [ecx + 0x%x]" % HERO_OFFER, "edx, byte ptr [ecx + 0x%x]" % HERO_LEVEL],
+            "input 3 must read [hero+0x%X] and fall back to [hero+0x%X], found %s"
+            % (HERO_OFFER, HERO_LEVEL, lv))
     # the whole stream must decode with nothing left over
     require(sum(i.size for i in ins) == len(code),
             "capstone could not decode the whole cave -- %d of %d bytes"

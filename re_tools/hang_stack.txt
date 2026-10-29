@@ -1,16 +1,16 @@
 === AoW hang stack one-shot ===
-pid 21296
+pid 500
 
-  module AoWz.exe             base 0x00400000 size 0x247000
-  module AoWz.exe             base 0x00400000 size 0x247000
-  module AoWEPACK.dpl         base 0x00DE0000 size 0x2BD000
-  module Localize.dpl         base 0x010A0000 size 0x77000
-  module aowFXpck.dpl         base 0x012A0000 size 0xB000
-  module AoWTCPCK.dpl         base 0x012B0000 size 0x8B000
-  module aowDPlay.dpl         base 0x013D0000 size 0x10000
-  module ims.dpl              base 0x013F0000 size 0x42000
-  module VCLADDON.dpl         base 0x01490000 size 0x23000
-  module VideoP.dpl           base 0x014C0000 size 0xE000
+  module AoWz.exe             base 0x00400000 size 0x23D000
+  module AoWz.exe             base 0x00400000 size 0x23D000
+  module AoWEPACK.dpl         base 0x00E10000 size 0x2BD000
+  module Localize.dpl         base 0x010D0000 size 0x77000
+  module aowFXpck.dpl         base 0x01250000 size 0xB000
+  module AoWTCPCK.dpl         base 0x01260000 size 0x8B000
+  module aowDPlay.dpl         base 0x01380000 size 0x10000
+  module ims.dpl              base 0x013A0000 size 0x42000
+  module VideoP.dpl           base 0x013F0000 size 0xE000
+  module VCLADDON.dpl         base 0x01400000 size 0x23000
   module VCL30.dpl            base 0x41300000 size 0x13F000
   module vcldb30.dpl          base 0x41700000 size 0xA0000
   module vclx30.dpl           base 0x41900000 size 0x39000
@@ -24,63 +24,57 @@ pid 21296
   module AOWTools.dpl         base 0x59700000 size 0x18000
   module aowInt.dpl           base 0x59800000 size 0x52000
 
-thread 28392   EIP VCL30.dpl+0x38EE
-           EAX 00000000 EBX 1CEE5C68 ECX 00000000 EDX 001AF6B4 ESI 00000000 EDI 1CEE5C68 EBP 00C7146C ESP 001AF664
-             ret  0x12C1A36C (unknown)
-             ret  AoWEPACK.dpl+0x30DC  (link 0x557030DC)
-             ret  0xC08B00FD (unknown)
+thread 9248   EIP ntdll.dll+0x61365
+           EAX 0035C490 EBX 7FFE0383 ECX 0000014C EDX 00000000 ESI 0000AA64 EDI 7FFE2000 EBP 001AF9C4 ESP 001AF988
+             ret  0x001AFA14 (unknown)
 
-thread 6444   EIP win32u.dll+0x11DC
-           EAX 00000001 EBX 0001FDD8 ECX 00000000 EDX 00000000 ESI 0EC2FB5C EDI 1006B120 EBP 0EC2FB00 ESP 0EC2FAC0
+thread 22172   EIP win32u.dll+0x11DC
+           EAX 00000001 EBX 0001E1A8 ECX 00000000 EDX 00000000 ESI 0EEDFB5C EDI 1006B120 EBP 0EEDFB00 ESP 0EEDFAC0
              ret  galaxy.dll+0x631D
              ret  0x00000098 (unknown)
 
-thread 29088   EIP ntdll.dll+0x7A15C
-           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 00000003 EDI FFFFFFFF EBP 0F8BFE1C ESP 0F8BFC90
-             ret  wdmaud.drv+0x7F6B
-             ret  wdmaud.drv+0x7D4C
+thread 24776   EIP ntdll.dll+0x7A0BC
+           EAX 8000001A EBX 00931878 ECX 00000000 EDX 00000000 ESI 0E10DC48 EDI 00931878 EBP 0FC0FF74 ESP 0FC0FDB4
              ret  KERNEL32.DLL+0x15D49
-             ret  ntdll.dll+0x6E1FB
-             ret  ntdll.dll+0x6E181
+             ret  ntdll.dll+0x6C75B
+             ret  ntdll.dll+0x6C6E1
 
-thread 504   EIP ntdll.dll+0x7A15C
-           EAX 00000000 EBX 00002710 ECX 00000000 EDX 00000000 ESI 65285B00 EDI FFFE92E7 EBP 0FB1FF74 ESP 0FB1FEAC
+thread 21984   EIP ntdll.dll+0x787FC
+           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 00000003 EDI FFFFFFFF EBP 0FD0FE1C ESP 0FD0FC90
+             ret  wdmaud.drv+0x7F5B
+             ret  wdmaud.drv+0x7D3C
              ret  KERNEL32.DLL+0x15D49
-             ret  ntdll.dll+0x6E1FB
-             ret  ntdll.dll+0x6E181
+             ret  ntdll.dll+0x6C75B
+             ret  ntdll.dll+0x6C6E1
 
-thread 11704   EIP ntdll.dll+0x7A15C
-           EAX 6AA43CD0 EBX 00000000 ECX 00000000 EDX 00000000 ESI 00000002 EDI FFFFFFFF EBP 0E23FF30 ESP 0E23FDA4
-             ret  KERNELBASE.dll+0x15EDB8
+thread 25664   EIP ntdll.dll+0x787FC
+           EAX 00000000 EBX 00002710 ECX 00000000 EDX 00000000 ESI 652D6B00 EDI FFFE91FE EBP 0FE0FF74 ESP 0FE0FEAC
+             ret  KERNEL32.DLL+0x15D49
+             ret  ntdll.dll+0x6C75B
+             ret  ntdll.dll+0x6C6E1
+
+thread 20848   EIP ntdll.dll+0x787FC
+           EAX 650F3CD0 EBX 00000000 ECX 00000000 EDX 00000000 ESI 00000002 EDI FFFFFFFF EBP 11EDFF30 ESP 11EDFDA4
+             ret  KERNELBASE.dll+0x15F4D8
              ret  amdihk32.dll+0x3D01
              ret  KERNEL32.DLL+0x15D49
-             ret  ntdll.dll+0x6E1FB
-             ret  ntdll.dll+0x6E181
+             ret  ntdll.dll+0x6C75B
+             ret  ntdll.dll+0x6C6E1
 
-thread 14052   EIP win32u.dll+0x123C
-           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 413A8D00 EDI 413A8D00 EBP 0FF9FF74 ESP 0FF9FF4C
+thread 27260   EIP win32u.dll+0x123C
+           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 413A8D00 EDI 413A8D00 EBP 1290FF74 ESP 1290FF4C
              ret  KERNEL32.DLL+0x15D49
-             ret  ntdll.dll+0x6E1FB
-             ret  ntdll.dll+0x6E181
+             ret  ntdll.dll+0x6C75B
+             ret  ntdll.dll+0x6C6E1
 
-thread 16152   EIP ntdll.dll+0x79BCC
-           EAX 00000000 EBX 00000000 ECX 00000000 EDX 00000000 ESI 7C5DF230 EDI 00000E3C EBP 0FD5FF40 ESP 0FD5FED4
-             ret  KERNELBASE.dll+0x15E052
-             ret  dplayx.dll+0x2BD30
+thread 23868   EIP ntdll.dll+0x7A0BC
+           EAX 00000000 EBX 07732510 ECX 00000000 EDX 00000000 ESI 078246E8 EDI 07732510 EBP 12A0FF74 ESP 12A0FDB4
              ret  KERNEL32.DLL+0x15D49
-             ret  ntdll.dll+0x6E1FB
-             ret  ntdll.dll+0x6E181
+             ret  ntdll.dll+0x6C75B
+             ret  ntdll.dll+0x6C6E1
 
-thread 29636   EIP ntdll.dll+0x79BCC
-           EAX 7C5EBC10 EBX 00000000 ECX 00000000 EDX 00000000 ESI 7C5DF230 EDI 00000E3C EBP 00B5FF40 ESP 00B5FED4
-             ret  KERNELBASE.dll+0x15E052
-             ret  dplayx.dll+0x2BD30
+thread 14044   EIP ntdll.dll+0x7A0BC
+           EAX 00000000 EBX 07732510 ECX 00000000 EDX 00000000 ESI 0E1006F8 EDI 07732510 EBP 12B0FF74 ESP 12B0FDB4
              ret  KERNEL32.DLL+0x15D49
-             ret  ntdll.dll+0x6E1FB
-             ret  ntdll.dll+0x6E181
-
-thread 7324   EIP ntdll.dll+0x7BA0C
-           EAX 8000001A EBX 00801878 ECX 00000000 EDX 00000000 ESI 0080E930 EDI 00801878 EBP 0ED2FF74 ESP 0ED2FDB4
-             ret  KERNEL32.DLL+0x15D49
-             ret  ntdll.dll+0x6E1FB
-             ret  ntdll.dll+0x6E181
+             ret  ntdll.dll+0x6C75B
+             ret  ntdll.dll+0x6C6E1

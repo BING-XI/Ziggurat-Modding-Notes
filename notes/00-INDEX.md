@@ -258,6 +258,17 @@ file carries the specific checklist for its own rows.
   Remedy remove it; drawn beige-grey through Mirror Image's draw hooks. Basilisk, Cockatrice
   Hussar (both in place of Doom Gaze) and Beholder. `build_stonegaze.py` + `_pfs` + `_holders`,
   applied 2026-10-22; LADDERs `0xCD`. `03-abilities-added.md`, "Stone Gaze".
+- **How invisible and Mistform units look**: an Invisibility unit dips to 40 % opacity for 1.2 s
+  every 5 s, out of step with the others; a Mistform unit is drawn at 70 % opacity, 40 % of the way
+  to a pale cloudy white. Manual combat and the world-map army figure; tuning constants at the top
+  of `build_unit_vfx.py` (applied 2026-10-29; the combat half rides on Mirror Image's draw hooks).
+  ⭐ 91 % of unit sprites are `TRLESprite08`, which ILPACK cannot draw transparent, blended or
+  tinted. `02-abilities-modded.md`, "How invisible and Mistform units look".
+- **Mirror Image copies and Stone Gaze statues on 8-bit sprites** (fixed 2026-10-29): both now
+  draw through `build_unit_vfx.py`'s `vfx_core` (pinned `0x0044C800`, with a colour map for the
+  statue tint). Before, 8-bit units' copies drew nothing and their statues drew untinted.
+  `build_mirrorimage.py`'s dispatch + `build_stonegaze.py`'s pinned colour table; no undo order.
+  `03-abilities-added.md`, "Mirror Image" and "Stone Gaze".
 - **Rally** (`0xC2`, status Rallied `0xC3`): fires when clicked, no targeting (the no-target spell
   precedent: `AbRangedTC` at the user's own hex), spends the action; every ally within 6 hexes
   rolls 50 % to lose Panicked and gains +30 morale for the battle. Both AIs follow one rule (panic
@@ -572,6 +583,8 @@ file carries the specific checklist for its own rows.
 - Death/Water — Curse of Lethe (area sleep: Asleep `0x50`, a Stunned copy broken by damage; `build_lethe.py` + `_tc` + `_pfs`) and Blessing of Stygia (world-map Physical Protection by water: status `0x51`; `build_blessing_stygia.py` + `_pfs`; the slightly darker, purpler water: `build_stygia_tint.py`) built 2026-10-25, launch-proved; Plague not designed — `05-spells-added.md`, "Death/Water — agreed design" and "as built"
 - Air/Water — Mistform (Floating; the next landed damage ends it instead), Mist (enemies without True Seeing see 3 hexes less in battle) and Static Shield (Lightning Immunity; melee strikers may be stunned) built 2026-10-26 — `05-spells-added.md`, "Air/Water — as built"
 - Entangle to Life/Earth tier 1; Weight of the World (Earth tier 2: an AoE 6 strike, then a battle-long field that doubles movement cost and grounds flyers, marked by amber contour lines) built 2026-10-26 — `05-spells-added.md`, "Entangle to Life/Earth, Weight of the World — as built"
+- Vafur Flames (Fire tier 2, battle): a jagged wall of fire up to 6 hexes long whose flames strike 10/5 fire as they form, at the caster's turn start and when a unit steps in; built 2026-10-29 — `05-spells-added.md`, "Vafur Flames — as built"
+- Healing Showers to Life/Water tier 1, Ooze to Earth/Water tier 1, Disease Cloud to Death/Air tier 2, Pestilence to Death/Air tier 3, as they are, 2026-10-29 — `05-spells-added.md`, "Healing Showers, Ooze, Disease Cloud, Pestilence to dual tiers"
 - Meteor Storm (Earth/Air tier 2, world map: lands at the caster's second turn start after the cast, 16/20 physical on every unit within 4; no warning but an event-log line) built 2026-10-26 — `05-spells-added.md`, "Earth/Air: Meteor Storm — as built"
 - A spell Ziggurat adds to a tier comes with it: `cave_catchup` (`build_dual_sphere.py`) grants Regeneration, Weight of the World and Embrittle at turn start to players who completed their tier before the spell existed, 2026-10-26 — `04-spells-modded.md`, "A spell added to a tier comes with it"
 - Research of Entangle chosen before it became dual ("Secret I" in the book) moves back to Earth II: `cave_rstep` (`build_dual_sphere.py`), 2026-10-27 — `04-spells-modded.md`, "A spell moved INTO a dual tier strands research"
@@ -601,6 +614,10 @@ file carries the specific checklist for its own rows.
 - Scroll as a permanent per-hero spellbook grant — cave extended 2026-09-03
 
 ### UI — `07-ui.md`
+- **A hero who spends no points at a level-up is offered the same abilities at the next one**
+  (`build_heroskill_keep.py`, `AoWEPACK.dpl` `0x558CE000`; `build_heroskill_race.py`'s gate hashes
+  the kept level `[hero+0x4D]`, streamed as THero property `0x400`) — applied 2026-10-29. Any stat
+  or ability bought → the next level-up rolls fresh. AI heroes excluded. §2.8c.
 - **Combat log shows everything the 2026-10-14 survey found missing** — applied 2026-10-14: deaths,
   rounds, healing, life-steal, spell casts and outcomes, touch outcomes, Cause Fear / Entangle
   Strike rolls, burning/decay ticks, statuses wearing off, siege and missiles, flee, surrender,
@@ -1215,6 +1232,10 @@ file carries the specific checklist for its own rows.
 - **Firmament structure art** — cities (and every structure) on the Firmament use their surface art: `ForceTerrainType` ×2 falls back on Grass there instead of Dirt, and `GetCityImage`'s fallback treats level 3 as surface. 🔨 APPLIED 2026-10-01, `build_firmament_structart.py` (three in-place rewrites, no cave). Record: `11-engine-internals.md` "Structure art on the Firmament"
 - **Sky/Chasm bridges obey the water rule** — one-hex span, land at both ends of an axis; no more chains. `AoWE.Land` rewritten in place so Sky and Chasm are not land (its only callers are the hexagon bridge). 🔨 APPLIED 2026-10-01, `build_bridge_skychasm.py`. Record: `09-terrain-movement.md` §7
 - **Tactical line of sight and fog of war** — combat sight is triple the strategic sight, and in exploration sites 3 + Vision halved and rounded up without Night Vision; every tactical combat starts unexplored, and in world battles each player's units flood-explore everything they can reach without crossing a blocker; units explore combat sight + 8 and see their combat sight, both through a clear line; cave rock blocks sight and exploration; houses, buildings, obstacles, trees and rocks block sight, and exploration only in exploration sites; city walls and gates block one way (units inside see out, units outside do not see in); walls, gates and buildings are explored whole; unseen hexes keep their terrain and decorations (walls, trees, corpses, fire…) under the shade but show no units or effects, and take no orders; no shared vision between allies; the AI stays omniscient except when it plays your units (Space, Auto). 🔨 APPLIED 2026-10-23, `build_tactical_los.py` (`AoWTCPCK.dpl`, zone `0x441000`, 32 sites; moves may target explored hexes, routes ignore unseen units, and a move halts when its unit sees its route blocked; `--emulate` runs the caves under unicorn). Record: `11-engine-internals.md` "Tactical line of sight and fog of war"
+- **A battle no longer stalls on the AI's turn when it orders a move onto an occupied hex** (2026-10-29): the line-of-sight look-ahead stopped such a move before its first step and the AI re-issued it forever; the look-ahead now skips the destination (`build_tactical_los.py`, one byte at `0x442B08`). Record: `11-engine-internals.md` "Tactical line of sight and fog of war"
+- **Units can board or join a stack after a manual battle fought from its hex** (2026-10-29, vanilla): the stack left on the attacker's hex kept the "moving" flag until the next load, so an arriving unit stayed a separate stack (e.g. a catapult back onto its ship). `build_combat_moveflag.py`. Record: `11-engine-internals.md` "Transport-boarding"
+- **No more siege auto-resolve crash from Lethargy / Embrittle** (2026-10-29): the AI could cast them at a wall, and the effect read the wall as a unit (AV at `0x557F8854`, the battle's units vanished). Their value caves skip walls now (`build_lethargy.py` v4, shared guard `0x55849000`). Record: `04-spells-modded.md` "Lethargy"
+- **Every spell and ability target pick checked for walls** (2026-10-29): no other cave can hand a wall to a unit-only routine; nothing written. Walls reach target picks only in auto-resolve (the manual-combat AI's lists are units only). Record: `07-ui.md` §1.7 "§7b"
 
 ---
 

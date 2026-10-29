@@ -151,7 +151,9 @@ loop after the mask test (je 0x416251 at 0x4161AF) and before CanExpand (0x4161D
 the TAbility, ESI = the window.  Accept -> replay + 0x4161CF; reject -> 0x416251.
   * Only while our PBEM window is open (G_EVENT != 0).  ⚠ ASSUMPTION, not an owner ruling:
     the pre-game "Customize leaders" screen (hotseat, network) keeps vanilla's full menu.
-  * P4 DERIVED HASH, build_heroskill_race.py's cave_fill hash byte for byte: rngstd basis,
+  * P4 DERIVED HASH, build_heroskill_race.py's cave_fill hash except input 3, which here is
+    always the level cache (the level-up gate reads the kept offer level [hero+0x4D] first since
+    2026-10-29, build_heroskill_keep.py): rngstd basis,
     salt [[0x45DF7C]]+0x22C (nil-guarded), [hero+0x18], movzx [hero+0x4C], ability id
     [ability+0xC], fmix32, range_n(100).  hero = the window's leader [dlg+0x2E4] (it carries
     the live leader's +0x18 / +0x4C -- QA 2026-09-23).  Selection test: Q2 yes (the list is
@@ -985,8 +987,9 @@ def offer_frags():
     EBX = the loop index, EBP = the host frame.  Accept -> replay + 0x4161CF (CanExpand);
     reject -> 0x416251, the loop's own next-index label.
 
-    Hash = build_heroskill_race.py's cave_fill hash, byte for byte (rngstd, same four inputs
-    in the same order); threshold = min(2 * pct, 100) from the SAME baked table."""
+    Hash = build_heroskill_race.py's cave_fill hash (rngstd, the same four inputs in the same
+    order, but input 3 is always the level cache here); threshold = min(2 * pct, 100) from the
+    SAME baked table."""
     V = hex
     row_max = HSR.RACES.RACELESS_ROW
     return [

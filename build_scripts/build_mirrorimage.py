@@ -33,18 +33,34 @@ THE IMAGES (AoWTCPCK, manual combat)
                     then draw the unit itself on top.
     D   six body draws in Show's state switch (0x00422397 0x0042243E 0x004224E5 0x004225AB
         0x004226D8 0x00422732, each `call [ebx+0x84]` TLibraryImage.Show) -> call cave_draw + nop:
-        while marked, an image whose show mode [img+0x38] is 0 (a plain sprite) is drawn through
-        VMT +0x9C ShowTransparent instead -- ILPACK's own 50 % blend (TRLESprite16 0x55210474).
+        while marked, the image is drawn through build_unit_vfx.py's vfx_core (0x0044C800) at
+        COPY_OPACITY 128/256: the engine draws it normally and the changed pixels are blended
+        half-way back to what was behind them, for every sprite class.  Fixed 2026-10-29: the
+        copies used VMT +0x9C ShowTransparent (ILPACK's 50 % blend), which is TLibraryImage's empty
+        stub (0x5520E85C, `ret 4`) for TRLESprite08 -- 16048 of the 17676 unit sprites (231 of the
+        250 libraries under Images/UNITS hold some), so most units' copies were not drawn.  Without
+        build_unit_vfx.py's header the copies fall back to that +0x9C draw.
     K   0x0042274B (6 B) -> cave_skip: while marked, jump past the overlays (hero marker, status
         effect animations, health bar) to the try block's normal exit 0x00422B00.
     The shadow is a separate method (ShowShadow), so the images have none.  Images left are read
     from the engine's own counter on every frame, so they vanish the moment one is hit.
     STATUES (build_stonegaze.py, 2026-10-22): this wrapper also owns Stone Gaze's look.  For a
     live unit holding Petrified (0xCC) while Stone Gaze's AoWTCPCK header ("SGZ1" at 0x0043C800) is
-    present, cave_show sets bit 1 of the draw byte for the whole Show (copies included) and
-    cave_draw jumps to Stone Gaze's tint_draw (0x0043C810) instead.  Bit 0 is the copies' mark,
-    and only bit 0 skips the overlays.  Either script may be undone first: without the header no
-    unit is marked.
+    present, cave_show sets bit 1 of the draw byte for the whole Show (copies included), and the
+    dispatch draws it through vfx_core with Stone Gaze's colour table (0x0043CB00) as the colour
+    map: opacity 256, or COPY_OPACITY for its copies.  Without build_unit_vfx.py's header it jumps
+    to Stone Gaze's tint_draw (0x0043C810) instead, which tints TRLESprite16 only (and draws a
+    statue's copies opaque).  Bit 0 is the copies' mark, and only bit 0 skips the overlays.
+    INVISIBILITY / MISTFORM (build_unit_vfx.py, 2026-10-29): likewise, while that script's header
+    ("UVX1" at 0x0044C000) is present, cave_show sets bit 2 for every live unit, and a body draw
+    that is neither a statue nor a copy jumps to its vfx_tc (0x0044C010), which decides per unit.
+    UNDO ORDER: none.  Any of the three scripts may be undone first: no unit is marked without its
+    header, and cave_disp tests build_unit_vfx.py's header before calling vfx_core.  checks()
+    refuses to apply this script while a header is present but vfx_core (0x0044C800) or Stone
+    Gaze's colour table holds other bytes than those scripts build: apply them first.
+    LAYOUT: cave_show 0x43C000 (the VMT cell), cave_draw 0x43C120 (the six draw sites) and
+    cave_skip 0x43C150 are pinned, so a rewrite keeps every hook byte.  cave_draw is a jump to
+    cave_disp (the dispatch: statue > copy > VFX > plain); the copies' offset table is cave_offs.
 
 REGISTRATION (package init -- prove by launching the exe)
     0x557BCD0E  `call RegisterAbility` -> cave_reg: replay, TMultiLevelAbility.Create, id 0xC6, mask
@@ -108,8 +124,14 @@ DRAW_SITES = (0x00422397, 0x0042243E, 0x004224E5, 0x004225AB, 0x004226D8, 0x0042
 IMG_MODE, IMG_SHOW, IMG_SHOWTRANS = 0x38, 0x84, 0x9C
 # Stone Gaze's statue tint (build_stonegaze.py), drawn from this Show wrapper: bit 1 of the draw
 # byte marks a unit holding Petrified when Stone Gaze's AoWTCPCK header is present.
-PETRIFIED, SG_MAGIC_VA, SG_MAGIC, SG_TINT = 0xCC, 0x0043C800, 0x315A4753, 0x0043C810
-DRAW_COPY, DRAW_STONE = 1, 2
+PETRIFIED, SG_MAGIC_VA, SG_MAGIC, SG_TINT, SG_LUT = 0xCC, 0x0043C800, 0x315A4753, 0x0043C810, 0x0043CB00
+# build_unit_vfx.py's Invisibility pulse and Mistform haze: bit 2 marks a live unit while that
+# script's header is present; the dispatch then hands plain body draws to its vfx_tc.  Its
+# vfx_core draws the copies and the statues while the header is present.
+VFX_MAGIC_VA, VFX_MAGIC, VFX_ENTRY, VFX_CORE = 0x0044C000, 0x31585655, 0x0044C010, 0x0044C800
+DRAW_COPY, DRAW_STONE, DRAW_VFX = 1, 2, 4
+COPY_OPACITY = 0x80                              # of 256: ILPACK's ShowTransparent is a 50 % blend
+T_PINNED = {"show": 0x0043C000, "draw": 0x0043C120, "skip": 0x0043C150}
 
 
 def offsets():
@@ -322,9 +344,13 @@ def e_layout():
     return {n[5:]: v for n, v, _b in caves}, caves
 
 
-def build_show(va):
+def build_offs():
+    """The copies' offsets, (dx, dy) signed bytes, image k at 2k."""
+    return b"".join(struct.pack("<bb", dx, dy) for dx, dy in OFFSETS)
+
+
+def build_show(va, offs_va):
     """Locals: -0x10 anchor, -0x14 images left."""
-    tbl = b"".join(struct.pack("<bb", dx, dy) for dx, dy in OFFSETS)
     src = f"""
         push ebp
         mov  ebp, esp
@@ -339,7 +365,7 @@ def build_show(va):
         push 0
         mov  eax, dword ptr [ebx + 0x1c]
         test eax, eax
-        je   s_bare
+        je   s_plain
         mov  edx, dword ptr [eax]
         call dword ptr [edx + 0x60]
         test al, al
@@ -349,12 +375,18 @@ def build_show(va):
         mov  ecx, dword ptr [eax]
         call dword ptr [ecx + 0xa8]
         test al, al
-        je   s_img
+        je   s_vfx
         mov  ecx, dword ptr [ebp - 0x10]
         cmp  dword ptr [ecx + {{SGMAGIC}}], {SG_MAGIC:#x}
-        jne  s_img
+        jne  s_vfx
         mov  eax, dword ptr [ebx + 0x1c]
         or   byte ptr [eax + {DRAWING:#x}], {DRAW_STONE}
+    s_vfx:
+        mov  ecx, dword ptr [ebp - 0x10]
+        cmp  dword ptr [ecx + {{VFXMAGIC}}], {VFX_MAGIC:#x}
+        jne  s_img
+        mov  eax, dword ptr [ebx + 0x1c]
+        or   byte ptr [eax + {DRAWING:#x}], {DRAW_VFX}
     s_img:
         mov  eax, dword ptr [ebx + 0x1c]
         mov  edx, {MIRROR:#x}
@@ -396,14 +428,9 @@ def build_show(va):
         mov  ecx, edi
         call {SHOW:#x}
         mov  eax, dword ptr [ebx + 0x1c]
-        and  byte ptr [eax + {DRAWING:#x}], {0xFF ^ DRAW_STONE:#x}
-        jmp  s_out
-    s_bare:
-        push dword ptr [ebp + 8]
-        mov  eax, ebx
-        mov  edx, esi
-        mov  ecx, edi
-        call {SHOW:#x}
+        test eax, eax
+        je   s_out
+        and  byte ptr [eax + {DRAWING:#x}], {0xFF ^ (DRAW_STONE | DRAW_VFX):#x}
     s_out:
         add  esp, 8
         pop  edi
@@ -412,29 +439,77 @@ def build_show(va):
         pop  ebp
         ret  4
     """
-    return pic(src, va, "ecx", {"TX": ("TAIL", 0), "TY": ("TAIL", 1), "SGMAGIC": SG_MAGIC_VA}, tbl)
+    return pic(src, va, "ecx", {"TX": offs_va, "TY": offs_va + 1, "SGMAGIC": SG_MAGIC_VA,
+                                "VFXMAGIC": VFX_MAGIC_VA})
 
 
-def build_draw(va):
-    return asm(f"""
+def build_draw(va, disp_va):
+    """The six draw sites call this pinned address; the dispatch itself is cave_disp."""
+    return asm(f"jmp {disp_va:#x}", va)
+
+
+def build_disp(va):
+    """Jumped to from cave_draw: [esp] = the return into Show, [esp+4] = the surface, EAX image,
+    EDX x, ECX y, EBX the image's VMT, EBP Show's frame ([ebp-4] = the hotspot).
+    Statue or copy, with build_unit_vfx.py's header present: vfx_core(opacity 256, or COPY_OPACITY
+    for a copy; tint 0; map = Stone Gaze's colour table for a statue, else 0).  Without the header:
+    a statue jumps to Stone Gaze's tint_draw, a copy of a show-mode-0 image is drawn through VMT
+    +0x9C.  Otherwise VFX (marked) -> vfx_tc; plain -> VMT +0x84."""
+    src = f"""
         push eax
         mov  eax, dword ptr [ebp - 4]
         mov  eax, dword ptr [eax + 0x1c]
         movzx eax, byte ptr [eax + {DRAWING:#x}]
-        test al, {DRAW_STONE}
-        jne  d_stone
-        test al, {DRAW_COPY}
+        test al, {DRAW_STONE | DRAW_COPY}
+        jne  d_look
+        test al, {DRAW_VFX}
         pop  eax
-        je   d_plain
+        jne  d_vfx
+    d_plain:
+        jmp  dword ptr [ebx + {IMG_SHOW:#x}]
+    d_vfx:
+        jmp  {VFX_ENTRY:#x}
+    d_look:
+        push esi
+        push edi
+        mov  esi, eax
+        {{ANC}}
+        cmp  dword ptr [edi + {{VFXMAGIC}}], {VFX_MAGIC:#x}
+        jne  d_legacy
+        xor  eax, eax
+        test esi, {DRAW_STONE}
+        je   d_map
+        lea  eax, [edi + {{SGLUT}}]
+    d_map:
+        push eax
+        push 0
+        mov  eax, 0x100
+        test esi, {DRAW_COPY}
+        je   d_op
+        mov  eax, {COPY_OPACITY:#x}
+    d_op:
+        push eax
+        push dword ptr [esp + 0x1c]
+        mov  eax, dword ptr [esp + 0x18]
+        call {VFX_CORE:#x}
+        pop  edi
+        pop  esi
+        add  esp, 4
+        ret  4
+    d_legacy:
+        mov  eax, esi
+        pop  edi
+        pop  esi
+        test al, {DRAW_STONE}
+        pop  eax
+        jne  d_stone
         cmp  byte ptr [eax + {IMG_MODE:#x}], 0
         jne  d_plain
         jmp  dword ptr [ebx + {IMG_SHOWTRANS:#x}]
-    d_plain:
-        jmp  dword ptr [ebx + {IMG_SHOW:#x}]
     d_stone:
-        pop  eax
         jmp  {SG_TINT:#x}
-    """, va)
+    """
+    return pic(src, va, "edi", {"VFXMAGIC": VFX_MAGIC_VA, "SGLUT": SG_LUT})
 
 
 def build_skip(va):
@@ -450,11 +525,18 @@ def build_skip(va):
 
 
 def t_layout():
-    caves, va = [], T_SLOT[0]
-    for n, fn in (("show", build_show), ("draw", build_draw), ("skip", build_skip)):
-        b = fn(va)
-        caves.append(("cave_" + n, va, b))
-        va = (va + len(b) + 0xF) & ~0xF
+    """show, draw and skip pinned (hook targets); disp and offs packed after skip."""
+    skip = build_skip(T_PINNED["skip"])
+    disp_va = (T_PINNED["skip"] + len(skip) + 0xF) & ~0xF
+    disp = build_disp(disp_va)
+    offs_va = (disp_va + len(disp) + 0xF) & ~0xF
+    caves = [("cave_show", T_PINNED["show"], build_show(T_PINNED["show"], offs_va)),
+             ("cave_draw", T_PINNED["draw"], build_draw(T_PINNED["draw"], disp_va)),
+             ("cave_skip", T_PINNED["skip"], skip),
+             ("cave_disp", disp_va, disp),
+             ("cave_offs", offs_va, build_offs())]
+    assert T_PINNED["show"] + len(caves[0][2]) <= T_PINNED["draw"], "cave_show overruns cave_draw"
+    assert T_PINNED["draw"] + len(caves[1][2]) <= T_PINNED["skip"], "cave_draw overruns cave_skip"
     return {n[5:]: v for n, v, _b in caves}, caves
 
 
@@ -463,6 +545,7 @@ def module(path, base):
 
 
 def checks():
+    import build_unit_vfx as UV, build_stonegaze as SG   # before module() moves P.TARGET
     module(TCPCK, 0x00400000)
     t = open(TCPCK, "rb").read()
     rt = lambda va: struct.unpack_from("<I", t, P.va2off(t, va))[0]
@@ -478,6 +561,17 @@ def checks():
     for va in DRAW_SITES:
         if bt(va - 2, 2) != bytes.fromhex("8b18"):
             sys.exit("ABORT: %08X is not preceded by `mov ebx,[eax]` (EBX = the image VMT)" % va)
+    # the dispatch calls build_unit_vfx.py's vfx_core and reads Stone Gaze's colour table whenever
+    # their headers are present: both must be the current scripts' bytes
+    for magic_va, magic, va, mod, cave, script in (
+            (VFX_MAGIC_VA, VFX_MAGIC, VFX_CORE, UV, "vfx_core", "build_unit_vfx.py"),
+            (SG_MAGIC_VA, SG_MAGIC, SG_LUT, SG, "cave_lut", "build_stonegaze.py")):
+        want = [b for n, v, b in mod.T_CAVES if n == cave and v == va]
+        if len(want) != 1:
+            sys.exit("ABORT: %s has no %s at %08X" % (script, cave, va))
+        if rt(magic_va) == magic and bt(va, len(want[0])) != want[0]:
+            sys.exit("ABORT: %s's header is present but %08X is not its %s -- run %s --apply first"
+                     % (script, va, cave, script))
     module(EPACK, 0x55700000)
     d = open(EPACK, "rb").read()
     rd = lambda va: struct.unpack_from("<I", d, P.va2off(d, va))[0]
@@ -532,7 +626,8 @@ T_HOOKS = [(SHOW_CELL, struct.pack("<I", SHOW), struct.pack("<I", T_AT["show"]))
 T_INTERIOR = [(va, va + 6, SHOW, SHOW_END) for va in (SKIP_SITE,) + DRAW_SITES]
 # entry points, asserted (and read by rng_audit.py --owners)
 ENTRY = {"absorb": 0x558B3400, "role": 0x558B3490, "roleex": 0x558B34B0, "lname": 0x558B34D0,
-         "reg": 0x558B3670, "show": 0x0043C000, "draw": 0x0043C120, "skip": 0x0043C150}
+         "reg": 0x558B3670, "show": 0x0043C000, "draw": 0x0043C120, "skip": 0x0043C150,
+         "disp": 0x0043C170, "offs": 0x0043C200}
 assert {**E_AT, **T_AT} == ENTRY, "the cave layout moved"
 
 

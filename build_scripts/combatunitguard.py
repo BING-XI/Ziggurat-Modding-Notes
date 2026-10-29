@@ -2,7 +2,8 @@
 r"""
 combatunitguard.py -- the SHARED "is this combat object really a unit?" guard cave.
 
-Imported by build_assassin.py and build_magebane.py.  Not a build script: it has no --apply of
+Imported by build_assassin.py, build_magebane.py, build_cave_flyer_morale.py, build_leadership_others.py
+and build_lethargy.py (its spell-value caves, 2026-10-29).  Not a build script: it has no --apply of
 its own.  Each importing script installs/verifies the blob through its own va2off, and calls
 `undo_if_unused()` when it removes its own caves.
 

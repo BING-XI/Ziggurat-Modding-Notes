@@ -38,6 +38,7 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | Monster Slaying — DAM + DEF vs Monsters, no ATK | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_monster_slaying.py` + `monsterslay.py`, cave generators in `build_assassin.py` / `build_ranged_slayers.py`, row in `build_pfs_typos.py` | AoWEPACK.dpl + Release/Ability.pfs |
 | Mantle of Gloom (was Trail of Darkness) — radius 6, sight costs double; trail radius 6; True Seeing pierces it (v5) | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_los_terrain.py` v5; name row in `build_resstr_names.py`; card row in `build_pfs_typos.py` | AoWEPACK.dpl + Dict/ResStr.mld + Release/Ability.pfs |
 | Wall Crushing damage = the carrying unit's DAM (was a flat 12); ATK stays 12 | 🔨 APPLIED (2026-09-27) | `build_wallcrush_dam.py` | AoWEPACK.dpl + AoWTCPCK.dpl |
+| Invisible units pulse towards transparency; Mistform units look misty | applied 2026-10-29 | `build_unit_vfx.py` (+ `build_mirrorimage.py`'s dispatch) | AoWEPACK.dpl + AoWTCPCK.dpl |
 
 ---
 
@@ -357,6 +358,49 @@ covers that.
 3. Monster Slaying / Champions / Assassin bonuses still fire alongside the penalty (site 2 interaction).
 4. Opportunity strikes and retaliations show the penalty too (both melee tables), not just deliberate
    attacks.
+
+---
+
+## How invisible and Mistform units look (2026-10-29)
+
+`build_unit_vfx.py` (AoWEPACK + AoWTCPCK), applied 2026-10-29 at the owner's request; sites, caves and
+couplings are in its docstring. Each value below is a named constant at the top of the script, and
+`--apply` rewrites both zones in place.
+
+- **Invisibility `0x36`:** opaque, except a dip every `PULSE_PERIOD_S` (5 s) lasting `PULSE_DIP_S`
+  (1.2 s), a raised cosine down to `PULSE_FLOOR` (40 %) opacity and back. Each unit's phase is a hash
+  of its hotspot's address.
+- **Mistform `0x54`:** `MIST_OPACITY` (70 %) opacity, each colour moved `MIST_TINT` (40 %) of the way
+  to `MIST_COLOUR` (228, 234, 242), for as long as the enchantment lasts. A unit with both: the pulse
+  multiplies the mist's opacity.
+- **Where:** manual combat, every unit for both sides (Mirror Image's Show wrapper hands its body
+  draws over through bit 2 of `[unit+0x6A]`), and the world-map army figure, when the unit
+  `TArmyHS+0x20` names holds the ability (`TArmyHS.Show`'s three figure draws). An army is drawn only
+  for viewers who see it: its owner, and enemies within True Vision range of a concealed army.
+  Shadows, banners, health bars and status overlays are unchanged.
+- **Clock:** the drawn map's frame counter `[map+0x40]`, 30 a second; `TAoWHSMap.NewFrame` advances
+  the combat map's through `[map+0x11C]`. Both views repaint fully every frame
+  (`THSMapViewer.ShowScene`: cached static scene, then every dynamic object's Show), so there is no
+  dirty-rectangle bookkeeping. Display only, no RNG.
+- ⭐ **Unit sprites are mostly `TRLESprite08`**: 16 048 of the 17 676 image records under
+  `Images/UNITS` (ILB type 2 = `TRLESprite08.ClassID`), 855 `TRLESprite16`, 772 `TSprite16`, one
+  `TPicture16`. 214 of the 250 libraries are 8-bit only, 18 mix 8-bit frames in, 18 are 16-bit only;
+  216 of the 239 libraries `Unitgfx.pfs` names hold 8-bit frames. `re_tools/ilb.py` reads these
+  libraries since 2026-10-29 (it used to raise on 204 of them). ILPACK gives `TRLESprite08` no transparent or blended draw: VMT
+  `+0x9C` and `+0x94` are `TLibraryImage`'s empty stubs, and `SupportShowMode` accepts mode 0 only.
+  So `vfx_core` copies the sprite's clipped visual rectangle off the surface (a page-probed stack
+  buffer, at most `MAX_PIXELS`), lets the engine draw normally, then blends every pixel the draw
+  changed against the saved one. It works for any image class.
+- **One blend for three effects** (2026-10-29): AoWTCPCK's `vfx_core` is pinned at `0x0044C800` and
+  takes a colour map (0, or 64 RGB565 + 64 RGB555 words indexed by 6-bit luminance). Mirror Image's
+  dispatch draws its copies through it at opacity 128/256 and Stone Gaze's statues with Stone
+  Gaze's table (`03-abilities-added.md`, "Mirror Image" and "Stone Gaze"). Both had missed every
+  `TRLESprite08` unit: the copies drew nothing, the statues drew untinted.
+- Checked statically and in a unicorn emulation against the integer maths: `vfx_map`, `vfx_tc`,
+  `vfx_core` with and without a colour map (565 and 555, dip frames, clipping on each edge), and
+  Mirror Image's dispatch (copy, statue, a statue's copy, each with and without `build_unit_vfx.py`'s
+  header; VFX; plain). Unproven: how it looks, and the cost with many affected units on screen (one
+  save, draw and per-pixel blend each, every frame; a unit with 20 images costs 21).
 
 ---
 
@@ -2419,8 +2463,11 @@ Inputs, in this fixed order:
    `TPlayerControl.NewDay` runs on day 1, and FNV mixes 0 fine.
 2. `[hero+0x18]` — the network unit id, dword; serialised by `TAbstractUnit.ReadWrite @0x557820E4`
    at `0x55782116` under tag `0xFFFFFFFF`.
-3. `movzx [hero+0x4C]` — the serialised level cache, **one byte, not four**. Deliberate: the offer
-   re-rolls at every level, so the variable band changes shape each level-up.
+3. `movzx [hero+0x4D]`, or `[hero+0x4C]` when that byte is 0 — **one byte, not four**. `+0x4D` is the
+   level whose offer the hero keeps (`build_heroskill_keep.py`, 2026-10-29): a hero who spent nothing
+   at the previous level-up keeps it, so the next level-up hashes the same level and offers the same
+   abilities; spending clears it and the next level-up stores its own level. `+0x4C` is the
+   serialised level cache, the fallback for heroes that have not levelled since (`07-ui.md` §2.8c).
 4. the ability id.
 
 Then `fmix32()` and `range_n(100)`; `cmp edx, pct ; jb accept`. `mul` clobbers EDX:EAX, so the pct and

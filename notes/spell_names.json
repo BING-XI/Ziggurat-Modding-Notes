@@ -908,5 +908,13 @@
   "spell_id": 96,
   "unit": "UnitSpells",
   "vanilla": null
+ },
+ "107": {
+  "class": "TDeathRay",
+  "name": "Vafur Flames",
+  "note": "added by build_vafur_flames.py + build_vafur_flames_tc.py 2026-10-29 -- a TDeathRay instance on Geyser's battle class: a jagged wall of fire up to 6 hexes whose flames strike 10/5 fire (Fire, tier 2)",
+  "spell_id": 97,
+  "unit": "CombatSpells",
+  "vanilla": null
  }
 }

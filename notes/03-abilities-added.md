@@ -1911,13 +1911,28 @@ image, and the images return for the next battle.
   Destruct, touch abilities and Burning are not attacks and pass. Both combat systems.
 - The images: `TTacticalCombatUnitHS.Show` (VMT cell `0x00412DB0`) is wrapped. For each image left
   the original Show runs with a displaced origin while slot byte 2 is set; during those passes the
-  six body draws use ILPACK's 50 % blend (`TRLESprite16.ShowTransparent`, image VMT `+0x9C`) and
+  six body draws go through `build_unit_vfx.py`'s `vfx_core` (`0x0044C800`) at opacity 128/256 and
   the overlays (status animations, health bar) are skipped (`0x0042274B` → the try block's exit
   `0x00422B00`). The unit itself is drawn last, on top; `ShowShadow` is separate, so images cast
   none. Offsets: three ellipses of 6, 6 and 8 positions (x radius 10/18/26 px, y half), outer ones
   lost first.
+- Fixed 2026-10-29: the copies were drawn through image VMT `+0x9C` ShowTransparent (ILPACK's
+  50 % blend). For `TRLESprite08`, 16 048 of the 17 676 unit sprites, that slot is
+  `TLibraryImage`'s empty stub (`0x5520E85C`, `ret 4`), so most units' copies were not drawn.
+  `vfx_core` lets the engine draw the image normally and blends the changed pixels half-way back,
+  for every sprite class (`02-abilities-modded.md`, "How invisible and Mistform units look").
+  Without `build_unit_vfx.py`'s header the copies fall back to `+0x9C`.
 - A unit holding Petrified is marked a statue (slot byte 2 bit 1) while Stone Gaze's AoWTCPCK header
-  is present; its body draws then go to Stone Gaze's tint (see "Stone Gaze").
+  is present; its body draws then get Stone Gaze's tint (see "Stone Gaze"), its copies at 128/256.
+- While `build_unit_vfx.py`'s header is present every live unit is marked with bit 2, and a body
+  draw that is neither a statue nor a copy goes to that script's Invisibility / Mistform draw
+  (`02-abilities-modded.md`, "How invisible and Mistform units look"). `cave_show`, `cave_draw`
+  and `cave_skip` are pinned and `cave_draw` jumps to the dispatch `cave_disp` (`0x43C170`:
+  statue > copy > VFX > plain); the offsets are the data cave `cave_offs` (`0x43C200`).
+- Undo order: none. `cave_disp` tests `build_unit_vfx.py`'s header before calling `vfx_core`, and
+  no unit is marked without its script's header. `checks()` refuses to apply while a header is
+  present but `vfx_core` or Stone Gaze's colour table (`0x0043CB00`) holds other bytes than those
+  scripts build.
 - RNG: no draw. An absorbed attack skips the defender's raw roll, decided from replicated state.
 - Record from Forestry's, cost 4, Resistances column, 0 % Hero Offers. The editor's medal filter
   takes up to 20 levels per Add (`MAX_STEPS`, was 8).
@@ -1983,19 +1998,23 @@ trio), Possess or Turn Undead. No effect on fear: Fearless covers that (owner, 2
   - Removal: Remedy (`TRemedy.ExecuteSpell`'s last RemoveAbility, `0x557E741E`) and Dispel Magic,
     ability and spell (`TDispelMagicCA.Execute` `0x5576CAD5`, unconditional), just past the 30
     bytes `build_combatlog_actions.py` asserts from `0x5576CAB7`.
-- **The look.** AoWTCPCK `tint_draw` (`0x0043C810`): a copy of ILPACK's RLE16 sprite draw (565 and
-  555, the engine's clipping) that writes each pixel beige-grey from its luminance. Mirror Image's
-  Show wrapper owns the six body-draw hooks; it marks a statue (slot byte 2 bit 1) only while Stone
-  Gaze's header "SGZ1" (`0x0043C800`) is present, and its `cave_draw` then jumps to the tint. An
-  image that is not a `TRLESprite16`/`TTransparentRLESprite16`, or has another pixel format, draws
-  normally. No overhead icon: neither status-icon list names `0xCC`.
+- **The look.** Each statue pixel is drawn as the beige-grey for its 6-bit luminance, from Stone
+  Gaze's colour table (AoWTCPCK `0x0043CB00`, pinned: 64 RGB565 then 64 RGB555 entries). Mirror
+  Image's Show wrapper owns the six body-draw hooks; it marks a statue (slot byte 2 bit 1) only
+  while Stone Gaze's header "SGZ1" (`0x0043C800`) is present, and its dispatch then draws it through
+  `build_unit_vfx.py`'s `vfx_core` with the table as the colour map: opacity 256, 128 for the
+  statue's Mirror Image copies. Any sprite class; a pixel format other than 565/555 draws normally.
+  No overhead icon: neither status-icon list names `0xCC`.
+- Fixed 2026-10-29: the tint was `tint_draw` (`0x0043C810`), a copy of ILPACK's RLE16 sprite draw
+  that tints only `TRLESprite16`/`TTransparentRLESprite16`; 16 048 of the 17 676 unit sprites are
+  `TRLESprite08` and 772 `TSprite16`, which drew untinted. `tint_draw` is kept as the fallback for
+  when `build_unit_vfx.py`'s header is absent (16-bit RLE only, a statue's copies opaque).
 - **Data.** Stone Gaze's record from Forestry's, cost 32 (Doom Gaze's), mask `0x3FF`, Magic column,
   0 % Hero Offers; Petrified's from Stunned's, mask 0, empty image list. Holders: the Basilisk (65)
   base set and the Halfling Cockatrice Hussar (99) gold set swap Doom Gaze for it; the Beholder (24)
   base set gains it. These three were every Doom Gaze holder; the Beholder is now the only one.
-- Launch-proved (game and editor) 2026-10-22. Unproven without a battle: the gaze in play, the
-  statue deaths inside Terminate, and whether unit sprites are `TRLESprite16` in the RLE layout the
-  tint reads (if not, statues draw untinted).
+- Launch-proved (game and editor) 2026-10-22. Unproven without a battle: the gaze in play and the
+  statue deaths inside Terminate.
 
 ## Living Flame — fire heals the unit (`0x52`)
 
@@ -2108,7 +2127,8 @@ enchantment (175), mask 0.
   (`0x5577F5E0`). Damage above 0 that lands on its holder in battle (`0x55726C7D`) or on the world
   map (`0x55781B37`) becomes 0 and removes it; the absorbed blow's effects are dropped
   (`0x55724C1C`); a self-destructing holder loses it first (`0x557689F4`). The terrain check after
-  an absorb waits for the army's next `TArmy.Validate` (`0x5578CF7C`).
+  an absorb waits for the army's next `TArmy.Validate` (`0x5578CF7C`). Its holder is drawn misty
+  (`build_unit_vfx.py`; `02-abilities-modded.md`, "How invisible and Mistform units look").
 - **Static Shield**: a `TUnitEnchantmentAbility` instance. It counts as Lightning Immunity `0x09` in
   `GetAbImmunityTypesAll` (`0x5574FB7B`) and in `GetAbilityEnabled`. Its stun is
   `build_staticshield.py`'s.

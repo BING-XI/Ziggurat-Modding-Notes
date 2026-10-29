@@ -128,7 +128,7 @@ decoration VMTs), then the routines, packed.
     canover   CanMoveOver: a hidden occupant is passable, else the T_PREV method.
     stepchk   DefaultMove's next-hex test: occupied -> that player (vanilla stops).  Free, and a
               plain TCombatMoveTE: scans the rest of the path (TXYLList [te+0x14], [te+0x18]
-              steps left, path[0] the destination) and returns 0 (stop) for the first occupied hex
+              steps left, path[0] the destination, which is not scanned) and returns 0 (stop) for the first occupied hex
               within the mover's combat sight with a clear line.  Synchronised state only.
     wallhp    in both SetHitPoints ([ebp-8] the new hit points, already clamped to >= 0, [ebp-4]
               Self): on a drop from > 0 to 0 it writes the 0 itself, then reexplore runs explore
@@ -2623,6 +2623,10 @@ def routines(A, T):
     # occupied.  When it is free, a plain move (TCombatMoveTE, not a melee or touch move) also
     # stops when the mover sees an occupied hex further along its path: within its combat sight,
     # with a clear line.  -> al 0xFF go on, anything else stop.  Synchronised state only.
+    # The look-ahead skips path[0], the destination (2026-10-29): the battle AI orders plain moves
+    # onto an enemy's hex, which vanilla walks until the next-hex test stops it alongside.  Scanning
+    # path[0] stopped such a move before its first step, and the AI re-issued it every cycle: an AI
+    # Pikeman on a wall re-ordered a move onto a Bone Horror in the gate ~6 times a second, forever.
     R["stepchk"] = f"""
         push ebx
         push esi
@@ -2680,7 +2684,7 @@ def routines(A, T):
         mov  dword ptr [esp + 4], eax
     lp:
         cmp  dword ptr [esp + 4], 0
-        jl   clr
+        jle  clr
         mov  eax, dword ptr [esp]
         mov  eax, dword ptr [eax + 0x14]
         mov  edx, dword ptr [esp + 4]

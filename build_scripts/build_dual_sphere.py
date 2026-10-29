@@ -52,7 +52,9 @@ cave_rstep (2026-10-27, the owner's report: a "Secret I" entry -- Taint the Flam
   2026-10-26 with Entangle as the entry's spell kept researching spell 111 after it became dual (7, 1);
   its completion would have granted every dual tier-1 spell.  Before the points are taken, research
   of a MOVED spell moves to the first spell of the spell's old group that ValidResearchSpell accepts
-  (Entangle -> Earth II), the points already spent kept; with none, the research is cleared.  Runs
+  (Entangle -> Earth II; since 2026-10-29 also Healing Showers and Ooze -> Water I, Disease Cloud ->
+  Death II, Pestilence -> Death III), the points already spent kept; with none, the research is
+  cleared.  Runs
   before the completion grant, so it reaches a research due to complete that very turn.
 
 Slot 0x558B6000-0x558B67FF, exclusive.  PIC.  No RNG.  Surgical --undo.
@@ -89,6 +91,10 @@ DUALS = [
     (94, LIFE, EARTH),      # Imbue Spring         (build_imbue.py)
     (95, AIR, FIRE),        # Blazing Moon         (build_blazing_moon.py)
     (96, LIFE, AIR),        # Spectral Wings       (build_airwater_ench.py)
+    (73, LIFE, WATER),      # Healing Showers (vanilla; moved from Water, build_dual_moves_pfs.py)
+    (124, EARTH, WATER),    # Ooze            (vanilla; moved from Water, build_dual_moves_pfs.py)
+    (104, DEATH, AIR),      # Disease Cloud   (vanilla; moved from Death, build_dual_moves_pfs.py)
+    (9, DEATH, AIR),        # Pestilence      (vanilla; moved from Death, build_dual_moves_pfs.py)
 ]
 DUAL_SPHERE = 7             # the sphere byte every dual spell carries
 MAX_DUALS = 63
@@ -105,7 +111,9 @@ ADDED = ((79, 99), (109, 109))   # spell ids Ziggurat added to single-sphere tie
 CAVE_RSTEP = 0x558B6580
 H_RSTEP = 0x5577CD68                 # NewTurn's research step: `call GetNetPowerToResearch`
 NETPOWER, VALID_RESEARCH = 0x5577CF80, 0x5577CFF0
-MOVED = ((111, 3, 2),)               # (spell, its old sphere, its old tier): Entangle was Earth tier 2
+MOVED = ((111, 3, 2), (73, 6, 1), (124, 6, 1), (104, 2, 2), (9, 2, 3))
+# (spell, its old sphere, its old tier): Entangle was Earth tier 2; 2026-10-29 Healing Showers and
+# Ooze Water tier 1, Disease Cloud Death tier 2, Pestilence Death tier 3
 
 AOWHSSET = 0x558FA044       # [.] = AoWHSSet; [+0x84] = TSpellControl
 GETCOUNT, GETSPELL = 0x55779AC0, 0x55779AC8

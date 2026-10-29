@@ -115,10 +115,22 @@ Slot 0x5584DF00-0x5584E1FF, exclusive:
     0x5584E1C0 (55 B, ends 0x5584E1F7).
 Addresses are pinned, not packed, so the 2026-10-14 re-tune moved no hook.
 
+WALLS (v4, 2026-10-29).  Auto-resolve offers every enemy combat object to the value slot, walls
+included (TCombatSpell.fcPrefetchCombatCommands @0x557F76BC), and the tactical AI's spell arm does
+the same through tcGetDamageValueEx.  v3 valued a wall like a unit (it answers HP, RES and the
+status queries), so in a siege the AI cast Lethargy or Embrittle at a wall and vanilla
+TSlowCA.Execute read the wall's packed bytes as a unit: `mov eax,[edi+0x4C]` = 0x2802 (wall type 2,
+HP 40), AV at 0x557F8854, "Exception occured during TArmyCombatMoveTE", and the battle's units
+vanished with it.  Vanilla never reached this: Slow's value was always 0.  Both value caves now call
+combatunitguard.py's guard_unit (0x55849000) first and return 0 for anything that is not a
+TCombatUnit descendant (TTacticalCombatUnit and TFastCombatUnit are).  `sub esp,8` became
+`push eax / push eax` so the gate fits the pinned 0xB0-byte caves.  The guard is shared: --apply
+installs it if no importer has; --undo leaves it while any other cave calls it.
+
 RE-TUNE / UNDO.  --apply over an earlier install rewrites the slot in place: before writing, the
 slot must hold zero or exactly one of v1 (2026-09-25, no roll), v2 (2026-10-14, roll that rewound
-the raw seed) or v3 (current), or the script aborts.  --undo restores all seven sites and zeroes
-the slot, whichever version is installed.  No snapshot is taken.
+the raw seed), v3 (2026-10-14, raw seed preserved) or v4 (current), or the script aborts.  --undo
+restores all seven sites and zeroes the slot, whichever version is installed.  No snapshot is taken.
 
 Also part of the feature: build_resstr_names.py ("Slow" -> "Lethargy", one row covers the spell
 and the status) and build_pfs_typos.py (Spells.pfs records 120 and 25, Ability.pfs records 142
@@ -139,6 +151,7 @@ sys.dont_write_bytecode = True
 
 import aowepack_patch as P
 from aowepack_patch import asm, jmp_to, run
+import combatunitguard as cug
 
 SLOT = (0x5584DF00, 0x5584E200)
 CAVE = 0x5584DF00
@@ -476,6 +489,100 @@ def build_value(va, ret):
            HITPROB, ROUND, ret), va)
 
 
+def build_value_v4(va, ret):
+    """v4 (2026-10-29): build_value with the wall gate.  guard_unit (combatunitguard.py, EAX = the
+    target combat object -> its strategic unit, 0 for a TCombatWall or nil; clobbers EAX and flags
+    only) runs right after the out struct is zeroed, so a wall is worth 0 and is never cast at.
+    `sub esp,8` became `push eax / push eax` (one byte shorter; both slots are written before they
+    are read), which is what lets the gate fit the pinned 0xB0-byte cave."""
+    return asm("""
+        push  ebp
+        mov   ebp, esp
+        push  eax
+        push  eax
+        push  ebx
+        push  esi
+        push  edi
+        mov   ebx, eax
+        mov   esi, ecx
+        mov   edi, dword ptr [ebp + 8]
+        xor   eax, eax
+        mov   dword ptr [edi], eax
+        mov   dword ptr [edi + 4], eax
+        mov   dword ptr [edi + 8], eax
+        mov   dword ptr [edi + 0xc], eax
+        mov   word ptr [edi + 0x10], ax
+        mov   eax, esi
+        call  0x%X
+        test  eax, eax
+        je    done
+        mov   edx, %d
+        mov   ecx, %d
+        cmp   dword ptr [ebx + 0x10], %d
+        jne   sel
+        mov   edx, %d
+        mov   ecx, %d
+    sel:
+        mov   dword ptr [ebp - 4], ecx
+        mov   eax, esi
+        mov   ecx, dword ptr [eax]
+        call  dword ptr [ecx + 0xa8]
+        test  al, al
+        jne   done
+        cmp   dword ptr [ebx + 0x10], %d
+        jne   value
+        mov   eax, esi
+        mov   ecx, dword ptr [eax]
+        call  dword ptr [ecx + 0x7c]
+        test  al, 0x%X
+        jne   done
+    value:
+        mov   eax, esi
+        mov   edx, dword ptr [eax]
+        call  dword ptr [edx + 0x88]
+        movsx eax, al
+        mov   dword ptr [edi + 4], eax
+        imul  eax, dword ptr [ebp - 4]
+        mov   dword ptr [ebp - 8], eax
+        mov   eax, esi
+        mov   edx, dword ptr [eax]
+        call  dword ptr [edx + 0x74]
+        movsx edx, al
+        movsx eax, byte ptr [ebx + 0x34]
+        sub   eax, edx
+        call  0x%X
+        fild  dword ptr [ebp - 8]
+        fmulp st(1)
+        call  0x%X
+        mov   dword ptr [edi], eax
+        mov   ax, word ptr [ebx + 0x36]
+        mov   word ptr [edi + 0x10], ax
+    done:
+        pop   edi
+        pop   esi
+        pop   ebx
+        mov   esp, ebp
+        pop   ebp
+        ret   %d
+    """ % (cug.GUARD_UNIT, SLOW_ABIL, K_LETHARGY, EMB_SPELL, EMB_ABIL, K_EMBRITTLE, EMB_SPELL,
+           PHYS_BIT, HITPROB, ROUND, ret), va)
+
+
+def layout_v4():
+    """v4 (2026-10-29): v3 with the wall-gated value caves at the same pinned addresses."""
+    at3, caves3 = layout()
+    caves = []
+    for name, va, blob in caves3:
+        if name == "cave_fcval":
+            blob = build_value_v4(va, 8)
+            assert va + len(blob) <= at3["cave_tcval"], "cave_fcval v4 overruns cave_tcval"
+        elif name == "cave_tcval":
+            blob = build_value_v4(va, 4)
+            assert va + len(blob) <= ROLL_CAVE, "cave_tcval v4 overruns cave_roll"
+        caves.append((name, va, blob))
+    return {n: v for n, v, _b in caves}, caves
+
+
 def layout_v1():
     """The 2026-09-25 install, packed.  Kept only to recognise it for the in-place re-tune."""
     caves, va = [], CAVE
@@ -560,16 +667,48 @@ def preflight():
     known = [("v1 (2026-09-25, no roll)", image(layout_v1()[1])),
              ("v2 (2026-10-14, roll that rewound the raw seed)",
               image(layout(build_roll_v2)[1])),
-             ("v3 (2026-10-14, roll with raw-seed preservation)", image(caves))]
+             ("v3 (2026-10-14, roll with raw-seed preservation)", image(layout()[1])),
+             ("v4 (2026-10-29, value caves skip walls)", image(caves))]
     ver = "zero" if not any(zone) else next((n for n, img in known if zone == img), None)
     if ver is None:
-        sys.exit("ABORT: slot %08X-%08X holds neither zero, v1, v2 nor v3 -- foreign bytes"
+        sys.exit("ABORT: slot %08X-%08X holds neither zero, v1, v2, v3 nor v4 -- foreign bytes"
                  % SLOT)
-    print("  slot content: %s%s" % (ver, "" if ver == "zero" or ver.startswith("v3")
+    print("  slot content: %s%s" % (ver, "" if ver == "zero" or ver.startswith("v4")
                                     else "  -> --apply rewrites it in place"))
+    gs = cug.state(lambda va, n: bytes(d[P.va2off(d, va):P.va2off(d, va) + n]))
+    print("  shared cave_guard %08X: %s" % (cug.GUARD_VA, gs))
+    if gs == "foreign":
+        sys.exit("ABORT: %08X is occupied by something that is not the shared guard" % cug.GUARD_VA)
+    return gs
 
 
-at, caves = layout()
+def guard_apply():
+    """After --apply: install the shared guard if no importer has (cave_fcval/cave_tcval call it)."""
+    d = bytearray(open(P.TARGET, "rb").read())
+    rd = lambda va, n: bytes(d[P.va2off(d, va):P.va2off(d, va) + n])
+    if cug.state(rd) == "free":
+        b = cug.blob()
+        o = P.va2off(d, cug.GUARD_VA)
+        d[o:o + len(b)] = b
+        open(P.TARGET, "wb").write(bytes(d))
+        print("  shared cave_guard %08X installed (%d B)" % (cug.GUARD_VA, len(b)))
+    back = open(P.TARGET, "rb").read()
+    assert cug.state(lambda va, n: back[P.va2off(back, va):P.va2off(back, va) + n]) == "ours", \
+        "shared cave_guard missing after --apply"
+
+
+def guard_undo():
+    """After --undo: drop the shared guard only if no other cave still calls it."""
+    d = bytearray(open(P.TARGET, "rb").read())
+    rd = lambda va, n: bytes(d[P.va2off(d, va):P.va2off(d, va) + n])
+    def wr(va, b):
+        o = P.va2off(d, va)
+        d[o:o + len(b)] = b
+    if cug.state(rd) == "ours" and cug.undo_if_unused(rd, wr, exclude=(SLOT,)):
+        open(P.TARGET, "wb").write(bytes(d))
+
+
+at, caves = layout_v4()
 hooks = [(M_SITE, M_VAN, jmp_to(M_SITE, at["cave_moves"], 5)),
          (S_SITE, call_to(S_SITE, CALC_STRIKES), call_to(S_SITE, at["cave_str"])),
          (U_SITE, call_to(U_SITE, CALC_USTRIKES), call_to(U_SITE, at["cave_stru"])),
@@ -582,3 +721,7 @@ interior = [(M_SITE, M_SITE + 5, 0x55724FE0, 0x55724FF4)]
 if __name__ == "__main__":
     preflight()
     run("build_lethargy", hooks, caves, SLOT, interior, reloc_ok=(V_SLOT, T_SLOT))
+    if "--apply" in sys.argv[1:]:
+        guard_apply()
+    elif "--undo" in sys.argv[1:]:
+        guard_undo()

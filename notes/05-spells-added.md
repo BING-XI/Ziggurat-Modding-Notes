@@ -1750,6 +1750,77 @@ Choices made in the build, not in the design:
 Unproven:
 - In game: nothing cast yet; flight gained and lost mid-battle; the fall when the wings end over water.
 
+### Healing Showers, Ooze, Disease Cloud, Pestilence to dual tiers — as built (owner, 2026-10-29)
+
+Owner: "They're just being reassigned": each keeps its behaviour, numbers and mana, and its tier.
+
+| spell | was | now |
+|---|---|---|
+| Healing Showers (73) | Water tier 1 | Life/Water tier 1 |
+| Ooze (124) | Water tier 1 | Earth/Water tier 1 |
+| Disease Cloud (104) | Death tier 2 | Death/Air tier 2 |
+| Pestilence (9) | Death tier 3 | Death/Air tier 3 |
+
+| script | where | what |
+|---|---|---|
+| `build_dual_moves_pfs.py` | `Spells.pfs` 83, 134, 114, 19 | sphere 7, the tier kept, research 80 / 80 / 160 / 240 (the dual tier figures), icons 175-178 |
+| `build_dual_sphere.py` | its `TABLE` and `MOVED` | rows `(73, LIFE, WATER)`, `(124, EARTH, WATER)`, `(104, DEATH, AIR)`, `(9, DEATH, AIR)`; research already aimed at one moves to Water I, Death II or Death III |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icons 175-178: each spell's vanilla glyph cut to the glyph box (Entangle's recipe) on its pair's glow |
+
+Consequences of the dual rule, not choices of this build: the four are granted at turn start once tier
+N of both spheres is known, never researched; units need Spellcasting tier + 1 to cast them; both
+spheres' Mastery prices apply. Players who already know a spell keep it. Water tier 1, Death tier 2
+and Death tier 3 each keep three or more spells.
+Unproven: in game, nothing checked beyond the launch.
+
+### Vafur Flames — agreed design (owner, 2026-10-29)
+
+Named for the flickering fire of the Norse sagas that rings the Valkyrie's mountaintop.
+**Vafur Flames** (Fire tier 2, battle): 7 mana.
+- A wall of fire one hex thick: a jagged line of up to 6 hexes from the target hex, spreading as
+  Surtr's Chasm does (each new hex a valid neighbour of the last that touches no other hex of the
+  cast; it stops early). Fire, not a terrain change, drawn with the flames Fire Barrier shows on the
+  world map.
+- Valid hexes: open ground, with or without units on them.
+- The flames strike 10/5 fire (ATK 10, DMG 5) through the generic damage handlers, so Fire Immunity
+  and Fire Protection apply, with the fire strike's chance to set Burning. Struck: units in a hex
+  when it ignites, any unit that steps in, units standing in it at turn start.
+- After 2 rounds each flame has a 25 % chance to go out, each round.
+- Units cross normally, at the cost of the strike (vanilla fire adds no movement cost).
+- Not cast in auto-combat; the battle AI never casts it.
+
+### Vafur Flames — as built (2026-10-29)
+
+| script | where | what |
+|---|---|---|
+| `build_vafur_flames.py` | AoWEPACK `0x558C8800` | spell 97 (a TDeathRay instance): mana 7, research 80, sphere 5, tier 2, Evoker, ATK 10 / DMG 5 fire, range 8; a VMT copy with both AI values 0 and no auto-combat command (Mist's recipe) |
+| `build_vafur_flames_tc.py` | AoWTCPCK `0x00449000` | Geyser's battle class with no target and no spray; the landing plans the line, places the flames (TCombatFire objects marked in their padding) and strikes the units on them; the flames' turn start (extinguish roll, strike); the strike on entry; FIRESM / FIRELG drawing |
+| `build_vafur_flames_pfs.py` | `Spells.pfs` 107 | Geyser's record 128 re-numbered, FIRELG frames for the cast, FIRESTRT for both sound cues, icon 174 |
+| `build_dual_spell_icons.py` | `SpellIcn.ILB` + `_SpellIcn.ILB` | icon 174: Call Flames' flame (icon 72's glyph without the figure) at 62 %, three times, each 3 rows lower than the one on its left, on the Fire disc (the owner's pick of nine drafts) |
+| `build_spell_unit_target.py` | its `pred` | the cursor and the click refuse an empty target hex that is not open ground |
+
+Choices made in the build, not in the design:
+- Open ground: the Walking move table allows the hex's terrain and overlay, and the hex holds no
+  fire, standing wall, gate, structure or obstacle. The line starts at the target hex; a cast at an
+  enemy standing where a walker could not (a flyer over water) forms nothing.
+- Turn start is the start of the caster's side's turn, as vanilla fire acts on its lighter's turn, so
+  every unit gets a turn to leave a flame before it burns again.
+- After 2 rounds: from the caster's third turn after the cast each flame rolls 25 % before it strikes;
+  one that goes out does not strike.
+- Friend and foe alike, the caster last, as Weight of the World does. A unit stepping into a flame is
+  struck after the step, without the hurt pose; one killed by it ends its move, as a free swing's
+  victim does.
+- Range 8, the project's battle-spell range. Ooze puts the flames out. The battle AI's paths avoid
+  them as they avoid vanilla fire (+20; +10 with Fire Protection, 0 with Fire Immunity).
+- The flames alternate small and large fire by hex parity; Fire Barrier picks at random.
+- The combat image list ([HSSet+0x94]) is the 71-sequence list at the end of `Release.hss`, indexed
+  from 0: 23 is `EFFECTS\FIRESM.ILB`, 24 `FIRELG.ILB`, 60 (vanilla fire's) `FIRESM2.ILB`. Ooze's
+  25-27 and THouse's 50 confirm the numbering.
+
+Unproven:
+- In game: nothing cast yet; where the fire frames and the cast's flare sit on a combat hex (anchored
+  by reasoning from the combat list's offsets); a flame's strike killing a unit mid-walk.
+
 ## Open items
 
 - **Does a forested/decorated grass hex actually refuse to cool under Grip of Winter?**

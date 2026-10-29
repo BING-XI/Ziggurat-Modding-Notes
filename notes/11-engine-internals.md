@@ -33,7 +33,7 @@ features all had to learn about the engine underneath them.
 | `TGeneral` slot-array overflow (vanilla bug, found while researching the above) | SPECULATIVE — fix fully specified, nothing built | `build_generalslots.py` (does not exist yet) | `AoWz.exe` |
 | Movement-predictor fix (context only — see the booby trap below) | 🔨 APPLIED, UNTESTED (2026-07-05, never retested) | `build_patch.py` — **never re-`--apply`** | `AoWEPACK.dpl` |
 | Seduce / Charm / Dominate → two stacks on one hex | SPECULATIVE — mechanism diagnosed (v2), unconfirmed in-game | none | `AoWEPACK.dpl` |
-| Transport-boarding "units vanish" bug | SPECULATIVE — static analysis only | none | `AoWEPACK.dpl` |
+| Transport-boarding: a stack left by a manual battle stays "moving" (vanilla) | 🔨 APPLIED 2026-10-29 — cause captured live | `build_combat_moveflag.py` | `AoWEPACK.dpl` |
 | Map/save instances are frozen ability snapshots | informational — ruled "not a bug" | none | `.hsm` / `.asg` / `.csm` |
 | Firmament map level (a 4th map level, index 3) | 🔨 APPLIED, UNTESTED (2026-09-06) — DLL half, v2; editor New-Map dialog and the map-gen tools still to do | `build_maplevel4.py` (v2), plus in-place re-tunes of `build_shipyard_income.py` and `build_waterheal.py` (v6); UI half `build_skylevel_ui.py` | `AoWEPACK.dpl` (+ `AoWz.exe` for the UI half) |
 | Firmament ↔ Surface caves (placed on the Firmament, lower mouth on Surface) | 🔨 APPLIED, UNTESTED (2026-09-30) | `build_maplevel4.py` (v5) | `AoWEPACK.dpl` |
@@ -1759,9 +1759,31 @@ stash the owning player.
 
 ## Transport-boarding "units vanish" bug
 
-**Status: SPECULATIVE — static code analysis only, no patch, no known repro.** Reported symptoms: units
-(especially lone leader-heroes) rarely disappear when moving into a transport; seems correlated with
-movement direction and whether the leader is travelling alone.
+Reported symptoms: units (especially lone leader-heroes) rarely disappear when moving into a
+transport; seems correlated with movement direction and whether the leader is travelling alone.
+
+### Confirmed cause: a manual battle leaves the attacker's stack "moving" (fixed 2026-10-29)
+
+Owner's case: a catapult unloaded from a ship to attack an adjacent power node, two Crossbowmen left
+aboard; afterwards it could not board the ship again and ended on its hex as a second stack.
+Reproduced under execution breakpoints and hex polling. `TArmyCombatMoveTE`'s combat execution
+`@0x55749924` pours every unit on the attacker's hex into the attacker's army, which
+`InitializeMove` flagged. In auto-resolve the aftermath runs in the same function and clears the
+army left behind (`0x55749EA5` / `0x55749F20`, or `FinishMove` via VMT `+0x60`). A **manual**
+battle returns result 1 (pending): the function leaves through `0x55749F41` with `te.army` nil and
+hands the aftermath to `TArmyCombatMoveTE.CombatExecuted @0x557496D4`, which splits the winners into
+a queued `TArmyDefaultMoveTE` (or clears the attack marks on a loss) and never touches
+`army[+0x11]`. So after every manual battle the army on the attacker's hex keeps bit `0x04` (after a
+partial-stack win, always after a loss or retreat) until the next load (`TArmy.ReadWrite` clears it,
+so in PBEM the next player's load hides it), and `GetNoneMovingArmyHS` refuses it as a merge partner:
+this is scenario B below, and the "cursed transport" lasts the rest of the turn, not forever.
+`build_combat_moveflag.py` hooks `0x557498FF` (past both branches' join) and clears bit `0x04` on every
+`TArmyHS` whose parent is the attacker's hex (`GetNoneMovingArmyHS`'s own filter, which excludes
+neighbours listed by sprite overlap). The winners' queued move sets it again in its own
+`InitializeMove`. Scenarios A and C below remain static analysis only.
+
+Unproven: no manual battle has been fought on the patched DLL; the emulation and the live capture
+cover the flag, not the AI's later merges.
 
 This shares its root cause's DNA with the double-stack bug above — both go through
 `TMoveArmyTE`/`FinishMove`/`GetNoneMovingArmyHS` and the same "moving" flag (`army[+0x11] & 0x04`),
@@ -1796,7 +1818,7 @@ mover** if a partner was found at all.
   stuck, per `ExecuteMove`'s conflation above — permanently unmergeable, and the seed for the compound
   scenario below.
 - **Compound — "the cursed transport":** if a transport itself ever goes through scenario C (or
-  otherwise leaks the flag), it keeps it forever; from then on, *every* army that subsequently boards it
+  otherwise leaks the flag), it keeps it until the next load; until then, *every* army that boards it
   hits scenario B and piles up as hidden second armies on its hex, one after another — a single rare
   event producing repeated, location-flavoured vanishings around one specific boat, which matches the
   reported symptom shape well.
@@ -2704,7 +2726,16 @@ walled templates (73 checks), `--test` checks the line-walk model. Revert: `--un
   seen. Routes travel inside the move tokens, so planning against one machine's fog is safe.
   `TCombatMoveTE.DefaultMove` already ends a move when the next step's hex is occupied
   (`TAoWMapField.GetPlayer` at `0x408E5A` ≠ `0xFF`); `stepchk` takes that call and also ends a
-  plain move on the first occupied hex further along the route that the mover can see.
+  plain move on the first occupied hex further along the route that the mover can see, the
+  destination (path[0]) excepted.
+  **Fixed 2026-10-29: a battle stalled forever on the AI's turn.** The battle AI orders plain moves
+  onto an enemy's hex; vanilla walks them until the next-hex test stops the unit alongside. The
+  look-ahead scanned path[0] too, so such a move stopped before its first step, and the AI
+  re-issued it every `EvalBattle` cycle (~6 a second; observed: an AI Pikeman on a wall, a Bone
+  Horror holding the gate, caught with execution breakpoints on `stepchk`'s stop label). The loop
+  exit `cmp [esp+4],0 / jl` became `jle` (`0x442B08`, one byte). ⚠ Forward hazard: the tactical AI
+  re-plans a move that makes no progress, identically, without end. Any gate on a move's steps
+  must let the AI's first step through, or the AI turn never ends.
 
 - Both flags on in every combat (two in-place bytes in `RandomMap`).
 - `fogon` takes `RandomMap`'s `SetFogEnabled` call (`0x424FD5`, `call [ecx+0x100]`), after the template

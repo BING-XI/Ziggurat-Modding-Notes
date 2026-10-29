@@ -1265,7 +1265,7 @@ guy in front is blocking me".
 - **Blocked at execution:** "stop where blocked" is vanilla's own step code: `TCombatMoveTE.DefaultMove`
   ends a move when its next hex is occupied (`TAoWMapField.GetPlayer` at `0x408E5A`). Since
   2026-10-25 `build_tactical_los.py`'s `stepchk` holds that call and also ends a plain move when the
-  mover sees its route blocked further on (`11-engine-internals.md`).
+  mover sees its route blocked further on, its destination excepted (`11-engine-internals.md`).
 
 **Sites:** hooks `0x41E7F7` (preview), `0x41E2B0` (click) and `0x41E43A` (confirm), the last two call-retargets; sort byte `0x40F81C`;
 VMT slots `0x412DDC` and `0x431214` (`.reloc` kept); starting-hex cost `0x42083A`. Zone

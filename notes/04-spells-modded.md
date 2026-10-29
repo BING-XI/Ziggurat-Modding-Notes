@@ -2126,6 +2126,13 @@ record 142 in `build_pfs_typos.py`, `NEWMECH_LETHARGY` in the manual, two `manua
 names (the Earth spell's `z` name and the `lvlup` "Handicaps" row), `enchant_mods.py`'s display
 name. ⚠ A spell rename reaches the manual's spell list only through `manual_data.json`.
 
+**Fixed 2026-10-29: a siege auto-resolve crash.** Auto-resolve (and the tactical AI) offer every enemy
+combat object to the spell's value slot, walls included; the value caves scored a wall like a unit, so
+the AI cast Lethargy or Embrittle at a wall and vanilla `TSlowCA.Execute` read the wall as a unit
+(`[edi+0x4C]` = `0x2802`, AV at `0x557F8854`, "Exception occured during TArmyCombatMoveTE"; the
+battle's units vanished). Both value caves now call the shared wall guard first (`build_lethargy.py`
+v4, `combatunitguard.py` `0x55849000`) and score anything but a `TCombatUnit` 0.
+
 **What vanilla Slow did.** One effect: `TAbstractUnit.CreateMovePointTable @0x5577FDC4` added +2
 to every positive hex cost while the unit held `0x84`. Open ground 4 → 6 is ⅔ of the range, not
 the half the text claimed, and the penalty shrinks on dearer terrain. Nothing in auto-combat, and
@@ -2221,6 +2228,9 @@ cursor vanilla shows for a refused unit):
   (`TCityWall` `[+0x2D] == 1`, HP `[+0x20] > 0`; message `0x3100B` damages only wood, and
   `CombatFire.CreateFire @0x406D64` ignites only wood), a Combat Structure or a Combat Terrain object
   (both damaged unconditionally). Refused on bare ground, even flammable ground it would have lit.
+- **Vafur Flames** (2026-10-29) — refused on an empty hex that is not open ground, by calling
+  `build_vafur_flames_tc.py`'s pinned `valid` (`0x449000`); pred skips the test while that byte is
+  not `0x55`, so undoing Vafur Flames' tactical half cannot leave pred calling zeros.
 
 ---
 

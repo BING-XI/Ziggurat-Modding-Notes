@@ -59,16 +59,20 @@ PETRIFIED
         spell's CA both run this method.  The site sits just past the 30 bytes
         build_combatlog_actions.py asserts (0x5576CAB7..0x5576CAD4); build_command_bond.py's E3
         (0x5576CB4C) is in the same function.
-    LOOK  AoWTCPCK zone 0x43C800: header "SGZ1" + tint_draw, a copy of ILPACK's RLE16 sprite draw
-        (565 and 555, the engine's clipping) that writes each pixel as beige-grey from its
-        luminance.  build_mirrorimage.py's Show wrapper owns the body-draw hooks: it marks a unit
-        holding 0xCC (slot byte 2 bit 1) when this header is present, and its cave_draw then jumps
-        to tint_draw.  Only TRLESprite16 / TTransparentRLESprite16 images are tinted (ILPACK VMTs
-        through the rebase delta of the TCustomImageLibrary.Get import); anything else, or an
-        unknown pixel format, draws normally.
-        ⚠ COUPLING: the tint is drawn only while build_mirrorimage.py is applied.  Either script may
-        be undone first: Mirror Image checks this header before marking, and this zone holds no
-        call into Mirror Image.
+    LOOK  AoWTCPCK zone 0x43C800: header "SGZ1", tint_draw 0x43C810 and the colour table 0x43CB00
+        (pinned): 64 RGB565 then 64 RGB555 beige-greys indexed by 6-bit luminance.  Each statue
+        pixel is drawn as the table's entry for its luminance.  build_mirrorimage.py's Show wrapper
+        owns the body-draw hooks: it marks a unit holding 0xCC (slot byte 2 bit 1) when this header
+        is present, and its dispatch draws the marked unit through build_unit_vfx.py's vfx_core
+        with this table as the colour map (opacity 256; 128 for Mirror Image's copies of a statue),
+        which works for every sprite class.  Fixed 2026-10-29: tint_draw alone tinted only
+        TRLESprite16 / TTransparentRLESprite16, and 16048 of the 17676 unit sprites are
+        TRLESprite08.  tint_draw (a copy of ILPACK's RLE16 sprite draw, those two classes only, the
+        engine's clipping) is now the fallback for when build_unit_vfx.py's header is absent.
+        ⚠ COUPLING: the tint is drawn only while build_mirrorimage.py is applied, and on 8-bit
+        sprites only while build_unit_vfx.py is applied too.  Any of the three may be undone first:
+        Mirror Image checks this header before marking and build_unit_vfx.py's before calling
+        vfx_core, and this zone holds no call into either.
 
 REGISTRATION (package init -- prove by launching the exe)
     0x557BCC9B  `call RegisterAbility` -> cave_reg: replay; Stone Gaze (CreateEnhancementAbility,
@@ -126,6 +130,7 @@ COUNT_SKIP = 0x55726E62
 MAGIC_VA, MAGIC = 0x0043C800, 0x315A4753        # "SGZ1": build_mirrorimage.py tests it
 T_SLOT = (0x0043C810, 0x0043CC00)               # the 16-byte header is written as a hook
 TINT_ENTRY = 0x0043C810
+LUT_VA = 0x0043CB00                              # the colour table; build_mirrorimage.py reads it
 IAT_GET = 0x0046DE04                             # AoWTCPCK's ILPACK TCustomImageLibrary.Get cell
 GET_PREF = 0x5521A8B8                            # ILPACK's own (preferred) address of Get
 VMT_RLE16, VMT_TRLE16 = 0x5520B020, 0x5520B158   # TRLESprite16 / TTransparentRLESprite16 (ILPACK)
@@ -728,8 +733,6 @@ def build_tint(va):
     Locals: -4 img, -8 x, -0xC y, -0x11 loaded-by-us, -0x12 unknown format, -0x18 lut, -0x1C fmt,
     -0x20 x0, -0x24 row y, -0x28 rows left, -0x2C key, -0x30 record end, -0x34 px, -0x38 row base,
     -0x39 row visible."""
-    l565, l555 = luts()
-    tail = l565 + l555
     src = f"""
         push ebp
         mov  ebp, esp
@@ -915,11 +918,16 @@ def build_tint(va):
         pop  ebp
         jmp  dword ptr [ebx + 0x84]
     """
-    return pic(src, va, "edi", {"GETIAT": IAT_GET, "L565": ("TAIL", 0), "L555": ("TAIL", 128)}, tail)
+    return pic(src, va, "edi", {"GETIAT": IAT_GET, "L565": LUT_VA, "L555": LUT_VA + 128})
 
 
 def t_layout():
-    return {"tint": TINT_ENTRY}, [("cave_tint", TINT_ENTRY, build_tint(TINT_ENTRY))]
+    """tint_draw and the colour table, both pinned (build_mirrorimage.py reads the table)."""
+    tint = build_tint(TINT_ENTRY)
+    assert TINT_ENTRY + len(tint) <= LUT_VA, "tint_draw overruns the colour table"
+    l565, l555 = luts()
+    return {"tint": TINT_ENTRY, "lut": LUT_VA}, [("cave_tint", TINT_ENTRY, tint),
+                                                ("cave_lut", LUT_VA, l565 + l555)]
 
 
 def module(path, base):
@@ -980,7 +988,8 @@ def checks():
     if nm.get(GAZE, NAME_GAZE) != NAME_GAZE or nm.get(PETRIFIED, NAME_PET) != NAME_PET:
         sys.exit("ABORT: ability_names gives 0xCB/0xCC other names")
     import build_mirrorimage as MI
-    if MI.SG_MAGIC_VA != MAGIC_VA or MI.SG_MAGIC != MAGIC or MI.SG_TINT != TINT_ENTRY or MI.PETRIFIED != PETRIFIED:
+    if MI.SG_MAGIC_VA != MAGIC_VA or MI.SG_MAGIC != MAGIC or MI.SG_TINT != TINT_ENTRY or \
+            MI.SG_LUT != LUT_VA or MI.PETRIFIED != PETRIFIED:
         sys.exit("ABORT: build_mirrorimage.py's Stone Gaze constants disagree with this script")
 
 
@@ -999,7 +1008,7 @@ T_HOOKS = [(MAGIC_VA, bytes(16), T_HEAD)]
 # entry points, asserted (and read by rng_audit.py --owners)
 ENTRY = {"isstat": 0x558B5000, "locked": E_AT["locked"], "count": E_AT["count"], "term": E_AT["term"],
          "remedy": E_AT["remedy"], "dispel": E_AT["dispel"], "pdef": E_AT["pdef"], "gaze": E_AT["gaze"],
-         "reg": E_AT["reg"], "tint": 0x0043C810}
+         "reg": E_AT["reg"], "tint": 0x0043C810, "lut": 0x0043CB00}
 assert {**E_AT, **T_AT} == ENTRY, "the cave layout moved"
 
 

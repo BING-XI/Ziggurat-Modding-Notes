@@ -15,6 +15,21 @@ vanilla 11x10 one has clip 3x6 and size 36.)  So re-skinning or cloning a
 Sprite16 is a straight pixel rewrite -- no codec needed, unlike RLESprite16
 (types 17/18), which ilb_rle16.py handles.
 
+RLESprite08 (type 2; 16 048 of the 17 676 Images/UNITS records), fixed 2026-10-29:
+after toth come a byte, two dwords ONLY when info == 3, palette,
+[clipw, cliph, clipx, clipy, transparent] and clip_x.  The parser used to read the
+two dwords on every type-2 record and raised on 204 of the 250 unit libraries.
+The same day: an empty image (type 0) is `id, 0, filler` with NO trailer; the
+parser used to read the next record's id as a type (Cursors, Lightn, CeltDeco,
+ScanTile, one Release.hss blob).  Checked against an independent walk of all 718
+Images/ and Int/ libraries and the 2 701 ILBs embedded in .hss files: identical
+records and fields up to the first composite, and every directory without one
+consumed to exactly imgdir; every type-2 cliph equals its RLE row count.  Output
+for every input without a type-0 or info-2 type-2 record is unchanged.
+
+The walk stops at the first top-level -1, as the game's loader does (records
+after it never load); spell_icons.walk reads past it.
+
 Image data offsets are relative to `imgdir` (the header's data-start dword), so
 inserting a directory entry and bumping imgdir keeps every existing image valid.
 See build_scripts/build_copper_medal.py for a worked splice.
@@ -79,9 +94,15 @@ def parse(d):
             composite = True; o += 4
             nxt = struct.unpack_from("<i", d, o)[0]
         typ = i32()
-        if typ == 0:
-            i32()                                   # ZeroFiller
-            typ = i32()
+        if typ == 0:                                # empty image: id, 0, filler -- NO trailer
+            rec = dict(idx=len(images), id=iid, type=0, tname="Empty", info=None, name="",
+                       w=0, h=0, xsh=0, ysh=0, subid=0, size=0, offset=None, totw=0, toth=0,
+                       composite=composite, dir_off=start, filler=i32(), trailer_ok=True)
+            images.append(rec)
+            if composite:                           # never seen; sub-entries not implemented
+                rec["truncated_walk"] = True
+                break
+            continue
         info = u8()
         nlen = i32()
         name = d[o:o+nlen].decode("latin1", "replace"); o += nlen
@@ -104,12 +125,14 @@ def parse(d):
                 rec["transparent"] = i32()
                 i32()                               # unknownE
         elif typ == 2:
-            u8(); i32(); i32()
+            u8()                                    # unknownB, always 0
+            if info == 3:
+                i32(); i32()                        # (1, 0) or (1, 1)
             rec["palette"] = i32()
             rec["clipw"], rec["cliph"] = i32(), i32()
             rec["clipx"], rec["clipy"] = i32(), i32()
             rec["transparent"] = i32()
-            i32()
+            i32()                                   # clip_x
         if typ == 22:                               # Sprite16: extra dwords (4 if composite)
             rec["s16"] = [i32() for _ in range(4 if composite else 5)]
         if info == 1 and size:

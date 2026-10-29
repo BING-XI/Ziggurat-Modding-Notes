@@ -37,6 +37,9 @@ THE RULE  (cave pred: EAX = selected unit's HS, EDX = the target hex's field -> 
         burnable TCombatILTerrain, 0x220136).
       Call Flames sends 0x3100B to the hex and then calls CreateFire(100) --
       TCAbRangedTE.Execute 0x40CA99.
+      * VAFUR (97, Vafur Flames, 2026-10-29) -- refused unless the hex is open ground, as
+        build_vafur_flames_tc.py's `valid` (pinned at 0x00449000) answers.  pred calls it only
+        when its first byte is 0x55 (push ebp), so the rule lapses while that script is undone.
 
 SITES
     C  0x41F59C  MouseDownEvent's empty-hex `call ExecuteMoveSelection` -> cave_click (call
@@ -73,6 +76,7 @@ import os, struct, sys
 sys.dont_write_bytecode = True
 import aowepack_patch as P
 from aowepack_patch import asm, jmp_to, run
+from piccave import pic
 
 P.TARGET = os.path.join(P.GAME, "AoWTCPCK.dpl")
 P.IMAGE_BASE = 0x00400000
@@ -102,6 +106,7 @@ UNIT_ONLY = (8, 15, 16, 17, 32, 33, 35, 36, 37, 39, 40, 42, 43, 49, 55, 56, 77, 
 #            Turn Undead,
 #            Embrittle, Lethargy, Entangle, Vaporize
 CALL_FLAMES = 113
+VAFUR, VAFUR_VALID = 97, 0x00449000       # build_vafur_flames_tc.py's pinned `valid`
 CID_WALL, CID_STRUCT, CID_TERRAIN = 0x220504, 0x220506, 0x220166
 WALL_MAT, WALL_HP, WOOD = 0x2D, 0x20, 1
 
@@ -115,7 +120,7 @@ def build_pred(va):
     # before the pinned cave_click once Regeneration and Enmity joined)
     assert all(0 <= s < 128 for s in UNIT_ONLY)
     w = [sum(1 << (s & 31) for s in UNIT_ONLY if s >> 5 == k) for k in range(4)]
-    return asm(f"""
+    return pic(f"""
         push  ebx
         push  esi
         mov   esi, edx
@@ -143,6 +148,19 @@ def build_pred(va):
         bt    eax, ecx
         jb    refuse
     notset:
+        cmp   ecx, {VAFUR}
+        jne   not_vafur
+        test  esi, esi
+        je    out
+        {{ANC}}
+        cmp   byte ptr [eax + {{VALID}}], 0x55
+        jne   out
+        mov   eax, esi
+        call  {VAFUR_VALID:#x}
+        test  al, al
+        je    refuse
+        jmp   out
+    not_vafur:
         cmp   ecx, {CALL_FLAMES}
         jne   out
         test  esi, esi
@@ -177,7 +195,7 @@ def build_pred(va):
         pop   esi
         pop   ebx
         ret
-    """, va)
+    """, va, "eax", {"VALID": VAFUR_VALID})
 
 
 def build_click(va):

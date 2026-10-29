@@ -102,7 +102,9 @@ See `../Editor_Lag_CopyPaste_Investigation_2026-07-07.md` for the findings these
   ⚠ The installed `.pfs` data is the **Ziggurat** mod, not vanilla — no vanilla copy is on disk.
 
 - **ilb.py** — ILB image-library directory parser (`parse(bytes) -> {hdr, images}`); handles the
-  v3.0/v4.0 headers and every image type's directory record. CLI: `ilb.py <file.ilb> [--all]` or
+  v3.0/v4.0 headers and every image type's directory record (8-bit `RLESprite08` since
+  2026-10-29), stopping at the first top-level -1 or composite (`spell_icons.walk` reads
+  composites). CLI: `ilb.py <file.ilb> [--all]` or
   `--idx N`. Works on external `Images/*.ILB` **and** on the mini-ILBs embedded in `Release.hss`.
   Format reference: `ILB desc.pdf` inside `IlbMaker_Release_1.0.2.7.7z` in the game folder.
 - **ilb_rle16.py** — codec for image type 17/18 (`RLESprite16`), the format of the hexagon tiles:
