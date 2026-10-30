@@ -15,5 +15,5 @@ sessions. It is a record, not a tutorial. Start at `notes/00-INDEX.md`.
 | `agents/` | the pm / coder / qa agent prompts used with Claude Code |
 | `CLAUDE.md` | the standing project instructions the assistant reads every session |
 
-Scripts expect to sit at `<game dir>/Ziggurat/Modding Resources/build_scripts/` inside a
+Scripts expect to sit at `Age of Wonders/Ziggurat/Modding Resources/build_scripts/` inside a
 Ziggurat install and need `pip install capstone keystone-engine`.
