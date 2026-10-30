@@ -667,7 +667,7 @@ byte-poke into the cave is silently reverted by the next `--apply`.
 
 **Standing check this earned:** scanning all 383 manifest addresses for an `E9` cave hook within 40
 bytes *before* the site returns exactly the two map-fire hits plus two already-known/already-flagged
-cases — cheap, and it is the one check that would have caught the miss. Worth adding to `aow-qa`.
+cases — cheap, and it is the one check that would have caught the miss.
 
 **`build_damhp_gapfix.py` — three more sites in neither manifest**, ladder model, surgical `--undo`,
 backup `.pre-damhpgapfix`:

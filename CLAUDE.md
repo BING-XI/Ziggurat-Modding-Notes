@@ -81,8 +81,7 @@ traps are in `Zig notes/12-re-toolchain.md`.
 - Delete superseded analysis rather than annotating it. Keep a failed approach only if a competent
   person would try it first and the working method does not explain why it fails — one bullet.
 
-## Subagents
+## Couplings
 
-`aow-pm` / `aow-coder` / `aow-qa` exist in `.claude/agents/`; use them only when the owner asks.
-Check couplings yourself instead: grep every record, script and note naming what you change (for an
+Check couplings yourself: grep every record, script and note naming what you change (for an
 enchantment stat: the engine immediates, the `Ability.pfs` card and the granting `Spells.pfs` record).
