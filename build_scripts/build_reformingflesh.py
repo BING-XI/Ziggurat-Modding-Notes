@@ -6,14 +6,78 @@ build_reformingflesh.py — new passive ability: Reforming Flesh (id 0xB1).
     python build_scripts/build_reformingflesh.py --apply     write it
     python build_scripts/build_reformingflesh.py --undo      restore hook + reg site, zero caves
     python build_scripts/build_reformingflesh.py --dis       disassemble the installed caves
+    python build_scripts/build_reformingflesh.py --emulate   run the v5 caves under unicorn
 
 EFFECT
-    A unit with Reforming Flesh heals +4 HP at the start of EVERY combat round, round 1
-    included, clamped at its maximum HP. Works for units and heroes, in manual tactical
-    combat and in auto-resolve alike.
+    A unit with Reforming Flesh that is not Cursed (status 0x5D):
+      * heals +4 HP at the start of EVERY combat round, round 1 included, clamped at its
+        maximum HP, in manual tactical combat and in auto-resolve alike;
+      * heals fully when a battle ends;
+      * heals fully after any damage on the world map (storms, map fire, vortex, town quake,
+        poison plants, holy and unholy ground, lava, falls and terrain hazards);
+      * heals fully at the start of each turn, as Regeneration does.
+    Owner's design 2026-10-30. World-map damage still lands and still kills; only a survivor
+    heals. Cursed switches all four off. Works for units and heroes.
 
     HEAL is a single named constant below — a re-tune is one line. The 4 is already on the
     post-doubling Ziggurat scale (every HP pool and damage source is x2); do NOT "convert" it.
+
+────────────────────────────────────────────────────────────────────────────────────────────
+v5 (2026-10-30) — CURSED, BATTLE END, MAP DAMAGE, TURN START
+────────────────────────────────────────────────────────────────────────────────────────────
+All four extra pieces live in the same zone, laid after cave_cost. A shared routine does the
+heal:
+
+    cave_full   EAX = a strategic unit (TAbstractUnit). If it has 0xB1 and not 0x5D (both through
+                the item-aware +0x148), is alive and is below its maximum: SetHitPoints(max).
+                32-bit `movsx` reads, as in cave_round; max <= 0 and HP <= 0 both leave it.
+                Saves EBX/ESI; clobbers EAX/ECX/EDX only.
+
+    cave_round  gains the Cursed test straight after the 0xB1 one (combat object +0xA8, which
+                forwards to the unit's +0x148). Cursed in battle is put on the strategic unit by
+                TAbstractUnit.ExecuteCombatDamageEffects @0x55781ED8 (`mov edx,0x5D` at
+                0x55781FEE, ESI = the unit), so the combat object sees it.
+
+    cave_done   0x55724B67  TCombatUnit.CombatDone's `call TAbilityOwner.TriggerCombatDone`
+                (5 B, rel32 retarget). Replays the call, then cave_full on [combat unit+0x4C].
+                TCombat.Finalize @0x55727E38 calls +0xF8 (CombatDone) on every combat object;
+                TFastCombatUnit's +0xF8 is this function and TTacticalCombatUnit's (AoWTCPCK
+                0x00412B4C+0xF8) is an import thunk to it, so one site covers both combat systems.
+                TriggerCombatDone has already removed the battle-only statuses; Cursed is a
+                days status (mode 1) and survives it, so a curse landed in this battle blocks
+                the heal. Finalize records the replay's end position (SetFinalData) before this
+                loop, so the auto-combat window shows the unit as it ended the fight.
+
+    cave_val    0x5578D01E  TArmy.Validate's `call TEChangeNotifyNode.EndUpdate` (5 B, rel32
+                retarget): cave_full on every unit in [army+8], then the displaced call as a
+                tail jump (EAX = the army again). Validate has just dropped the dead, and every
+                world-map damage source calls it straight after its damage: TArmy.IncommingStorm,
+                TArmy.TriggerFireDamage, TVortexTE.Process, TTownQuake / TPoisonPlant /
+                THolyGround / TUnHolyGround.TriggerArmyDamage, build_awaken_volcano.py's lava and
+                build_flight_fall.py's falls and hazards (both end in Validate). A Death Storm or
+                Evil Woods curses BEFORE Validate, so the curse it lands blocks its own heal.
+                Validate also runs from TArmyHS.MoveTo and ValidateTerrainEx; an RF unit is
+                already full there unless Cursed, so those calls change nothing. Units in a
+                battle are out of their armies (TCombatUnit.Finalize puts them back), so this
+                never heals mid-battle.
+
+    cave_turn   0x55780D9D  TAbstractUnit.NewTurn's `mov edx,0x31` (5 B -> call): EDX = 0xB1
+                for a unit with Reforming Flesh, else 0x31. The next instruction is
+                build_regen_spell.py's `call cave_regen` (vanilla: `call [ecx+0x148]`), which
+                queries the id in EDX first, so 0xB1 takes vanilla's full-heal branch
+                (0x55780DDA). Vanilla tests Cursed (0x5D) at 0x55780D8A, before this site, and
+                skips ALL turn healing for a cursed unit — Regeneration, the Regeneration
+                enchantment and the natural 10 % alike — so Cursed already blocks Regeneration
+                on the world map, and this hook inherits that.
+
+FORWARD HAZARDS (v5)
+    * build_regen_spell.py checks NewTurn's `mov edx,0x31`; since 2026-10-30 it also accepts this
+      script's call there. Undoing build_regen_spell.py leaves vanilla's `call [ecx+0x148]`,
+      which reads EDX the same way.
+    * TArmy.Validate's entry belongs to build_airwater_ench.py (0x5578CF7C) and its UnlockGameOver
+      call to build_flight_fall.py (0x5578D028); this script owns only 0x5578D01E between them.
+    * Healing at Validate's end is what lets a unit that falls into a battle (build_flight_fall.py)
+      start that battle at full HP.
 
 TARGET: AoWEPACK.dpl ONLY. No other binary is touched.
 
@@ -277,6 +341,12 @@ VMT_SET_HP       = 0x8C         # TCombatUnit.SetHitPoints    @0x5572507C
 VMT_ABIL_ENABLED = 0xA8         # TCombatUnit.GetAbilityEnabled @0x55725004
 VMT_NEW_ROUND    = 0xF4         # the displaced dispatch
 
+CURSED = 0x5D                   # TCursedAbility, a days status (TDurationAbility mode 1)
+REGEN  = 0x31                   # Regeneration — NewTurn's own query id
+# TAbstractUnit (strategic unit) VMT, as TAbstractUnit.NewTurn @0x55780D4C calls them
+U_GET_HITS, U_GET_HP, U_SET_HP, U_ABIL_ENABLED = 0xD0, 0xE0, 0xE4, 0x148
+ARMY_UNITS = 0x08               # TArmy: the unit TList (items +4, count +8), as TArmy.Validate reads it
+
 # --- hook sites ---------------------------------------------------------------------------
 # The LAST still-direct `call RegisterAbility` inside PassiveAb.RegisterPassiveAbilities
 # @0x557BC1CC (len 0xE00). 84 of the 88 calls there are still direct; the four already
@@ -297,6 +367,21 @@ RW_ORIG = bytes.fromhex("b907000000")                       # mov ecx, 7
 RW_BACK = 0x5574F0AF                                        # mov edx,[ebx+0x18]
 ABIL_ID_OFF   = 0x0C                                        # TAbility.FID
 ABIL_COST_OFF = 0x14                                        # TAbility.FExpandCost (Integer)
+
+# v5 sites — see "v5" in the docstring. Two rel32 call retargets and one 5-byte `mov edx,imm32`.
+CD_INJ     = 0x55724B67      # TCombatUnit.CombatDone: call TAbilityOwner.TriggerCombatDone
+TRIGGER_CD = 0x5574FEC4
+CD_BACK    = 0x55724B6C      # the `pop ebx` after it
+VAL_INJ    = 0x5578D01E      # TArmy.Validate: call TEChangeNotifyNode.EndUpdate (EAX = EDI = army)
+END_UPDATE = 0x5570328C      # EngineP import thunk
+VAL_BACK   = 0x5578D023
+TURN_INJ   = 0x55780D9D      # TAbstractUnit.NewTurn: mov edx,0x31 (ESI = the unit)
+TURN_ORIG  = bytes.fromhex("ba31000000")
+TURN_BACK  = 0x55780DA2
+
+
+def call_rel(src, dst):
+    return b"\xE8" + struct.pack("<i", dst - (src + 5))
 
 CAVE_REG = 0x55826000       # see the placement note above — NOT 0x55824200
 
@@ -370,8 +455,11 @@ def build_reg(name_va, cost=None):
 NAME_BLOB = struct.pack("<iI", -1, len(ABILITY_NAME)) + ABILITY_NAME + b"\x00"
 
 
-def build_round(cave_va, heal=None, skip_round1=False):
+def build_round(cave_va, heal=None, skip_round1=False, cursed=False):
     """The per-round heal. EAX = combat object on entry; EBX/ESI belong to the host loop.
+
+    `cursed=True` (v5) adds the Cursed test straight after the 0xB1 one: the same +0xA8 query
+    with id 0x5D, the object reloaded from [esp] because the first query clobbered EAX.
 
     Stack discipline: exactly one slot (the object) is live across the body, pushed at entry
     and popped at `done`; the max is parked in a second slot only across the GetHitPoints
@@ -401,6 +489,12 @@ def build_round(cave_va, heal=None, skip_round1=False):
     gate = ("        mov edx, [esi + 0x0C]\n"
             "        cmp dword ptr [edx + 0x44], 1\n"
             "        jle done\n") if skip_round1 else ""
+    curse = ("        mov eax, [esp]\n"
+             "        mov edx, 0x%X\n"
+             "        mov ecx, [eax]\n"
+             "        call dword ptr [ecx + 0x%X]\n"
+             "        test al, al\n"
+             "        jne done\n" % (CURSED, VMT_ABIL_ENABLED)) if cursed else ""
     src = """
         push eax
 %s        mov edx, 0x%X
@@ -408,7 +502,7 @@ def build_round(cave_va, heal=None, skip_round1=False):
         call dword ptr [ecx + 0x%X]
         test al, al
         je done
-        mov eax, [esp]
+%s        mov eax, [esp]
         mov ecx, [eax]
         call dword ptr [ecx + 0x%X]
         movsx ecx, al
@@ -435,7 +529,7 @@ def build_round(cave_va, heal=None, skip_round1=False):
         mov edx, [eax]
         call dword ptr [edx + 0x%X]
         jmp 0x%X
-    """ % (gate, ABILITY_ID, VMT_ABIL_ENABLED,
+    """ % (gate, ABILITY_ID, VMT_ABIL_ENABLED, curse,
            VMT_GET_HITS,                       # max FIRST, so the <=0 guard runs before any add
            VMT_GET_HP,
            HEAL if heal is None else heal,
@@ -446,7 +540,8 @@ def build_round(cave_va, heal=None, skip_round1=False):
     #   push eax                    keep the object; EAX is volatile across every call below
     #   GetAbilityEnabled(0xB1)     +0xA8; non-units answer via TCombatObject's xor eax,eax/ret
     #   test al,al / je done        Delphi Boolean is a byte
-    #   GetHits -> movsx ecx,al     ⚠ the accessor writes AL only — never trust the full EAX
+    #   GetAbilityEnabled(0x5D)     v5: a Cursed unit does not reform -> done
+    #   GetHits -> movsx ecx,al    ⚠ the accessor writes AL only — never trust the full EAX
     #   test ecx,ecx / jle done     max<=0 means [obj+0x4c] is nil (or the object is bogus).
     #                               WITHOUT this guard the clamp below would set HP := max = 0
     #                               and kill it — healing something to death is the exact
@@ -512,6 +607,110 @@ def assert_encoding(code, va, fixes):
                          % ([hex(x) for x in got], [hex(x) for x in want]))
 
 
+# ---- v5: the full heal and its three callers ----------------------------------------------
+def build_full(va):
+    """cave_full: EAX = a strategic unit (or nil). Heal it to its maximum if it has Reforming
+    Flesh, is not Cursed, is alive and is hurt. Saves EBX/ESI; clobbers EAX/ECX/EDX; plain ret.
+    Same byte-width discipline as cave_round: every accessor result is read with movsx."""
+    return asm("""
+        push ebx
+        push esi
+        mov esi, eax
+        test esi, esi
+        je f_out
+        mov edx, 0x%X
+        mov ecx, [esi]
+        call dword ptr [ecx + 0x%X]
+        test al, al
+        je f_out
+        mov eax, esi
+        mov edx, 0x%X
+        mov ecx, [eax]
+        call dword ptr [ecx + 0x%X]
+        test al, al
+        jne f_out
+        mov eax, esi
+        mov ecx, [eax]
+        call dword ptr [ecx + 0x%X]
+        movsx ebx, al
+        test ebx, ebx
+        jle f_out
+        mov eax, esi
+        mov ecx, [eax]
+        call dword ptr [ecx + 0x%X]
+        movsx eax, al
+        test eax, eax
+        jle f_out
+        cmp eax, ebx
+        jge f_out
+        mov edx, ebx
+        mov eax, esi
+        mov ecx, [eax]
+        call dword ptr [ecx + 0x%X]
+    f_out:
+        pop esi
+        pop ebx
+        ret
+    """ % (ABILITY_ID, U_ABIL_ENABLED, CURSED, U_ABIL_ENABLED,
+           U_GET_HITS, U_GET_HP, U_SET_HP), va)
+
+
+def build_done(va, full_va):
+    """cave_done, called from CD_INJ with TriggerCombatDone's arguments (EAX = the strategic
+    unit, EDX = the combat unit). Replays the call, then heals that unit. CombatDone itself only
+    pops EBX and returns afterwards, so EAX/ECX/EDX are free."""
+    return asm("""
+        push eax
+        call 0x%X
+        pop eax
+        jmp 0x%X
+    """ % (TRIGGER_CD, full_va), va)
+
+
+def build_val(va, full_va):
+    """cave_val, called from VAL_INJ with EAX = the army. Heals every unit in it, then tail-jumps
+    to EndUpdate with EAX = the army, as the displaced call had it."""
+    return asm("""
+        push eax
+        push ebx
+        push esi
+        mov esi, [eax + 0x%X]
+        test esi, esi
+        je v_out
+        mov ebx, [esi + 8]
+    v_lp:
+        dec ebx
+        js v_out
+        mov eax, [esi + 4]
+        mov eax, [eax + ebx*4]
+        call 0x%X
+        jmp v_lp
+    v_out:
+        pop esi
+        pop ebx
+        pop eax
+        jmp 0x%X
+    """ % (ARMY_UNITS, full_va, END_UPDATE), va)
+
+
+def build_turn(va):
+    """cave_turn, called from TURN_INJ in place of `mov edx,0x31`; ESI = the unit. Returns EDX =
+    0xB1 for a Reforming Flesh unit, else 0x31. The host reloads EAX and ECX before its next
+    call, so both are free; EBX and ESI survive the VMT call (callee-saved)."""
+    return asm("""
+        mov eax, esi
+        mov edx, 0x%X
+        mov ecx, [eax]
+        call dword ptr [ecx + 0x%X]
+        mov edx, 0x%X
+        test al, al
+        jne t_out
+        mov edx, 0x%X
+    t_out:
+        ret
+    """ % (ABILITY_ID, U_ABIL_ENABLED, ABILITY_ID, REGEN), va)
+
+
 # ---- the cave zone: ONE blob at ONE address -----------------------------------------------
 # ⚠ EXPAND_COST changes cave_reg's LENGTH (a 7-byte `mov dword [eax+0x14],imm32`), which slides
 # everything laid out after it. What that actually did between v1 and v2 — measured off the two
@@ -542,22 +741,28 @@ def assert_encoding(code, va, fixes):
 # build_shield.py's VARIANTS block is the same lesson.
 #
 # ⚠ TWO DIFFERENT EXTENTS — do not conflate them (v1's comment did):
-#     the blob itself   55826000..558260D0   208 B: cave_reg + pad + name + pad + cave_round
-#                                                   + pad + cave_cost
-#     CAVE_ZONE_END     558260F0             = longest-ever blob + 0x20 growth slack, which the
+#     the blob itself   55826000..558261AE   430 B: cave_reg + pad + name + pad + cave_round
+#                                                   + pad + cave_cost + cave_full, cave_done,
+#                                                   cave_val, cave_turn (v5)
+#     CAVE_ZONE_END     558261CE             = longest-ever blob + 0x20 growth slack, which the
 #                                              write path zeroes and which must therefore be
 #                                              PROVED zero first — see the guard in main().
+#                                              0x55827000 is build_rng_lockstep.py's stub.
 #
-# v3 (2026-09-10) appended cave_cost. It is LAST on purpose: `mov r/m32, imm32` is length-stable,
-# so an EXPAND_COST re-tune moves nothing and both tail jumps keep their v2 encodings.
-def build_zone(heal=HEAL, fixes=None, skip_round1=False, reg_store=None):
-    """Lay cave_reg + name literal + cave_round + cave_cost back to back from CAVE_REG.
+# v3 (2026-09-10) appended cave_cost. `mov r/m32, imm32` is length-stable, so an EXPAND_COST
+# re-tune moves nothing. v5's Cursed test grew cave_round by 20 B and moved cave_cost from
+# 0x558260B0 to 0x558260C0; the old TAbility.ReadWrite jump is a prior, so that was an in-place
+# rewrite like any other.
+def build_zone(heal=HEAL, fixes=None, skip_round1=False, reg_store=None, v5=True):
+    """Lay cave_reg + name literal + cave_round + cave_cost back to back from CAVE_REG, then (v5)
+    cave_full, cave_done, cave_val and cave_turn.
 
     -> (blob, [(label, va, bytes), ...]) in layout order.
 
     `fixes` is COST_FIXES, or [] for a build with no cave_cost at all (v1/v2, and any future
     EXPAND_COST = None). `reg_store` is v2's dead FExpandCost store in cave_reg — None everywhere
-    except in PRIOR_BUILDS.
+    except in PRIOR_BUILDS. `v5=False` reproduces every build before 2026-10-30: no Cursed test
+    in cave_round and none of the four later caves.
 
     ⚠ cave_reg is assembled TWICE: once to learn its length, then again with the resolved name
     VA. `lea edx,[eax+imm32]` is length-stable, so the second pass cannot move anything — the
@@ -573,7 +778,7 @@ def build_zone(heal=HEAL, fixes=None, skip_round1=False, reg_store=None):
     blob += NAME_BLOB
     round_va = (CAVE_REG + len(blob) + 0xF) & ~0xF
     blob += bytes(round_va - CAVE_REG - len(blob))
-    rnd = build_round(round_va, heal, skip_round1)
+    rnd = build_round(round_va, heal, skip_round1, cursed=v5)
     blob += rnd
     parts = [("cave_reg", CAVE_REG, reg),
              ("name literal", name_blob_va, NAME_BLOB),
@@ -584,13 +789,26 @@ def build_zone(heal=HEAL, fixes=None, skip_round1=False, reg_store=None):
         cst = build_cost(cost_va, fixes)
         blob += cst
         parts.append(("cave_cost", cost_va, cst))
+    if v5:
+        def lay(label, make):
+            va = (CAVE_REG + len(blob) + 0xF) & ~0xF
+            blob.extend(bytes(va - CAVE_REG - len(blob)))
+            code = make(va)
+            blob.extend(code)
+            parts.append((label, va, code))
+            return va
+        full_va = lay("cave_full", build_full)
+        lay("cave_done", lambda va: build_done(va, full_va))
+        lay("cave_val", lambda va: build_val(va, full_va))
+        lay("cave_turn", build_turn)
     return bytes(blob), parts
 
 
 ZONE, PARTS = build_zone()
+PART = {lbl: (va, b) for lbl, va, b in PARTS}
 NAME_BLOB_VA = PARTS[1][1]
 CAVE_ROUND = PARTS[2][1]
-CAVE_COST = PARTS[3][1] if len(PARTS) > 3 else None
+CAVE_COST = PART["cave_cost"][0] if "cave_cost" in PART else None
 
 # Every zone layout this script has ever shipped. Verify-before-write accepts any of them as a
 # starting state, so a re-tune of HEAL, EXPAND_COST or the round gate is a rewrite IN PLACE and
@@ -599,9 +817,13 @@ CAVE_COST = PARTS[3][1] if len(PARTS) > 3 else None
 #   v2 (2026-08-31): `mov dword [eax+0x14], 50` in cave_reg. STILL FREE in game: the Ability.pfs
 #                    load zeroes the field afterwards. Superseded by cave_cost, not re-tuned.
 #   v3 (2026-09-10 .. 2026-10-23): cave_cost, HEAL 5.
-PRIOR_BUILDS = [dict(fixes=[], reg_store=None),
-                dict(fixes=[], reg_store=50),
-                dict(heal=5)]
+#   v4 (2026-10-23 .. 2026-10-30): HEAL 4. v5 adds the Cursed test and the four later caves.
+# ⚠ Every prior pins its own heal: left to default, v1 rebuilt with today's HEAL and matched the
+# first 171 bytes of a v4 install, so the growth-zone proof read v4's cave_cost as foreign bytes.
+PRIOR_BUILDS = [dict(fixes=[], reg_store=None, heal=5, v5=False),
+                dict(fixes=[], reg_store=50, heal=5, v5=False),
+                dict(heal=5, v5=False),
+                dict(heal=4, v5=False)]
 PRIOR_ZONES = [build_zone(**kw) for kw in PRIOR_BUILDS]
 
 CAVE_ZONE_END = CAVE_REG + max([len(ZONE)] + [len(z) for z, _p in PRIOR_ZONES]) + 0x20
@@ -643,6 +865,16 @@ if CAVE_COST is not None:
     WRITES.append((RW_INJ, rw_jmp(CAVE_COST),
                    "TAbility.ReadWrite @%08X -> cave_cost" % RW_INJ))
     ORIGINALS[RW_INJ] = RW_ORIG
+V5_HOOKS = [(CD_INJ, "cave_done", call_rel(CD_INJ, TRIGGER_CD),
+             "TCombatUnit.CombatDone @%08X -> cave_done (full heal at battle end)" % CD_INJ),
+            (VAL_INJ, "cave_val", call_rel(VAL_INJ, END_UPDATE),
+             "TArmy.Validate @%08X -> cave_val (full heal after map damage)" % VAL_INJ),
+            (TURN_INJ, "cave_turn", TURN_ORIG,
+             "TAbstractUnit.NewTurn @%08X -> cave_turn (full heal at turn start)" % TURN_INJ)]
+for _va, _lbl, _orig, _t in V5_HOOKS:
+    if _lbl in PART:
+        WRITES.append((_va, call_rel(_va, PART[_lbl][0]), _t))
+        ORIGINALS[_va] = _orig
 # ⚠ The TAIL JUMP moves with the layout, so its old encodings are priors in their own right.
 # A stale `jmp` left pointing into the middle of a rebuilt zone is precisely the silent-unlink
 # failure recorded for build_magebane.py: "caves match: False means look at the TAIL JUMP, not
@@ -882,11 +1114,183 @@ def dis(d, va, n, title):
               % (ins.address, ins.bytes.hex(" "), ins.mnemonic, ins.op_str))
 
 
+def selfcheck():
+    """The v5 caves are PIC: no dword in them may be an address inside the image (a rel32 never
+    is). And the three hook sites must be single whole instructions of the expected length."""
+    for lbl in ("cave_full", "cave_done", "cave_val", "cave_turn", "cave_round"):
+        va, blob = PART[lbl]
+        for k in range(len(blob) - 3):
+            w = struct.unpack_from("<I", blob, k)[0]
+            assert not (DLL_BASE <= w < 0x55A00000), "%s: absolute in-image dword at +%d" % (lbl, k)
+    for va, _lbl, orig, _t in V5_HOOKS:
+        ins = next(cs.disasm(orig, va))
+        assert ins.size == 5, "%08X: the displaced instruction is not 5 bytes" % va
+
+
+def emulate():
+    """Run the v5 caves under unicorn from their real hook sites, on fake units:
+    cave_val over a six-unit army, cave_done, cave_turn into NewTurn's full-heal branch, and
+    cave_round with and without Cursed."""
+    from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
+    from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX,
+                                   UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP, UC_X86_REG_ESP)
+    REG = dict(eax=UC_X86_REG_EAX, ebx=UC_X86_REG_EBX, ecx=UC_X86_REG_ECX, edx=UC_X86_REG_EDX,
+               esi=UC_X86_REG_ESI, edi=UC_X86_REG_EDI, ebp=UC_X86_REG_EBP, esp=UC_X86_REG_ESP)
+    d = bytearray(open(DLL, "rb").read())
+    for va, new, _t in WRITES:
+        o = va2off(d, va)
+        d[o:o + len(new)] = new
+    mu = Uc(UC_ARCH_X86, UC_MODE_32)
+    pe = struct.unpack_from("<I", d, 0x3C)[0]
+    n = struct.unpack_from("<H", d, pe + 6)[0]
+    s = pe + 24 + struct.unpack_from("<H", d, pe + 20)[0]
+    secs = [struct.unpack_from("<IIII", d, s + 8 + 40 * i) for i in range(n)]
+    top = max(va0 + max(vs, rs) for vs, va0, rs, _raw in secs)
+    mu.mem_map(DLL_BASE, (top + 0xFFF) & ~0xFFF)
+    for vs, va0, rs, raw in secs:
+        if rs:
+            mu.mem_write(DLL_BASE + va0, bytes(d[raw:raw + rs]))
+    HEAP, STK = 0x10000000, 0x30000000
+    mu.mem_map(HEAP, 0x10000)
+    mu.mem_map(STK, 0x10000)
+    w32 = lambda a, v: mu.mem_write(a, struct.pack("<I", v & 0xFFFFFFFF))
+    r32 = lambda a: struct.unpack("<I", mu.mem_read(a, 4))[0]
+    r8 = lambda a: mu.mem_read(a, 1)[0]
+    put = lambda a, src: mu.mem_write(a, asm(src, a))
+    VMT_U, VMT_C, ARMY, LIST, ITEMS = HEAP + 0x100, HEAP + 0x300, HEAP + 0x500, HEAP + 0x540, HEAP + 0x580
+    UNITS, COBJ, LOG, STUB = HEAP + 0x800, HEAP + 0xC00, HEAP + 0xE00, HEAP + 0x2000
+    # strategic unit: +4 HP, +5 max, +6 has 0xB1, +7 Cursed, +8 has 0x31. Accessors write AL only
+    # and leave junk in the rest of EAX, ECX and EDX, as the engine's do.
+    stubs = {
+        U_GET_HITS: "movzx ecx, byte ptr [eax + 5]\nmov eax, 0xABCDEF00\nmov al, cl\nmov edx, 0x5A5A5A5A\nret",
+        U_GET_HP: "movzx ecx, byte ptr [eax + 4]\nmov eax, 0xABCDEF00\nmov al, cl\nmov edx, 0x5A5A5A5A\nret",
+        U_SET_HP: "mov byte ptr [eax + 4], dl\ninc dword ptr [%d]\nmov ecx, 0x6B6B6B6B\nret" % LOG,
+        U_ABIL_ENABLED: """
+            cmp edx, 0x%X
+            je a_rf
+            cmp edx, 0x%X
+            je a_cu
+            cmp edx, 0x%X
+            je a_rg
+            xor eax, eax
+            jmp a_out
+        a_rf: movzx eax, byte ptr [eax + 6]
+            jmp a_out
+        a_cu: movzx eax, byte ptr [eax + 7]
+            jmp a_out
+        a_rg: movzx eax, byte ptr [eax + 8]
+        a_out:
+            or eax, 0x12345600
+            mov ecx, 0x7C7C7C7C
+            mov edx, 0x7D7D7D7D
+            ret""" % (ABILITY_ID, CURSED, REGEN)}
+    at = STUB
+    for slot, src in stubs.items():
+        put(at, src); w32(VMT_U + slot, at); at += 0x80
+    # combat object: +0x4C = the unit; its accessors forward as TCombatUnit's do
+    for slot, uslot in ((VMT_ABIL_ENABLED, U_ABIL_ENABLED), (VMT_GET_HITS, U_GET_HITS),
+                        (VMT_GET_HP, U_GET_HP), (VMT_SET_HP, U_SET_HP)):
+        put(at, "mov eax, [eax + 0x4C]\nmov ecx, [eax]\njmp dword ptr [ecx + 0x%X]" % uslot)
+        w32(VMT_C + slot, at); at += 0x40
+    put(at, "inc dword ptr [%d]\nret" % (LOG + 4)); w32(VMT_C + VMT_NEW_ROUND, at); at += 0x40
+    # the two engine calls the caves make, replaced by recorders
+    put(END_UPDATE, "mov dword ptr [%d], eax\nret" % (LOG + 8))
+    put(TRIGGER_CD, "mov dword ptr [%d], eax\nmov dword ptr [%d], edx\nmov eax, 0x13579\n"
+                    "mov edx, 0x2468\nmov ecx, 0x369\nret" % (LOG + 12, LOG + 16))
+
+    def unit(i, hp, mx, rf=1, cu=0, rg=0):
+        u = UNITS + i * 0x20
+        w32(u, VMT_U)
+        mu.mem_write(u + 4, bytes([hp, mx, rf, cu, rg]))
+        return u
+
+    KEEP = dict(ebx=0xB0B0B0B0, esi=0x51515151, edi=0xD1D1D1D1, ebp=0xBEBEBEBE)
+
+    def go(start, stop, **regs):
+        r = dict(KEEP, eax=0x1111, ecx=0xC0C0, edx=0x2222, esp=STK + 0x8000)
+        r.update(regs)
+        for k, v in r.items():
+            mu.reg_write(REG[k], v)
+        w32(LOG, 0); w32(LOG + 4, 0); w32(LOG + 8, 0)
+        # ⚠ emu_start's `until` is only honoured at a translation-block start; a stop address
+        # inside a block (a call's return address followed by more code) runs straight past it.
+        h = mu.hook_add(UC_HOOK_CODE, lambda m, _a, _s, _u: m.emu_stop(), begin=stop, end=stop)
+        mu.emu_start(start, stop, count=20000)
+        mu.hook_del(h)
+        return {k: mu.reg_read(v) for k, v in REG.items()}, r
+
+    ok = True
+
+    def check(name, cond, detail=""):
+        nonlocal ok
+        ok = ok and cond
+        print("  %-62s %s%s" % (name, "PASS" if cond else "FAIL", ("  " + detail) if detail else ""))
+
+    # cave_val: run TArmy.Validate's tail from `mov eax,edi` to after the EndUpdate call
+    cases = [(10, 40, 1, 0, 40), (10, 40, 1, 1, 10), (0, 40, 1, 0, 0), (10, 40, 0, 0, 10),
+             (100, 120, 1, 0, 120), (40, 40, 1, 0, 40)]
+    us = [unit(i, hp, mx, rf, cu) for i, (hp, mx, rf, cu, _w) in enumerate(cases)]
+    w32(ARMY + ARMY_UNITS, LIST); w32(LIST + 4, ITEMS); w32(LIST + 8, len(us))
+    for i, u in enumerate(us):
+        w32(ITEMS + 4 * i, u)
+    g, r = go(0x5578D01C, VAL_BACK, edi=ARMY)
+    hps = [r8(u + 4) for u in us]
+    check("Validate: RF / RF+Cursed / dead / plain / 100of120 / full",
+          hps == [c[4] for c in cases], "HP %s" % hps)
+    check("Validate: SetHitPoints called only for the two that heal", r32(LOG) == 2, "%d calls" % r32(LOG))
+    check("Validate: EndUpdate gets the army; EBX/ESI/EDI/EBP/ESP kept",
+          r32(LOG + 8) == ARMY and all(g[k] == r[k] for k in ("ebx", "esi", "edi", "ebp", "esp")))
+    w32(LIST + 8, 0)
+    g, r = go(0x5578D01C, VAL_BACK, edi=ARMY)
+    check("Validate: empty army -> EndUpdate only", r32(LOG + 8) == ARMY and r32(LOG) == 0)
+
+    # cave_done: from `mov edx,ebx` to the `pop ebx` after the call
+    u = unit(0, 12, 40); w32(COBJ, VMT_C); w32(COBJ + 0x4C, u)
+    g, r = go(0x55724B65, CD_BACK, eax=u, ebx=COBJ)
+    check("CombatDone: TriggerCombatDone(unit, combat unit) replayed, then healed",
+          r32(LOG + 12) == u and r32(LOG + 16) == COBJ and r8(u + 4) == 40 and g["ebx"] == COBJ,
+          "HP %d" % r8(u + 4))
+    u = unit(0, 12, 40, cu=1); w32(COBJ + 0x4C, u)
+    go(0x55724B65, CD_BACK, eax=u, ebx=COBJ)
+    check("CombatDone: Cursed -> no heal", r8(u + 4) == 12)
+
+    # cave_turn: NewTurn from the hook through the installed cave_regen to the healcap call
+    u = unit(0, 12, 40)
+    g, r = go(TURN_INJ, TURN_BACK, esi=u, ebx=40)
+    check("NewTurn: RF unit -> EDX = 0xB1", g["edx"] == ABILITY_ID and g["esi"] == u, "%#x" % g["edx"])
+    g, r = go(TURN_INJ, 0x55780DE6, esi=u, ebx=40)
+    check("NewTurn: RF unit reaches the full-heal branch (EBX = max)", g["ebx"] & 0xFF == 40,
+          "EBX %#x" % g["ebx"])
+    u = unit(0, 12, 40, rf=0)
+    g, r = go(TURN_INJ, 0x55780DAB, esi=u, ebx=40)      # cave_regen's return address
+    check("NewTurn: plain unit -> EDX = 0x31, regen query false", g["eax"] & 0xFF == 0, "AL %d" % (g["eax"] & 0xFF))
+    u = unit(0, 12, 40, rf=0, rg=1)
+    g, r = go(TURN_INJ, 0x55780DE6, esi=u, ebx=40)
+    check("NewTurn: Regeneration unit still takes the full-heal branch", g["ebx"] & 0xFF == 40)
+
+    # cave_round: from the hook in TNewCombatRoundCA.Execute to `dec ebx`
+    for name, (hp, mx, rf, cu), want in (("RF 10/40 -> 14", (10, 40, 1, 0), 10 + HEAL),
+                                          ("RF 38/40 -> 40 (clamp)", (38, 40, 1, 0), 40),
+                                          ("RF + Cursed -> unchanged", (10, 40, 1, 1), 10),
+                                          ("plain -> unchanged", (10, 40, 0, 0), 10),
+                                          ("RF dead -> stays dead", (0, 40, 1, 0), 0)):
+        u = unit(0, hp, mx, rf, cu); w32(COBJ + 0x4C, u)
+        g, r = go(ROUND_INJ, ROUND_BACK, eax=COBJ)
+        check("round: " + name, r8(u + 4) == want and r32(LOG + 4) == 1
+              and all(g[k] == r[k] for k in ("ebx", "esi", "edi", "ebp", "esp")), "HP %d" % r8(u + 4))
+    print("emulation: %s" % ("PASS" if ok else "FAIL"))
+    return ok
+
+
 def main():
     apply_, undo, only_dis = "--apply" in sys.argv, "--undo" in sys.argv, "--dis" in sys.argv
+    selfcheck()
+    if "--emulate" in sys.argv:
+        sys.exit(0 if emulate() else 1)
     d = bytearray(open(DLL, "rb").read())
 
-    print("Reforming Flesh (id 0x%02X): +%d HP at the start of every combat round" % (ABILITY_ID, HEAL))
+    print("Reforming Flesh (id 0x%02X): +%d HP at the start of every combat round; full heal at "
+          "battle end, after map damage and at turn start; none while Cursed" % (ABILITY_ID, HEAL))
     print("caves at %08X..%08X   hook %08X   reg site %08X"
           % (CAVE_REG, CAVE_ZONE_END, ROUND_INJ, REG_INJ))
     if not undo:
@@ -920,6 +1324,17 @@ def main():
                 print("\n  ⚠ the installed cost hook points at %08X, not this build's %08X — "
                       "an older layout is on disk." % (cva, CAVE_COST))
             dis(d, cva, len(PARTS[3][2]), "cave_cost")
+        for va, lbl, _orig, _t in V5_HOOKS:
+            o = va2off(d, va)
+            if d[o] != 0xE8 or bytes(d[o:o + 5]) == _orig:
+                print("\n  %s: %08X holds no call of ours — not installed." % (lbl, va))
+                continue
+            tgt = (va + 5 + struct.unpack_from("<i", d, o + 1)[0]) & 0xFFFFFFFF
+            if tgt != PART[lbl][0]:
+                print("\n  ⚠ %08X calls %08X, not this build's %s @%08X." % (va, tgt, lbl, PART[lbl][0]))
+            dis(d, tgt, len(PART[lbl][1]), lbl)
+        fva = PART["cave_full"][0]
+        dis(d, fva, len(PART["cave_full"][1]), "cave_full (this build's address)")
         # The round-1 gate is not installed and never has been; this proves the documented
         # variant assembles to what the docstring claims, which a comment could not.
         gz, gp = build_zone(skip_round1=True)
@@ -949,7 +1364,8 @@ def main():
                 a[off:off + n] = b[off:off + n] = bytes(n)
             if a == b:
                 return "retune", len(new)
-        for prior in PRIORS.get(va, ()):
+        # longest first: a shorter prior can be a byte-exact prefix of a longer install
+        for prior in sorted(PRIORS.get(va, ()), key=len, reverse=True):
             if bytes(d[o:o + len(prior)]) == prior:
                 return "prior", len(prior)
         return "other", 0

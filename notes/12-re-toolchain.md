@@ -1618,13 +1618,13 @@ vanish; everything else is a modal dialog. The load test drives `Developer > Ope
 
 | VA | script | size | feature |
 |---|---|---|---|
-| `0x55820000` | `build_los_terrain.py` | 0x800 (v6 uses `..0x55820748`) | strategic-map terrain LOS blocking (Earth/Rock) + fog-refcount rebuild + Mantle of Gloom (v4, 🔨 APPLIED, UNTESTED 2026-09-26). v4 adds call retargets `0x5577844D` (UpdateVisibility's closing `InvalidateMap`) and `0x5575433E` (SetDiplomaticRelation's `UpdateVisibility`), and owns the Trail of Darkness ring-bound byte `0x55780170` (vanilla 1, previously an unowned hand edit 5, now 6). **BSS `0x558FAD40..0x558FAECF`** (gloom source list) plus `0x558FAA00/01`. **v5** (True Seeing pierces the gloom) adds **cave 2 `0x5584F480..0x5584F77F`, exclusive** (`tsqual`/`tslook`/`tsrec`/`tscheck`, 542 B) and **BSS `0x558FAC10..0x558FACFF`** (True Seeing observer list) |
+| `0x55820000` | `build_los_terrain.py` | 0x800 (v7 uses `..0x558207B8`) | strategic-map terrain LOS blocking (Earth/Rock) + fog-refcount rebuild + Mantle of Gloom (v4, 🔨 APPLIED, UNTESTED 2026-09-26). v4 adds call retargets `0x5577844D` (UpdateVisibility's closing `InvalidateMap`) and `0x5575433E` (SetDiplomaticRelation's `UpdateVisibility`), and owns the Trail of Darkness ring-bound byte `0x55780170` (vanilla 1, previously an unowned hand edit 5, now 6). **BSS `0x558FAD40..0x558FAECF`** (gloom source list) plus `0x558FAA00/01`. **v5** (True Seeing pierces the gloom) adds **cave 2 `0x5584F480..0x5584F77F`, exclusive** (`tsqual`/`tslook`/`tsrec`/`tscheck`, 542 B) and **BSS `0x558FAC10..0x558FACFF`** (True Seeing observer list) |
 | `0x55820800` | `build_caster_cost.py` | **exclusive** `0x55820800`–`0x55820FFF` | four bit-only hero abilities cutting the initial casting cost of a spell family each by 40% (x0.6 since 2026-09-25). `cave_cost` is a **pinned 120-B slot** at `0x55820800` (data classifier 58 B + zero pad; `--classic` puts the class classifier back, 118 B at x0.6); the other four caves must not move |
 | `0x55821000` | `build_dispelmagic5.py` | **exclusive** `0x55821000`–`0x558213FF` | Dispel Magic IV+V. **Relocated 2026-08-26** — see §6.3 for the full swallow/repair story, the single best worked example of the allocation discipline in this codebase. |
 | `0x55822000` | `build_shipyard_income.py` | **exclusive**, a full page `0x55822000`–`0x55822FFF` | Shipyard gold income from contiguous adjacent water. Currently claimed — treat any older note calling this address free as stale. |
 | `0x55823000` | `build_shield.py` | **exclusive**, a full page `0x55823000`–`0x55823FFF` | new passive ability Shield (ranged attacks only). `SHIELD_RANGED_CAVE = 0x558230D0` is chained into from `build_magebane.py` — §6.4. |
 | `0x55824000` | `build_waterheal.py` | growth zone `0x55824000`–`0x55825200` (verified zero pre-install) | elemental terrain healing (grew out of an earlier "waterheal" feature; keeps that name/cave/hook) |
-| `0x55826000` | `build_reformingflesh.py` | one blob `0x55826000`–`0x558260D0` (208 B) + `0x20` growth slack to `0x558260F0`, proved zero on every path | new passive ability Reforming Flesh (id `0xB1`): `cave_reg` + name literal + `cave_round` + **`cave_cost @0x558260B0`** (v3, 2026-09-10 — the level-up cost, hooked into `TAbility.ReadWrite @0x5574F0AA`, because a registration-time store of `[ability+0x14]` is zeroed by the `Ability.pfs` load). **Deliberately placed here, not at the `0x55824200` its own design spec originally named** — that address sits *inside* `build_waterheal.py`'s declared growth zone above; see §6.3 for why that would have been silently overwritten. |
+| `0x55826000` | `build_reformingflesh.py` | one blob `0x55826000`–`0x558261AE` (430 B) + `0x20` growth slack to `0x558261CE`, proved zero on every path | new passive ability Reforming Flesh (id `0xB1`): `cave_reg` + name literal + `cave_round` + **`cave_cost @0x558260C0`** (v3, 2026-09-10 — the level-up cost, hooked into `TAbility.ReadWrite @0x5574F0AA`, because a registration-time store of `[ability+0x14]` is zeroed by the `Ability.pfs` load) + v5 (2026-10-30) `cave_full @0x558260E0`, `cave_done @0x55826150` (call retarget `0x55724B67` in `TCombatUnit.CombatDone`), `cave_val @0x55826160` (call retarget `0x5578D01E` in `TArmy.Validate`, between `build_airwater_ench.py`'s entry hook and `build_flight_fall.py`'s `0x5578D028`), `cave_turn @0x55826190` (`0x55780D9D`, NewTurn's `mov edx,0x31` → call; `build_regen_spell.py`'s check accepts it). **Deliberately placed here, not at the `0x55824200` its own design spec originally named** — that address sits *inside* `build_waterheal.py`'s declared growth zone above; see §6.3 for why that would have been silently overwritten. |
 | `0x55828000` | `build_panic_nomelee.py` | `0x55828000` + `0x55828040`, 40 B each (`CAVE_STRIDE = 0x40`) | panicked units cannot initiate melee — the AoWEPACK half (auto-resolve melee + touch); the other **four** caves are in AoWTCPCK.dpl from `0x00438300` through `0x004383C0` — see that module's table below for the slot-by-slot list and the next free address |
 | `0x55829000` | `build_panic_cleardamage.py` (rewritten 2026-10-26) | **exclusive** `0x55829000`–`0x558291FF` | Panicked `0x6C` ends on a Resistance check (power 10): hook `0x55726C58` (TCombatObject.ExecuteDamage entry, 6 B) for damage that lands, and TPanickedAbility VMT `0x557B68CC` (+0xF8 NewCombatTurn, `.reloc` kept) at each own-side turn start; no roll for a unit holding Mistform `0x54` (`cave_mist` `0x55829100`; `cave_turn` is pinned at `0x558290A0`, the T slot's value). RNG: manual combat re-anchors from the synced map Random (`0x5582901F`), auto-resolve raw; HitRole `0x5582903D` |
 | `0x5582A000` | `build_terror_oncepercombat.py` | `0x5582A000`–`0x5582A200`, asserted zero-or-ours | each side casts Terror at most once per combat |
@@ -1974,6 +1974,12 @@ as AoWEPACK applies):
 `0x5510E46C`–`0x5510E5FF` (404 B between VirtualSize `0xD46C` and SizeOfRawData `0xD600`) belongs to
 `build_window_zoom.py` (2026-10-18), which raises CODE VirtualSize to `0xD600` so the loader maps
 it. Its zoom variable lives in BSS page slack at `0x55110800`. Caves PIC. `07-ui.md` §21.
+In-place, no cave: `0x55105414` (10 B, ExecuteBltSurfaceEvent's except arm) is `build_lost_display.py`'s
+(2026-10-31, `07-ui.md` §24).
+
+**Gfxepack.dpl** (preferred base `0x55000000`): no cave. `build_lost_display.py` owns two in-place
+2-byte sites, `0x55009FAD` (`TDDrawSurface.Unlock`) and `0x5500A147` (`UnlockEx`). CODE's file-backed
+tail `0x55013144`–`0x550131FF` (188 B, VirtualSize `0x12144`, SizeOfRawData `0x12200`) is free.
 
 **Network.dpl** (preferred base `0x55800000`, rebases — same PIC discipline as AoWEPACK). It has
 **exactly one cave, and no more**: CODE is `va=0x1000 raw=0x400 rs=0x5400 vs=0x5210`, so the only
@@ -6340,7 +6346,8 @@ sphere's `entries`, rendered as a card with the "new" badge in its tier; `NEW_SP
 tab found Embrittle the only one missing.
 
 Spells shows the live game. Its **Dual sphere** pane (`r_dual_live`) starts with a table of the 14
-pairs × tiers 1–3, filled from `manual_data.json` sphere blocks named "A/B". Below it, each built
+pairs × tiers 1–3, filled from `manual_data.json` sphere blocks named "A/B", each card's tier read
+from `Spells.pfs` (`07-ui.md` §2.11). Below it, each built
 pair is a `.dgrp` block: the same cards as a single sphere's, with tier rows labelled "Death 1 ·
 Fire 1". After the blocks comes `DUAL_SPELL_NOTES`, heading "Dual-sphere spells", keys
 `NOTE.dual_sphere_spells.*`; the four Death/Fire entries were moved there from `NEW_SPELL_NOTES`,

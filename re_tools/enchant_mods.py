@@ -96,6 +96,22 @@ RUNTIME_STATUSES = [
     ("Petrified", "TStunnedAbility", {"DEF": 0x558B5180}, 0x558B5180),  # build_stonegaze.py cave_pdef
 ]
 
+# For statuses(): what a run-time status's registration cave pokes, which no constructor shows.
+# display -> (ability id, duration mode, GetTotalDuration VA or None). Mode 3 lasts the battle,
+# so it needs no length. The length, where there is one, is still DECODED from the cave.
+RUNTIME_STATUS_META = {
+    "Asleep": (0x50, 2, 0x558BD330),        # build_lethe.py: Stunned's mode 2, cave_dur
+    "Petrified": (0xCC, 3, None),           # build_stonegaze.py: `mov byte [eax+0x28],3`
+}
+# Status INSTANCES with no stat getter of their own, so extract() never lists them.
+# (display, ability id, mode, class whose +0x110 GetTotalDuration the VMT copy keeps, present VA)
+EXTRA_STATUSES = [
+    ("Blessing of Stygia", 0x51, 1, "TStunnedAbility", 0x558BD800),   # build_blessing_stygia.py
+    ("Rallied", 0xC3, 3, None, 0x558B2400),                           # build_rally.py (Panicked's)
+]
+VMT_TOTAL_DURATION = 0x110      # TDurationAbility.GetTotalDuration
+MODE_NAMES = {1: "days", 2: "combat turns", 3: "battle"}
+
 
 class Entry(object):
     __slots__ = ("cls", "display", "kind", "mods", "sites", "vmt")
@@ -118,6 +134,22 @@ class _PE(object):
         for _ in range(n):
             vs, va, rs, raw = struct.unpack_from("<IIII", self.d, s + 8)
             self.secs.append((va, vs, raw, rs)); s += 40
+        self.export_dir = struct.unpack_from("<I", self.d, e + 24 + 96)[0]
+
+    def exports(self):
+        """{name without its `@hash` suffix: VA} from the export directory."""
+        ed = self.off(IMAGE_BASE + self.export_dir)
+        if ed is None:
+            return {}
+        nnames, afn, anames, aord = struct.unpack_from("<IIII", self.d, ed + 24)
+        out = {}
+        for i in range(nnames):
+            no = self.off(IMAGE_BASE + struct.unpack_from("<I", self.d, self.off(IMAGE_BASE + anames) + 4 * i)[0])
+            name = self.d[no:self.d.index(b"\0", no)].decode("latin-1")
+            ordi = struct.unpack_from("<H", self.d, self.off(IMAGE_BASE + aord) + 2 * i)[0]
+            rva = struct.unpack_from("<I", self.d, self.off(IMAGE_BASE + afn) + 4 * ordi)[0]
+            out[re.sub(r"@[0-9A-F]{8}$", "", name)] = IMAGE_BASE + rva
+        return out
 
     def off(self, va):
         rva = va - IMAGE_BASE
@@ -262,6 +294,79 @@ def extract(path=None, include_zero=False, kinds=("enchantment", "status")):
             sites[stat] = (fn, imm, form)
         out.append(Entry(parent + " (run-time copy)", disp, "status", mods, sites, None))
     out.sort(key=lambda e: (e.kind != "enchantment", e.display.lower()))
+    return out
+
+
+class Status(object):
+    __slots__ = ("display", "id", "mode", "duration", "mods")
+
+    def __init__(self, display, aid, mode, duration, mods):
+        self.display, self.id, self.mode, self.duration, self.mods = display, aid, mode, duration, mods
+
+    def lasts(self):
+        """'3 days' / '1 combat turn' / 'battle' -- the unit card's own units."""
+        if self.mode == 3:
+            return "battle"
+        unit = MODE_NAMES.get(self.mode, "?")
+        return "%d %s" % (self.duration, unit[:-1] if self.duration == 1 else unit)
+
+    def __repr__(self):
+        return "<status %s 0x%02X %s %s>" % (self.display, self.id, self.lasts(), dict(self.mods))
+
+
+def _ctor_fields(pe, exports, cls):
+    """(ability id, duration mode) from `<cls>.Create`: its `mov dword [reg+0xC], id` and
+    `mov byte [reg+0x28], mode` stores. A constructor that sets no mode inherits its parent's,
+    so the parent's Create is read for it. Raises when either cannot be found."""
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+    cs = Cs(CS_ARCH_X86, CS_MODE_32)
+    vmts = pe.all_vmts()
+    aid = mode = None
+    cur = cls
+    while cur and (aid is None or mode is None):
+        va = next((v for n, v in exports.items() if n.endswith("." + cur + ".Create")), None)
+        if va is not None:
+            for ins in cs.disasm(pe.read(va, 0x140), va):
+                if ins.mnemonic == "ret":
+                    break
+                if ins.mnemonic != "mov" or ", " not in ins.op_str:
+                    continue
+                dst, src = ins.op_str.split(", ", 1)
+                if not src.startswith("0x") and not src.isdigit():
+                    continue
+                if aid is None and dst.startswith("dword ptr [") and dst.endswith(" + 0xc]"):
+                    aid = int(src, 0)
+                if mode is None and dst.startswith("byte ptr [") and dst.endswith(" + 0x28]"):
+                    mode = int(src, 0)
+        par = pe.parent(vmts[cur]) if cur in vmts else None
+        cur = pe.clsname(par) if par else None
+    if aid is None or mode is None:
+        raise ValueError("%s.Create: id %s, mode %s -- teach _ctor_fields its form" % (cls, aid, mode))
+    return aid, mode
+
+
+def statuses(path=None):
+    """-> [Status] for every temporary status in the binary: the TDurationAbility classes, the
+    run-time copies (RUNTIME_STATUSES) and the bare instances (EXTRA_STATUSES). Id and mode come
+    from each constructor, the length from its +0x110 getter, the modifiers from extract()."""
+    pe = _PE(path or DLL)
+    vmts, exports = pe.all_vmts(), pe.exports()
+    out = []
+    for x in extract(path, include_zero=True, kinds=("status",)):
+        if x.vmt is not None:
+            aid, mode = _ctor_fields(pe, exports, x.cls)
+            dur = decode_getter(pe, pe.dw(x.vmt + VMT_TOTAL_DURATION))[0]
+        else:
+            aid, mode, dva = RUNTIME_STATUS_META[x.display]
+            dur = decode_getter(pe, dva)[0] if dva else None
+        out.append(Status(x.display, aid, mode, dur, x.mods))
+    for disp, aid, mode, durcls, present in EXTRA_STATUSES:
+        b = pe.read(present, 4)
+        if not b or not any(b):
+            continue                                    # not in this binary (vanilla, or undone)
+        dur = decode_getter(pe, pe.dw(vmts[durcls] + VMT_TOTAL_DURATION))[0] if durcls else None
+        out.append(Status(disp, aid, mode, dur, OrderedDict()))
+    out.sort(key=lambda s: s.display.lower())
     return out
 
 

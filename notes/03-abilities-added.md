@@ -1342,6 +1342,11 @@ the one layout definition.
   above its own (32 types; the Charlatan's was the owner's). Left empty at the cap of 5: Yaka Avatar,
   Undead Reaper, Aether Barge. `--undo` empties only a Spell-Casting-only option 1 and never touches
   the Charlatan.
+- **Authored data — the other options** (`build_heroic_options.py`, `Unitres.pfs` only): one table
+  for every race, applied race by race with `--only <ids>` when the owner says so. Humans (ids 1–10)
+  applied 2026-10-30 and then edited by the owner, whose edits define the design standard
+  (`13-heroic-options-standard.md`). Azracs (ids 18–30, 274) redrafted to that standard and applied
+  2026-10-30 for the owner to edit. The other races are drafted, not applied, and predate it. Only empty slots are filled; the owner's own options stay.
 - ⚠⚠ **Every load wiped every option until 2026-10-20 (fixed).** Right after each load,
   `TAoWEngine.TranslateEObjectFromFile` streams every resource through a
   `TTranslateStorageStream` (StorageMode `0x15`, no data, strings only). `cave_rw` took bit 0 as
@@ -2032,6 +2037,37 @@ fire get the same as a passive. The spell side is `04-spells-modded.md`, "Living
 - Registration at `0x557BCC84` (the last direct `call RegisterAbility`), mask `0x03FF`. Record from
   Forestry's, cost 20, Resistances column, Hero Offers 0 % except Azracs 10 % (owner).
   Launch-proved 2026-10-22.
+
+## Reforming Flesh outside combat, and Cursed (`0xB1`, 2026-10-30)
+
+`build_reformingflesh.py` v5 (AoWEPACK), cards in `build_pfs_typos.py` (`Ability.pfs` 187 and
+Cursed's 103). Owner's design: a unit that heals 4 HP a round should not leave a battle hurt.
+Unless Cursed, a Reforming Flesh unit now heals fully when a battle ends, after any world-map
+damage it survives, and at the start of each turn, besides +4 per combat round. Storms and hazards
+still deal their damage and can still kill. Cursed (`0x5D`, a 3-day status) switches all of it off.
+
+- One routine, `cave_full`, heals a unit that has `0xB1`, is not Cursed, is alive and is hurt.
+- Battle end: `TCombatUnit.CombatDone` (`0x55724B67`), run by `TCombat.Finalize` for every combat
+  object in both combat systems (`TTacticalCombatUnit`'s slot is an import thunk to it), after
+  `TriggerCombatDone` has removed the battle-only statuses. A curse from that battle blocks it.
+- World-map damage: the end of `TArmy.Validate` (`0x5578D01E`), which every map damage source
+  calls once its dead are removed: storms, map fire, vortex, town quake, poison plants, holy and
+  unholy ground, Awaken Volcano's lava, falls and hazards. Death Storm and Evil Woods curse before
+  it, so their curse blocks their own heal. Units in a battle are out of their armies, so it never
+  heals mid-battle.
+- Turn start: NewTurn's `mov edx,0x31` (`0x55780D9D`) becomes a call that passes `0xB1` for these
+  units, which takes the Regeneration branch.
+- **Cursed already blocked Regeneration in vanilla:** `TAbstractUnit.NewTurn` tests `0x5D` at
+  `0x55780D8A` and skips every turn heal (natural, Regeneration, the Regeneration enchantment).
+  Regeneration does nothing in battle, so nothing was added for it; Cursed's card now says so.
+- Combat rounds: `cave_round` tests `0x5D` after `0xB1`. Cursed in battle lands on the strategic
+  unit (`ExecuteCombatDamageEffects`, `0x55781FEE`), which the combat object's query reaches.
+- Death-immune carriers (Nordic Glow, Incarnate, Bone Horror) cannot be Cursed by Death damage. The
+  one other curse, Death Mastery's (`ExecuteDeathMasteryCurseRole @0x55780C80`, 12 − RES), has no
+  immunity test but skips a unit whose alignment (vmt `+0xFC`) is 2 or more.
+
+Unproven: in game. The four caves were run under unicorn from their real hook sites
+(`--emulate`, 15 cases), and `--undo` round-trips byte-exact.
 
 ## Open items
 

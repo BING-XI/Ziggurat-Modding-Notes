@@ -4,14 +4,16 @@ build_heroic_options.py -- heroic options for unit types whose option slots are 
 Ziggurat/Release/Unitres.pfs.  Owner's request 2026-10-21 ("fill out the empty level up choices
 for human units at the heroic level"); OPTIONS below is the design, one row per unit type.
 
-NOT APPLIED -- the owner's order (2026-10-22): draft every race here first (done 2026-10-22: all
-12 races, the shared war machines and the ships; owner-authored slots are skipped), then he
-reviews and I redraft, then --apply, then he fine-tunes in the editor.  PENDING holds the rows
-waiting for a proposed ability; the dry run lists them.
+Applied race by race at the owner's word.  Humans (ids 1-10): applied 2026-10-30, then edited by
+the owner in the editor -- his data now, no rows here.  Azracs (ids 18-30, 274): redrafted to
+the standard and applied 2026-10-30 for him to edit.  Every other race: drafted 2026-10-22, NOT
+applied, and older than the standard in Zig notes/13-heroic-options-standard.md.  PENDING holds the
+rows waiting for a proposed ability; the dry run lists them.
 
     python build_scripts/build_heroic_options.py              dry run (prints every option)
-    python build_scripts/build_heroic_options.py --apply
-    python build_scripts/build_heroic_options.py --undo [--apply]
+    python build_scripts/build_heroic_options.py --only 1-10  dry run, those record ids only
+    python build_scripts/build_heroic_options.py --only 1-10 --apply
+    python build_scripts/build_heroic_options.py --only 1-10 --undo [--apply]
 
 An option is one ability owner (at most heroicchoice.MAX_ABILITIES distinct abilities; a levelled
 one carries its level) plus six signed stat deltas in heroicchoice.STAT_FIELDS order.  The owner is
@@ -52,50 +54,12 @@ STAT = {n: i for i, n in enumerate(G.STAT_FIELDS)}
 
 # (record id, name) -> [(option slot 1..3, [ability or (ability, level)], {stat: delta})]
 #
-# Owner's design rules (2026-10-21): thick strokes -- each option a stark, skewed direction, not a
-# spread of small bonuses.  A stat malus only beside a very strong ability (Physical Protection ->
-# fewer Moves for the armour; Flying -> less Defense and Moves); otherwise no negatives.  No
-# elemental protections: elemental immunities, Magic Protection and Physical Protection only;
-# Magic Immunity rarely; Physical Immunity never.
+# Design to Zig notes/13-heroic-options-standard.md (the owner's standard, from his Human edits of
+# 2026-10-30).  ⚠ The rows below for the other races were drafted on 2026-10-22, before it: they
+# still use Physical Protection as heavy armour and carry no stat seasoning; redraft before applying.
 OPTIONS = {
-    (10, "Human Archer"): [
-        (1, ["Forestry", "Concealment"], {"Moves": 4}),
-        (2, [("Marksmanship", 6), "Night Vision"], {}),
-        (3, ["Monster Slaying", "Fearless"], {}),
-    ],
-    (4, "Human Pikeman"): [
-        (1, ["Monster Slaying"], {"Hits": 4}),
-        (2, ["Parry"], {"Defense": 3}),
-        (3, ["Drillmaster", "Fearless"], {}),
-    ],
-    (3, "Human Man-at-Arms"): [
-        (1, ["Physical Protection"], {"Moves": -4}),
-        (2, ["Razor Plate"], {"Defense": 2}),
-        (3, ["True Seeing", "Night Vision"], {"Resistance": 2}),
-    ],
-    (2, "Human Lancer"): [
-        (1, [("Vision", 5)], {"Moves": 6}),
-        (2, ["Throw Javelin"], {"Moves": 2}),
-        (3, ["Physical Protection"], {"Moves": -6}),
-    ],
-    (9, "Human Zweihander"): [
-        (1, [], {"Defense": 2, "Hits": 6}),
-        (2, ["Magebane", "Magic Protection"], {}),
-        (3, ["Charge"], {"Attack": 2}),
-    ],
-    (1, "Human Priest"): [
-        (2, ["Holy Champion", "Death Immunity"], {}),
-        (3, ["Bard's Skills"], {"Resistance": 4}),
-    ],
-    (6, "Human Cavalier"): [
-        (2, ["Holy Champion", "Healing"], {}),
-        (3, ["Monster Slaying", "Fire Immunity"], {}),
-    ],
-    (8, "Human Musketeer"): [
-        (1, [("Marksmanship", 8), "Night Vision"], {}),
-        (2, [], {"Hits": 2, "Moves": 6}),
-        (3, ["Shield", "Parry"], {}),
-    ],
+    # ---- Humans: written 2026-10-30, then edited by the owner in the editor.  The data is his now,
+    # so no rows here: --undo could otherwise empty a slot he kept unchanged.
 
     # ---- Frostlings (drafted 2026-10-22) -------------------------------------------------------
     (36, "Frostling Archer"): [
@@ -672,61 +636,60 @@ OPTIONS = {
     ],
 
 
-    # ---- Azracs (drafted 2026-10-22; Yaka Avatar, Djinn and Scorpion are owner-authored) -------
+    # ---- Azracs (redrafted 2026-10-30 to Zig notes/13-heroic-options-standard.md; APPLIED that day
+    # for the owner to edit.  Yaka Avatar, Djinn and Scorpion are owner-authored.)
     (18, "Azrac Bowman"): [
-        (1, ["Extra Shots"], {}),
+        (1, ["Extra Shots"], {"Defense": -1, "Moves": -2}),
         (2, ["Skirmisher"], {"Moves": 4}),
-        (3, [("Mirror Image", 3)], {}),
+        (3, [("Mirror Image", 3)], {"Attack": 1}),
     ],
     (28, "Azrac Javelineer"): [
-        (1, ["Extra Shots"], {}),
+        (1, ["Extra Shots"], {"Defense": -1, "Moves": -2}),
         (2, ["Skirmisher"], {"Moves": 4}),
-        (3, ["Shield"], {"Defense": 2}),
+        (3, ["Shield", "Parry"], {}),
     ],
     (21, "Azrac Swordsman"): [
-        (1, ["Physical Protection"], {"Moves": -4}),
-        (2, ["Searing Aura"], {}),
-        (3, ["Mental Discipline"], {"Resistance": 4}),
+        (1, [], {"Defense": 2, "Moves": -4}),
+        (2, ["Searing Aura"], {"Attack": 1}),
+        (3, ["Rally", "Mental Discipline"], {"Resistance": 2}),
+    ],
+    (274, "Azrac Scorpion Man"): [
+        (1, ["Smoky Haze"], {"Resistance": 1}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, ["Death Strike"], {"Attack": 1}),
     ],
     (20, "Azrac Rider"): [
-        (1, ["Skirmisher"], {"Moves": 4}),
-        (2, [("Mirror Image", 3)], {}),
-        (3, ["Physical Protection"], {"Moves": -6}),
+        (1, ["Archery", ("Marksmanship", 4), "Skirmisher"], {"Defense": 1}),
+        (2, [("Mirror Image", 3)], {"Moves": 4}),
+        (3, ["Cause Fear"], {"Attack": 1, "Moves": 2}),
     ],
     (29, "Azrac Chariot"): [
-        (1, ["Extra Shots"], {}),
-        (2, ["Physical Protection"], {"Moves": -6}),
-        (3, ["Skirmisher"], {"Moves": 4}),
+        (1, ["Extra Shots"], {"Moves": -4}),
+        (2, ["Skirmisher"], {"Moves": 4}),
+        (3, [], {"Defense": 2, "Hits": 4, "Moves": -4}),
     ],
     (30, "Azrac Howdah"): [
-        (1, ["Extra Shots"], {}),
-        (2, ["Physical Protection"], {"Moves": -6}),
-        (3, ["Cause Fear"], {"Hits": 6}),
+        (1, ["Extra Shots"], {"Defense": -1, "Moves": -2}),
+        (2, ["Cause Fear"], {"Hits": 4}),
+        (3, [], {"Defense": 2, "Moves": -4}),
     ],
     (23, "Elephant"): [
-        (1, ["Physical Protection"], {"Moves": -6}),
-        (2, ["Cause Fear"], {"Hits": 8}),
-        (3, ["Charge", "Round Attack"], {}),
+        (1, ["Charge", "Round Attack"], {"Attack": 1}),
+        (2, ["Cause Fear"], {"Hits": 4}),
+        (3, [], {"Defense": 2, "Moves": -4}),
     ],
     (26, "Sandworm"): [
-        (1, ["Round Attack"], {"Hits": 8}),         # stand-in until Devour
-        (2, ["Physical Protection"], {"Moves": -6}),
-        (3, ["Cause Fear"], {"Attack": 2}),
+        (1, ["Round Attack"], {"Hits": 4}),
+        (2, ["Cause Fear"], {"Attack": 2}),
+        (3, ["Regeneration"], {"Hits": 4}),
     ],
     (19, "Azrac Yakamajal"): [                       # option 1 = Spell Casting 2
-        (2, ["Searing Aura"], {}),
-        (3, ["Rally"], {"Resistance": 2}),
+        (2, ["Searing Aura"], {"Resistance": 1}),
+        (3, ["Rally", "Bard's Skills"], {"Resistance": 2}),
     ],
     (24, "Beholder"): [                              # option 1 = Spell Casting 4
-        (2, ["Extra Shots"], {}),
-        (3, ["Physical Protection"], {"Moves": -4}),
-    ],
-
-    # ---- Human gap: Air Galley (Crossbowman and Charlatan are owner-authored) ------------------
-    (7, "Air Galley"): [
-        (1, ["Extra Shots"], {}),
-        (2, ["Physical Protection"], {"Moves": -6}),
-        (3, [], {"Hits": 10, "Defense": 2}),
+        (2, ["Extra Shots"], {"Moves": -4}),
+        (3, ["Regeneration"], {"Hits": 4}),
     ],
 
     # ---- Shared war machines (drafted 2026-10-22; Frost Blower 252 sits above) ----------------
@@ -837,16 +800,16 @@ PENDING = {
     (202, "Hell Hound"): [(2, ["Devour"], {})],
     (201, "Undead Swordsman"): [(2, ["Undying"], {})],
     (200, "Undead Knight"): [(2, ["Undying"], {})],
-    (26, "Sandworm"): [(1, ["Devour"], {})],
 }
 
+PREFER = {"Regeneration": 0x31}                 # 0x53 is the Regeneration spell's enchantment
 _BY_NAME = {}
 for _a, _n in ability_names.names().items():
     _BY_NAME.setdefault(_n, []).append(_a)
 
 
 def ability_id(name):
-    ids = _BY_NAME.get(name, [])
+    ids = [PREFER[name]] if name in PREFER else _BY_NAME.get(name, [])
     assert len(ids) == 1, "ability name %r resolves to %r" % (name, ids)
     return ids[0]
 
@@ -909,7 +872,20 @@ def describe(abilities, deltas, names):
     return a + ("   " + d if d else "")
 
 
+ONLY = None                                      # --only: the record ids to touch (None = all)
+
+
+def parse_ids(text):
+    out = set()
+    for part in text.split(","):
+        lo, _, hi = part.strip().partition("-")
+        out |= set(range(int(lo), int(hi or lo) + 1))
+    return out
+
+
 def plan(rid, body, undo, caps, names):
+    if ONLY is not None and rid not in ONLY:
+        return None, []
     prefix, fields = decode_dir(body, top=True)
     if encode_dir(prefix, fields) != body:
         raise SystemExit(f"[ERR] record {rid} does not rebuild byte for byte")
@@ -987,7 +963,7 @@ def run(d, undo, caps, names, quiet=False):
         if new is not None:
             out[k] = new
             changed[rid] = new
-    missing = {r for r, _ in OPTIONS} - seen
+    missing = {r for r, _ in OPTIONS if ONLY is None or r in ONLY} - seen
     if missing:
         raise SystemExit(f"[ERR] OPTIONS names records that are not in the file: {sorted(missing)}")
     return changed, join(d, base, ent, out)
@@ -997,13 +973,18 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     ap.add_argument("--apply", action="store_true", help="write Unitres.pfs (default: dry run)")
     ap.add_argument("--undo", action="store_true", help="empty the options this script wrote")
+    ap.add_argument("--only", help="record ids to touch, e.g. 1-10 or 1,4,7-9 (default: all)")
     a = ap.parse_args()
+    global ONLY
+    ONLY = parse_ids(a.only) if a.only else None
     if not os.path.isfile(os.path.join(GAME, "AoWzEd.exe")):
         raise SystemExit(f"[ERR] {GAME} is not the Ziggurat folder")
     caps, names = ability_names.levels(), ability_names.names()
     d = open(TARGET, "rb").read()
     changed, out = run(d, a.undo, caps, names)
     for (rid, name), rows in PENDING.items():
+        if ONLY is not None and rid not in ONLY:
+            continue
         for slot, abil, stats in rows:
             print(f"[pend] {rid:4d} {name:<20} option {slot} -> "
                   + ", ".join(x if isinstance(x, str) else "%s %d" % x for x in abil)

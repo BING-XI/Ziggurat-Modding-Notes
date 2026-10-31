@@ -1740,7 +1740,9 @@ True Seeing are in `02-abilities-modded.md`.
 **Fog is a per-hex counter** (`[field+0x1A]`): each observer adds 1 over what it sees and later
 subtracts 1 over the same area. The full rebuild (`uv_hook`) zeroes every counter and re-adds
 every live observer; it runs on new turn, seat change, Flood/Restore, war/peace changes and Mantle
-of Gloom moves.
+of Gloom moves. The map broadcast reaches an army only through its map figure (`TArmyHS`), so a
+battle's combat-party armies need their own pass (`nohs`, v7 2026-10-31); before v7 a rebuild
+mid-battle left each party's sight subtracted twice (`02-abilities-modded.md`, Mantle of Gloom).
 
 **v6 sight snapshot (2026-10-04).** Before v6 the add and the subtract each ran the sight check
 against the terrain of their own moment, so an Earth/Rock edit in between left counters too high

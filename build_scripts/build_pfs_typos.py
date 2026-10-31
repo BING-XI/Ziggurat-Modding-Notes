@@ -198,10 +198,14 @@ FIXES = [
      'The unit is dazed. It cannot perform actions, which also lowers its Defense (-2). \r\n',
      'The unit is dazed. It cannot perform actions, which also lowers its Defense (-4). \r\n',
      "Stunned (doubling + 2026-08-24 re-grade, full-text row)"),
+    # 2026-10-30: names what Cursed stops (vanilla NewTurn skips every turn heal for a cursed unit;
+    # build_reformingflesh.py v5 gates Reforming Flesh on it). The author's `Def/Res` case kept.
     ("Ability.pfs", 103,   5,
-     'Inflicts -2 DEF/RES and prevents the unit from healing normally.\r\n',
-     'Inflicts -4 DEF/RES and prevents the unit from healing normally.\r\n',
-     "Cursed (doubling + 2026-08-24 re-grade, full-text row)"),
+     ('Inflicts -2 DEF/RES and prevents the unit from healing normally.\r\n',
+      'Inflicts -4 DEF/RES and prevents the unit from healing normally.\r\n',
+      'Inflicts -4 Def/Res and prevents the unit from healing normally.\r\n'),
+     'Inflicts -4 Def/Res and stops natural healing, Regeneration and Reforming Flesh.\r\n',
+     "Cursed (doubling + 2026-08-24 re-grade; what it stops, 2026-10-30)"),
     ("Ability.pfs", 104,   5,
      'The unit is trapped in grasping weeds. It cannot perform actions, which also lowers its Defense (-2). \r\n',
      'The unit is trapped in grasping weeds. It cannot perform actions, which also lowers its Defense (-4). \r\n',
@@ -711,11 +715,14 @@ FIXES = [
      "record 173 = Fire Halo's enchantment (ability 0xA3), now Living Flame. ⚠ u8 directory: "
      "tag 9 sits at offset 207, so this field may grow by at most 48 B (+40 here)"),
 
-    # Reforming Flesh 5 -> 4 HP per round, owner 2026-10-23 (build_reformingflesh.py HEAL).
+    # Reforming Flesh 5 -> 4 HP per round, owner 2026-10-23 (build_reformingflesh.py HEAL); full
+    # heals after battle, after world-map damage and at turn start, none while Cursed, 2026-10-30.
     ("Ability.pfs", 187,  5,
-     "Heals the unit by +5 HP per combat round.\r\n",
-     "Heals the unit by +4 HP per combat round.\r\n",
-     "record 187 = Reforming Flesh (ability 0xB1)"),
+     ("Heals the unit by +5 HP per combat round.\r\n",
+      "Heals the unit by +4 HP per combat round.\r\n"),
+     "Heals the unit by +4 HP per combat round, and fully after each battle, after world-map "
+     "damage and at the start of each turn. Does not work while Cursed.\r\n",
+     "record 187 = Reforming Flesh (ability 0xB1), build_reformingflesh.py v5"),
 
     # Typo, owner 2026-10-28. Same length, so no offset moves.
     ("Ability.pfs", 169,  5,

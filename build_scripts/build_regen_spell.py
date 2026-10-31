@@ -37,6 +37,9 @@ THE EFFECT
     R  0x55780DA6  TAbstractUnit.NewTurn's `call [ecx+0x148]` for 0x31 (6 B) -> call cave_regen + nop:
        the vanilla query, then the same query for 0x53.  Either one takes vanilla's full-heal
        branch (0x55780DDA); neither falls to the partial overnight heal.  ESI = the unit.
+       The first query uses the id in EDX: since 2026-10-30 build_reformingflesh.py replaces the
+       `mov edx,0x31` before it with a call that passes 0xB1 for a Reforming Flesh unit, so
+       checks() accepts that call too.  Vanilla's Cursed test (0x55780D8A) runs before both.
 
 RNG none.  Slot 0x558B5C00-0x558B5FFF, exclusive.  PIC.  Surgical --undo.
 
@@ -224,10 +227,15 @@ def checks():
             (0x557BCC6B, bytes.fromhex("8bc3"), "`mov eax,ebx` before the ability registration site"),
             (0x557E8E38, bytes.fromhex("8bc3"), "`mov eax,ebx` before the spell registration site"),
             (0x557E8E2C, bytes.fromhex("a15c677e55"), "Dark Gift's classref load before the spell site"),
-            (0x55780D9D, bytes.fromhex("ba31000000"), "NewTurn's `mov edx,0x31`"),
             (0x557E6D0B, bytes.fromhex("ff979c000000"), "Stone Skin ExecuteSpell's `call [edi+0x9c]`")):
         if rb(va, len(want)) != want:
             sys.exit("ABORT: %s is not at %08X" % (what, va))
+    # NewTurn's `mov edx,0x31`, or build_reformingflesh.py's call in its place (2026-10-30), which
+    # returns EDX = 0x31 or 0xB1 for the query cave_regen makes first
+    nt = rb(0x55780D9D, 5)
+    if nt != bytes.fromhex("ba31000000") and not (
+            nt[0] == 0xE8 and 0x55826000 <= 0x55780DA2 + struct.unpack("<i", nt[1:])[0] < 0x55827000):
+        sys.exit("ABORT: NewTurn's `mov edx,0x31` (or Reforming Flesh's call) is not at 55780D9D")
     if rd(STONESKIN_CELL) != STONESKIN_CELL + 0x40:
         sys.exit("ABORT: %08X is not TStoneSkin's class cell" % STONESKIN_CELL)
     if rd(TUEA_VMT - 0x40) != TUEA_VMT or rd(TUEA_VMT - 0x1C) != 0x28:

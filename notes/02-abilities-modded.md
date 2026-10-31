@@ -36,7 +36,7 @@ ownership and the VMT/field catalogues live in `12-re-toolchain.md`.
 | Leadership buffs only the OTHER units in the party (+ split "own (+received)" card text) | 🔨 APPLIED, UNTESTED (2026-09-16) | `build_leadership_others.py` | AoWEPACK.dpl |
 | Per-race probability gate on hero level-up ability offers | 🔨 APPLIED, UNTESTED (2026-09-09) — see Feature 1 below | `build_heroskill_race.py` + `heroskill_races.py` | `Ziggurat/AoWz.exe` |
 | Monster Slaying — DAM + DEF vs Monsters, no ATK | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_monster_slaying.py` + `monsterslay.py`, cave generators in `build_assassin.py` / `build_ranged_slayers.py`, row in `build_pfs_typos.py` | AoWEPACK.dpl + Release/Ability.pfs |
-| Mantle of Gloom (was Trail of Darkness) — radius 6, sight costs double; trail radius 6; True Seeing pierces it (v5) | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_los_terrain.py` v5; name row in `build_resstr_names.py`; card row in `build_pfs_typos.py` | AoWEPACK.dpl + Dict/ResStr.mld + Release/Ability.pfs |
+| Mantle of Gloom (was Trail of Darkness) — radius 6, sight costs double; trail radius 6; True Seeing pierces it (v5); battles no longer corrupt fog (v7, 2026-10-31) | 🔨 APPLIED, UNTESTED (2026-09-26) | `build_los_terrain.py` v7; name row in `build_resstr_names.py`; card row in `build_pfs_typos.py` | AoWEPACK.dpl + Dict/ResStr.mld + Release/Ability.pfs |
 | Wall Crushing damage = the carrying unit's DAM (was a flat 12); ATK stays 12 | 🔨 APPLIED (2026-09-27) | `build_wallcrush_dam.py` | AoWEPACK.dpl + AoWTCPCK.dpl |
 | Invisible units pulse towards transparency; Mistform units look misty | applied 2026-10-29 | `build_unit_vfx.py` (+ `build_mirrorimage.py`'s dispatch) | AoWEPACK.dpl + AoWTCPCK.dpl |
 
@@ -114,6 +114,13 @@ docstring holds the addresses, cave layout and the symmetry argument).
 - **Limits:** at most 32 aura sources are tracked; extras are ignored. A destroyed army's aura
   lingers until the next rebuild (any enemy Trail of Darkness army moving, a war/peace change, a
   seat change or the next turn).
+- **Broke in-game, fixed 2026-10-31 (v7).** After a battle against a Mantle of Gloom unit the fog
+  around the battle was left in blotches: own units stood in fog and could not be selected, and
+  some hexes stayed seen with nobody near. A battle moves its units into combat-party armies that
+  the map broadcast never reaches; the gloom made the fog rebuild run mid-battle, which wiped the
+  parties' sight while they still counted it as given, and each party took it away again at battle
+  end (counter 1 → 0, 0 → 255). The rebuild now also visits every active army that no map figure
+  carries. Fog already corrupted clears on the next load or the next turn.
 - **Revert:** `build_los_terrain.py --undo` removes the Earth/Rock occlusion too. To drop only the
   aura, set `GLOOM = False` and re-`--apply` (an in-place re-tune; no army ever qualifies).
 

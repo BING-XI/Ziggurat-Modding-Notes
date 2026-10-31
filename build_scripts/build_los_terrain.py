@@ -3,6 +3,7 @@ r"""
 AoW1 mod -- strategic-map terrain LOS blocking + fog-refcount rebuild on terrain change
             + Mantle of Gloom (v4, 2026-09-26): enemy Trail of Darkness armies thicken the fog.
             + sight snapshot (v6, 2026-10-04): terrain edits can no longer unbalance fog counts.
+            + combat parties in the rebuild (v7, 2026-10-31): a battle no longer corrupts fog.
 
 Terrain 7 (Earth) and 8 (Rock) block strategic line of sight. Every area fill in
 TAoWMapLevel (fog on, fog off, explore, unfog+explore) is filtered per hex: a hex is only
@@ -235,6 +236,44 @@ only the counts are fixed.
   Cave 3 0x55852000..0x558521FF (EXCLUSIVE, asserted zero-or-ours): snapreset, scan, dds,
   tc_mark (265 B).
 
+================================================================================
+PART 5 -- combat parties in the rebuild (v7, 2026-10-31)
+================================================================================
+Bug (owner report, world map, PBEM): after the owner's army killed an enemy Lady of Pain with
+Mantle of Gloom, the fog around the battle was left in blotches -- own units stood in fog and
+could not be selected, hexes further out were clear, and later moves fogged the hex a unit
+stood on and cleared the one it left.
+
+Cause: a battle moves its units into combat parties. TCombatPartyList.CreateParty @0x55728684
+gives each party a fresh TArmy at [party+8] (SetXYL to the party's hex, SetPlayer,
+TArmy.Activate), and TCombatUnit.SetParty @0x55725094 reparents the strategic unit into it. That
+army is a fog observer (cache +0x17; TCombatParty.Destroy -> TArmy.Deactivate @0x5578D364 fogs off
+with the cache), but no map broadcast reaches it: only TArmyHS.MsgProc @0x55791BEC forwards to a
+TArmy, TPlayer.MsgProc @0x55752F08 does not forward its army list [+0x28], and TCombatParty runs
+TEObject.MsgProc, which handles message 1 only. A rebuild during a battle therefore wiped the
+party's counts while its cache kept the radius, and Deactivate subtracted them again: every hex
+the party saw lost 1 -- count 1 -> 0 (own units fogged; TArmyHS.CanSelect refuses), 0 -> 0xFF
+(seen, and the next unit to arrive takes it to 0). FogArea does not clamp at 0.
+Vanilla never rebuilds mid-battle. Mantle of Gloom does: the enemy party army holding the Mantle
+unit qualifies as a source, the zeroing pass could never record it, so each UpdateUnfog of that
+army (every unit change in it) requested another rebuild; the unit leaving its strategic army
+requests one as well. A war/peace change or True Seeing near gloom mid-battle did the same.
+
+Fix: `nohs` (cave 1) calls TArmy.UpdateUnfog on every active army in every player's TArmyList
+([player+0x28]; items [[list+8]+4], count [[list+8]+8]) whose [army+0x20] is nil. TArmyHS.Activate
+@0x55790CF0 stores the TArmyHS there (the data half of the army's OnUpdate method pointer), so
+these are exactly the armies the broadcast misses. uv_hook runs nohs after the zero-cache
+broadcast (FLAG set: stub_army records the army as a gloom source or True Seeing observer and
+zeroes its cache) and again after ResetFog (FLAG clear, G_INUV set: the vanilla body unfogs it).
+The enemy party army is now recorded, so its rebuild requests stop after the first. Armies a
+TArmyHS carries stay with the broadcast: one taken off the map (RemoveFromMap -> TurnUnFogOff,
+XYL kept) must not be unfogged at its old hex. Exploration-site defenders and dungeon prisoners
+are TArmies without a TArmyHS too; SetXYL's only callers are CreateParty and TArmyHS
+PlaceOnMap/Activate, so they stay off the map and neither unfog nor qualify.
+Saves: fog counts are saved, but a load rebuilds (trig_seat) and so does every new turn, so a
+corrupted view clears by itself.
+Unproven: no battle has been fought on v7; --emulate runs uv_hook and nohs under unicorn.
+
 Trail of Darkness itself: ExecuteTrailOfDarkness's ring bound `cmp dword [esp+0x14], N`
 @0x5578016C is TRAIL_R = 6 (vanilla 1; an unowned hand edit had made it 5 -- --undo
 restores the 5).
@@ -260,7 +299,8 @@ call/pop delta for every global; rel32 for every call/jmp.
 
 Backup: AoWEPACK.dpl.pre-losterrain -- taken ONLY when every hook site byte-matches the
 original bytes (never minted from a patched state; the undo/re-tune paths take none).
-Dry-run by default; --apply / --undo (surgical) / --verify / --dis / --test.
+Dry-run by default; --apply / --undo (surgical) / --verify / --dis / --test / --emulate.
+Cave 1 in v7 runs to 0x558207B8 (1977 of 2048 B).
 """
 
 import os
@@ -319,6 +359,7 @@ SNAP_BIT = 0x80                 # 1 = this hex blocked sight when the last rebui
 
 # engine entry points (all AoWEPACK.dpl, live-verified this session)
 UPDVIS    = 0x55778408          # TAoWHSMap.UpdateVisibility
+ARMYUNF   = 0x5578E228          # TArmy.UpdateUnfog (entry hooked -> stub_army)
 LOCKMCE   = 0x5577246C          # TAbstractAoWHSMap.LockMapChangedEvent
 INITMSG   = 0x5570347C          # thunk EngineP!Engine.InitMsg
 GETLVL    = 0x557020EC          # thunk HSEPack!TMapContainer.GetMapLevel
@@ -1388,6 +1429,55 @@ def build():
         ret
     """)
 
+    # --- nohs (v7): TArmy.UpdateUnfog on every active army that no TArmyHS carries
+    # ([army+0x20] = the TArmyHS, set by TArmyHS.Activate) -- in practice the battle's combat
+    # party armies, which the map broadcast never reaches. ebx = map; preserves everything.
+    # uv_hook calls it twice: in the zeroing pass (FLAG set: stub_army records and zeroes)
+    # and after ResetFog (FLAG clear, G_INUV set: the vanilla body unfogs afresh).
+    a = align(nxt)
+    a_nohs = a
+    nxt = asm("nohs", a, f"""
+        pushad
+        xor  edi, edi                   ; player index
+    np:
+        mov  eax, [ebx + 0x140]         ; TPlayerList
+        test eax, eax
+        jz   ndone
+        mov  eax, [eax + 8]             ; its TList
+        cmp  edi, [eax + 8]
+        jge  ndone
+        mov  eax, [eax + 4]
+        mov  eax, [eax + edi*4]         ; player
+        inc  edi
+        test eax, eax
+        jz   np
+        mov  eax, [eax + 0x28]          ; TArmyList (TArmy.Activate adds, Deactivate removes)
+        test eax, eax
+        jz   np
+        mov  ebp, [eax + 8]             ; its TList
+        test ebp, ebp
+        jz   np
+        mov  esi, [ebp + 8]
+    na:
+        dec  esi
+        js   np
+        cmp  esi, [ebp + 8]
+        jge  na                         ; the list shrank under us
+        mov  eax, [ebp + 4]
+        mov  eax, [eax + esi*4]
+        test eax, eax
+        jz   na
+        test byte ptr [eax + 0x10], 1
+        jz   na                         ; inactive: Deactivate already fogged off, cache 0
+        cmp  dword ptr [eax + 0x20], 0
+        jne  na                         ; a TArmyHS carries it: the broadcast reaches it
+        call 0x{ARMYUNF:X}              ; TArmy.UpdateUnfog (its entry is stub_army)
+        jmp  na
+    ndone:
+        popad
+        ret
+    """)
+
     # --- uv_hook: the wipe, run inside UpdateVisibility when PENDING.
     a = align(nxt)
     pop_at = a + 5
@@ -1421,15 +1511,16 @@ def build():
         mov  esi, [eax]
         call dword ptr [esi + 0x68]     ; zero-cache broadcast (FLAG short-circuits)
         add  esp, 0x30
+        call 0x{a_nohs:X}               ; v7: and the armies the broadcast misses
         pop  eax
         mov  byte ptr [eax + 0x{FLAG:X}], 0
         xor  esi, esi
     lvl:
         mov  eax, [ebx + 0x10]
         test eax, eax
-        jz   orig
+        jz   fresh
         cmp  esi, [eax + 0x14]
-        jge  orig                       ; done -> continue original (fresh broadcast)
+        jge  fresh
         mov  edx, esi
         call 0x{GETLVL:X}
         test eax, eax
@@ -1438,6 +1529,9 @@ def build():
     nxt:
         inc  esi
         jmp  lvl
+    fresh:
+        call 0x{a_nohs:X}               ; v7: unfog them afresh
+        jmp  orig                       ; -> the original (fresh broadcast)
     """)
 
     # --- trig: shared target of the four retargeted `call InvalidateMap` sites.
@@ -1505,7 +1599,7 @@ def build():
 
 CAVE_ORDER = ("table", "los_fog", "los_core", "stub_fog", "stub_unfog", "stub_ue", "stub_ex",
               "qualify", "stub_army", "stub_ps", "stub_pool", "stub_watch", "stub_gate",
-              "uv_hook", "trig", "uv_end", "trig_uv")
+              "nohs", "uv_hook", "trig", "uv_end", "trig_uv")
 CAVE2_ORDER = ("tsqual", "tslook", "tsrec", "tscheck")
 CAVE3_ORDER = ("snapreset", "scan", "dds", "tc_mark")
 ALL_ORDER = CAVE_ORDER + CAVE2_ORDER + CAVE3_ORDER
@@ -2004,6 +2098,122 @@ def run_test():
 
 
 # ============================================================================
+def run_emulate():
+    """v7: unicorn run of uv_hook (wipe and plain) + nohs against a fake map and player list.
+    Engine calls are stubs that log the FLAG / G_INUV state they were reached with."""
+    from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
+    from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX,
+                                   UC_X86_REG_EDX, UC_X86_REG_ESP)
+    cv = build()
+    fails = []
+    MAP, VMT, CONT, BCAST = 0x10000000, 0x10000E00, 0x10000100, 0x10000F00
+    PL, PLT, PLI, STACK = 0x10001000, 0x10001100, 0x10001200, 0x55900F00
+
+    def check(label, cond):
+        print(("  ok   " if cond else "  FAIL ") + label)
+        if not cond:
+            fails.append(label)
+
+    def run(pend, players):
+        mu = Uc(UC_ARCH_X86, UC_MODE_32)
+        for base, size in ((0x55700000, 0x200000), (0x55900000, 0x1000),
+                           (0x10000000, 0x100000), (0x20000000, 0x10000)):
+            mu.mem_map(base, size)
+        for k in ALL_ORDER:
+            mu.mem_write(cv[k][0], cv[k][1])
+        stubs = {ARMYUNF: "unfog", INITMSG: "initmsg", GETLVL: "getlvl",
+                 cv["snapreset"][0]: "reset", LOCKMCE: "lockmce", BCAST: "broadcast"}
+        for va in stubs:
+            mu.mem_write(va, b"\xC3")
+        mu.mem_write(0x55778425, b"\xF4")           # back in vanilla: stop
+        w32 = lambda va, v: mu.mem_write(va, struct.pack("<I", v))
+        mu.mem_write(PEND, bytes([pend]))
+        w32(G_CNT, 7)
+        w32(T_CNT, 5)
+        w32(MAP, VMT)
+        w32(VMT + 0x68, BCAST)
+        w32(MAP + 0x10, CONT)
+        w32(CONT + 0x14, 2)                         # two map levels
+        w32(MAP + 0x140, PL)
+        w32(PL + 8, PLT)
+        w32(PLT + 4, PLI)
+        w32(PLT + 8, len(players))
+        nxt = 0x10010000
+        for i, armies in enumerate(players):
+            if armies is None:
+                continue                            # nil player slot
+            P = nxt
+            nxt += 0x1000
+            w32(PLI + 4 * i, P)
+            if armies == "nolist":
+                continue
+            w32(P + 0x28, P + 0x100)
+            w32(P + 0x108, P + 0x200)
+            w32(P + 0x204, P + 0x300)
+            w32(P + 0x208, len(armies))
+            for j, a in enumerate(armies):
+                if a is not None:
+                    addr, active, hs = a
+                    w32(P + 0x300 + 4 * j, addr)
+                    mu.mem_write(addr + 0x10, bytes([1 if active else 0]))
+                    w32(addr + 0x20, hs)
+        log = []
+
+        def hook(uc, addr, size, _):
+            name = stubs.get(addr)
+            if name is None or name == "initmsg":
+                return
+            st = (uc.mem_read(FLAG, 1)[0], uc.mem_read(G_INUV, 1)[0])
+            if name == "getlvl":
+                uc.reg_write(UC_X86_REG_EAX, 0x20000000 + 0x100 * uc.reg_read(UC_X86_REG_EDX))
+                return
+            log.append((name, uc.reg_read(UC_X86_REG_EAX) if name in ("unfog", "reset") else 0)
+                       + st)
+            if name == "unfog":                     # a Delphi callee may trash these
+                for r in (UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX):
+                    uc.reg_write(r, 0xDEAD0000)
+        mu.hook_add(UC_HOOK_CODE, hook)
+        mu.reg_write(UC_X86_REG_ESP, STACK)
+        mu.reg_write(UC_X86_REG_EBX, MAP)
+        mu.emu_start(cv["uv_hook"][0], 0x55778425, count=200000)
+        rd = lambda va: mu.mem_read(va, 1)[0]
+        state = dict(PEND=rd(PEND), FLAG=rd(FLAG), G_INUV=rd(G_INUV),
+                     G_CNT=struct.unpack("<I", mu.mem_read(G_CNT, 4))[0],
+                     T_CNT=struct.unpack("<I", mu.mem_read(T_CNT, 4))[0],
+                     esp=mu.reg_read(UC_X86_REG_ESP), ebx=mu.reg_read(UC_X86_REG_EBX))
+        return log, state
+
+    PARTY, HSARMY, IDLE, PARTY2 = 0x10050000, 0x10051000, 0x10052000, 0x10053000
+    players = [None,
+               [(PARTY, True, 0), (HSARMY, True, 0x10060000), None, (IDLE, False, 0)],
+               "nolist",
+               [(PARTY2, True, 0)]]
+    print("wipe (PEND=1):")
+    log, st = run(1, players)
+    check("broadcast, nohs, ResetFog x2, nohs, LockMapChangedEvent, back in vanilla",
+          [e[0] for e in log] == ["broadcast", "unfog", "unfog", "reset", "reset",
+                                  "unfog", "unfog", "lockmce"])
+    check("zero-cache broadcast with FLAG=1", log[0][2] == 1)
+    check("zeroing pass: only the active armies without a TArmyHS, FLAG=1",
+          [(e[1], e[2]) for e in log[1:3]] == [(PARTY, 1), (PARTY2, 1)])
+    check("ResetFog on levels 0 and 1 with FLAG=0",
+          [(e[1], e[2]) for e in log[3:5]] == [(0x20000000, 0), (0x20000100, 0)])
+    check("fresh pass: the same armies, FLAG=0 and G_INUV=1",
+          [(e[1], e[2], e[3]) for e in log[5:7]] == [(PARTY, 0, 1), (PARTY2, 0, 1)])
+    check("PEND consumed, FLAG clear, G_INUV left for uv_end",
+          (st["PEND"], st["FLAG"], st["G_INUV"]) == (0, 0, 1))
+    check("source and True Seeing lists cleared", (st["G_CNT"], st["T_CNT"]) == (0, 0))
+    check("stack balanced, ebx still the map", (st["esp"], st["ebx"]) == (STACK, MAP))
+    print("plain UpdateVisibility (PEND=0):")
+    log, st = run(0, players)
+    check("no wipe, no nohs", [e[0] for e in log] == ["lockmce"] and st["G_CNT"] == 7)
+    print("no players:")
+    log, st = run(1, [])
+    check("wipe completes", [e[0] for e in log] == ["broadcast", "reset", "reset", "lockmce"])
+    print("\n%s" % ("ALL OK" if not fails else "%d FAILED" % len(fails)))
+    sys.exit(1 if fails else 0)
+
+
 def disasm(data, va, title):
     try:
         from capstone import Cs, CS_ARCH_X86, CS_MODE_32
@@ -2024,10 +2234,15 @@ def main():
     ap.add_argument("--dis", "--show", action="store_true", dest="dis")
     ap.add_argument("--test", action="store_true",
                     help="pure-Python line-walk model vs independent reference")
+    ap.add_argument("--emulate", action="store_true",
+                    help="unicorn run of the rebuild's wipe and nohs (v7)")
     args = ap.parse_args()
 
     if args.test:
         run_test()
+        return
+    if args.emulate:
+        run_emulate()
         return
 
     if not os.path.isfile(DLL):

@@ -30,6 +30,7 @@ built, what is waiting to be tested, what will hurt you, and where the detail li
 | `09-terrain-movement.md` | hexes, terrain change, transitions, movement tables, the move predictor |
 | `10-ai-and-structures.md` | AI behaviour, raze, the raze combat predictor, Arena, shipyards, sites |
 | `11-engine-internals.md` | items, file formats, serialization, and shelved analyses worth keeping |
+| `13-heroic-options-standard.md` | how heroic options are designed — the owner's standard, from his Human edits |
 | `12-re-toolchain.md` | **how to work on this project** — Ghidra, capstone, the RNG rule, cave ownership, keystone traps, **§13 how a release is cut**, **§14 the Ziggurat Manual's failure modes** |
 | `Map_Generator.md` | **the Ziggurat Map Generator** — the pipeline, terrain allocation, mountains, hills, Sky, and the scope ruling that governs it |
 | `Inioch.md` | material from the fellow modder, and what we adopted from it |
@@ -205,6 +206,8 @@ file carries the specific checklist for its own rows.
   P1 synced draw. `build_heroicchoice_data.py` + `build_deved_heroicchoice.py` +
   `build_heroicchoice.py` (DLL + exe, never one half alone). The in-game path is unproven.
   Option 1 of every Spell Casting unit = its level + 1 (`build_heroic_spellcasting.py`, data only).
+  The other options: `build_heroic_options.py`, data only; Humans and Azracs applied 2026-10-30,
+  other races drafted. Design standard: `13-heroic-options-standard.md`.
   **Always set** (tag `0x36`, editor tab Always): every heroic unit also gains the next level of
   each multi-level ability that rises on its ranks, Spell Casting excepted
   (`build_heroic_progressions.py` fills 86 types).
@@ -213,7 +216,10 @@ file carries the specific checklist for its own rows.
   182–185 read "Cuts 40% off the cost of …", matching `build_caster_cost.py`'s ×0.6.
   `build_pfs_typos.py`.
 - **Reforming Flesh heals +4 HP per round** (2026-10-23, was +5): `build_reformingflesh.py` `HEAL`,
-  the `add edx` imm8 at `0x55826089`; card `Ability.pfs` 187 in `build_pfs_typos.py`.
+  the `add edx` imm8 at `0x5582609D`; card `Ability.pfs` 187 in `build_pfs_typos.py`.
+- **Reforming Flesh heals fully after each battle, after world-map damage and at turn start; Cursed
+  stops it** (2026-10-30, `build_reformingflesh.py` v5; cards 187 and Cursed 103 in
+  `build_pfs_typos.py`) — `03-abilities-added.md`, "Reforming Flesh outside combat".
 - **Shoot Bane Javelin** (`0xBE`): a 14/11 javelin, 1 shot, long range, physical and death damage,
   the black-javelin sprite and Shoot Bolt's sounds; Ranged column at level-up, 0 % for every race.
   The Orc Shredder Bolt carries it in place of Shoot Bolt. `build_banejavelin.py` (`AoWEPACK.dpl` +
@@ -299,6 +305,8 @@ file carries the specific checklist for its own rows.
   2026-09-26): True Seeing ignores the gloom out to its true-sight range.** `build_los_terrain.py` v5; name
   in `build_resstr_names.py`, card text `Ability.pfs` rec 36 in `build_pfs_typos.py`.
   Checklist: `02-abilities-modded.md`, "Mantle of Gloom (was Trail of Darkness)".
+  **Fixed 2026-10-31 (v7): a battle against a Mantle unit no longer leaves fog blotches and
+  unselectable units** — the fog rebuild now reaches combat-party armies (`nohs`).
 - **Monster Slaying reworked** — 🔨 APPLIED, UNTESTED (2026-09-26; melee +5 from 2026-09-28): vs Monsters +5 DAM / +5 DEF in
   melee, +2 DAM / +2 DEF at range (breath included), no ATK. DEF is −ATK on the Monster's strike,
   on every melee strike. Shared test `ms_test 0x5584F300`; `build_monster_slaying.py` hooks
@@ -432,6 +440,15 @@ file carries the specific checklist for its own rows.
   relation heat-map, medal colours, fold-out unit
   lists, `#units/<group>` and `#spells/<sphere>` sub-pages, the hotkey diagram, Uncial Antiqua
   (OFL) headings; spell-card labels no longer break mid-word. `07-ui.md` §2.10.
+- **Ziggurat Manual: drag a spell to another tier** — built 2026-10-30, **no binary patched**. With
+  Edit text ticked, a Spells card drags to another tier of its sphere or pair; Save writes the tier
+  into `Release/Spells.pfs` (a dual record's research follows at 80 per tier). Cards now read their
+  tier from `Spells.pfs`. ⚠ A single-sphere tier left with fewer than two spells locks the tiers
+  above it. `07-ui.md` §2.11.
+- **Ziggurat Manual: Statuses page** — built 2026-10-30, **no binary patched**: all 17 temporary
+  statuses with modifiers, duration and card text, read from the DLLs and `Ability.pfs`
+  (`enchant_mods.statuses()`). ⚠ A status a cave builds needs a row in `RUNTIME_STATUS_META` or
+  `EXTRA_STATUSES`. `07-ui.md` §2.12.
 - **Reforming Flesh's level-up cost — 0 → 20** — 🔨 APPLIED, UNTESTED (2026-09-10):
   `build_reformingflesh.py` v3 on `AoWEPACK.dpl` alone. **A registration-time store of
   `[ability+0x14]` can never work**, which is why v2's `mov dword [eax+0x14], 50` left the ability
@@ -440,8 +457,8 @@ file carries the specific checklist for its own rows.
   `rwInteger @0x55510EF4` reaches its `xor eax,eax / mov [edi],eax` tail and **zeroes the field when
   tag 6 is absent**. The two neighbouring tags disagree — `rwData` (tag 9, the selection mask)
   *skips* on a missing tag — so a record-less ability keeps its cave's mask and loses its cave's
-  cost: **offered at level-up, and free.** Fix: `cave_cost @0x558260B0` (32 B, appended to the same
-  zone, now `0x55826000..0x558260D0`) hooked into `TAbility.ReadWrite` at `0x5574F0AA` — `mov ecx,7`
+  cost: **offered at level-up, and free.** Fix: `cave_cost` (32 B, appended to the same zone; at
+  `0x558260C0` since v5) hooked into `TAbility.ReadWrite` at `0x5574F0AA` — `mov ecx,7`
   is exactly 5 bytes, no `.reloc` entry, `TAbility.ReadWrite` byte-identical to the pristine root
   DLL. It fills in a **zero only**, so a future tag 6 still wins. Cost lives in `EXPAND_COST`; a
   re-tune is an in-place rewrite (`retune` state) and never a revert-and-re-apply.
@@ -603,6 +620,7 @@ file carries the specific checklist for its own rows.
 - Window mode zoom factor: the window stays resizable and the game is drawn at Z× (`Video\Window Zoom`, default Auto ≈ 1920×1080 game area, 0 = off), DPI-aware (`build_window_zoom.py`, `Dcpack.dpl` CODE tail + `.hcol` `0x0062B300`) — 2026-10-18, confirmed. `07-ui.md` §21
 - **AoWzSetup.exe replaces AoWSetup.exe**: every AoWSetup setting plus window zoom; Play/Editor start AoWz.exe/AoWzEd.exe (`build_aowzsetup.py`, C# source in `Modding Resources/AoWzSetup/`; AoWSetup.exe withheld + `[InstallDelete]`) — 2026-10-18, confirmed. `07-ui.md` §22
 - AoWzSetup: purple, mirrored dragon icon (as AoWz.exe's); **Updates** tab — Ask before installing / Install automatically / Off = `update.ps1`'s `Updater\Mode`; a change runs `update.ps1 -Register`, so Off removes the update task at once (`build_aowzsetup.py`) — 2026-10-19. ⚠ Not run where `Modding Resources` sits beside the exe: a task in the working tree would install a release over it. `07-ui.md` §22
+- Fullscreen survives monitor sleep, minimise, Alt+Tab and screen lock: a DirectDraw Unlock that fails on a lost surface no longer leaves GFXE's lock flag set, and the present step's catch-all ("Exception occured during ExecuteBltSurface event") skips the frame instead of showing the box and ending the frame loop (`build_lost_display.py`, `Gfxepack.dpl` + `Dcpack.dpl`, in place) — 2026-10-31, from the code, not reproduced. `07-ui.md` §24
 - Research Book slot **buttons** now move with their panels (`build_tierresearch_btnfix.py`, hook `0x42F2DC`, cave `0x611F00` in the `.tres` slack, both exes) — 🔨 APPLIED, UNTESTED 2026-09-06 — fixes "some sphere-tiers selectable, others not": `cave_layout` re-pitched the panels for research mode but never moved the sibling `SxBtn` click targets. ⚠ Do **not** retarget the `call` at `0x42F2D7` instead — that is one of `build_tierresearch_exe.py`'s verified hooks and breaks its self-check
 - Cast spell book dead on reopen (no glow, no click) — zero-height slot buttons from `cave_layout`'s pre-`Show` height capture; `build_tierresearch_btnfix.py` v2 re-sizes every validated slot button via its own `SetSize` in non-research modes — 2026-10-03. ⚠ its `--undo` re-breaks the cast book (`04-spells-modded.md`)
 - ⭐⭐ **The Death Altar crash — a STALE `.reloc` ENTRY, not the combat log** (`build_relocfix.py`) — ✅ **CONFIRMED WORKING 2026-09-13** (applied 2026-09-11). The Death/Divine dispatch rewrite in `ExecuteStormDamage` overwrote `mov dx,[0x55780840]` but left its base-relocation at RVA `0x807FB`, so **the loader added the rebase delta to live code on every launch**, smashing `0x557807FD/FE` — the `mov dx,0x20` that is the **Death** arm, and only that arm. Reported as `EExternalException … at 000807FE / External exception 80000003`; `000807FE` is the second corrupted byte and the code varies with the load address. Fixed by flipping the entry type `3 → 0`, plus **ten more** found by the same sweep. ⚠⚠ **Invisible to every static check** — the file, `dasm.py`, the byte-diff and the owning script are all correct. ⚠ The `--audit` needs **all three** of its rules: "dword is not an in-image VA" alone has a systematic false-negative class (an operand at the *end* of the displaced range leaves a residual that still reads as a valid VA — it missed 4 of the 11), and the twin-diff rule that catches those is blind on the editor, which has no vanilla twin. Full decode + the rules in `12-re-toolchain.md` §5.2c; the register of all eleven, the reverse-coupling table and the release-staging caveat in §6.5a
