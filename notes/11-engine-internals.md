@@ -2834,6 +2834,30 @@ walled templates (73 checks), `--test` checks the line-walk model. Revert: `--un
 - Unproven: the per-frame cost on a full 65 × 59 map (blocker scan every frame, recount on change) and
   that every multi-hex house blocks all its hexes. No in-game run.
 
+## Map-field messages and the moving HN array — `build_fieldmsg_hn.py` (2026-11-16)
+
+A `TMapField` keeps its sprites and their hex numbers in one block: `FHSList` (`[field+8]`) holds
+`FCapacity` (`[field+0xC]`, byte) pointers, then `FCapacity` HN bytes. HN is the field's spiral index
+relative to the sprite's centre; a tactical unit registers on its own field at HN 0 and on its six
+neighbours at HN 1..6, and `TTacticalCombatUnitHS.MapFieldMsgProc` (AoWTCPCK `0x00420E5C`) acts on
+damage messages only at HN 0.
+
+- **The defect (vanilla HSEPack):** `TMapField.SendMapFieldMsg @0x55607944` computed
+  `FHSList + FCapacity*4` once, before its loop, and re-read only `FHSList` per sprite. `AddHS
+  @0x556072A4` grows a full field by one slot (`Resize` → `ReallocMem`), which moves the HN array, so
+  a handler that adds a sprite to the field being dispatched leaves every later sprite reading stale
+  HN bytes — often 0.
+- **How it shows:** a breath or Witchfire strike (`0x31012`) kills the adjacent enemy; its death adds
+  blood and a `TCCorpseHS` to that field mid-dispatch; the attacker's own HN 1..6 entry there reads 0
+  and its handler builds `CreateRangedAttackCA(attacker, attacker)`. The log shows the victim slain,
+  then a status roll against the attacker's RES and "X hits X". Any message sent through a field is
+  exposed the same way.
+- **The fix:** the function rewritten in place, same 89 B, same registers and `Msg` offsets
+  (`MapField +4`, `HN +0x18`, `Result +0x1C`); the HN address is recomputed from the current
+  `FHSList`/`FCapacity` every iteration. No RNG, no state, no `.reloc` or foreign jump in the range.
+- Unproven: the other per-field loops that cache the same address (`FieldInfo` walks,
+  `GetTerrain`/`GetOverlay` scans) were left alone — none of their callbacks is known to add a sprite.
+
 ## Open items
 
 - **`ItemUsePnl` visibility defect** (scrolls) — needs one in-game check: author a scroll, select it,
